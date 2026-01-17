@@ -1,0 +1,10 @@
+Refrences/
+SD/
+*.o
+*.elf
+*.3dsx
+*.smdh
+*.lst
+*.map
+build/
+launch.txt
