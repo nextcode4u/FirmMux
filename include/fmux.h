@@ -10,8 +10,10 @@
 
 #define CONFIG_PATH "sdmc:/3ds/FirmMux/config.yaml"
 #define CONFIG_BAK_PATH "sdmc:/3ds/FirmMux/config.yaml.bak"
-#define STATE_PATH "sdmc:/3ds/FirmMux/state->json"
-#define STATE_BAK_PATH "sdmc:/3ds/FirmMux/state->json.bak"
+#define STATE_PATH "sdmc:/3ds/FirmMux/state.json"
+#define STATE_BAK_PATH "sdmc:/3ds/FirmMux/state.json.bak"
+#define STATE_PATH_OLD "sdmc:/3ds/FirmMux/state->json"
+#define STATE_BAK_PATH_OLD "sdmc:/3ds/FirmMux/state->json.bak"
 #define CACHE_DIR "sdmc:/3ds/FirmMux/cache"
 #define CACHE_NDS_DIR "sdmc:/3ds/FirmMux/cache/nds"
 #define CACHE_3DS_DIR "sdmc:/3ds/FirmMux/cache/3ds"
@@ -19,7 +21,9 @@
 #define DEBUG_DIR "sdmc:/3ds/FirmMux/logs"
 #define DEBUG_LOG_PATH DEBUG_DIR "/debug.log"
 #define DEBUG_ICON_PATH DEBUG_DIR "/icon"
-#define FMUX_BOOTSTRAP_TITLEID 0x00040000FF401000ULL
+#define SYSTEM_BLACKLIST_PATH "sdmc:/3ds/FirmMux/system_blacklist.txt"
+#define SYSTEM_ALIAS_PATH "sdmc:/3ds/FirmMux/system_aliases.txt"
+#define FMUX_BOOTSTRAP_TITLEID 0x000400000FF40500ULL
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 
@@ -106,7 +110,6 @@ typedef enum {
     OPTION_ACTION_REBUILD_NDS_CACHE,
     OPTION_ACTION_CLEAR_CACHE,
     OPTION_ACTION_RELOAD_CONFIG,
-    OPTION_ACTION_TOGGLE_SYSTEM,
     OPTION_ACTION_TOGGLE_DEBUG,
     OPTION_ACTION_TOGGLE_NDS_BANNERS,
     OPTION_ACTION_SELECT_LAUNCHER,
@@ -131,8 +134,12 @@ typedef struct {
     FS_MediaType media;
     char name[80];
     char bucket;
-    IconTexture icon;
+    u16 icon_raw[48 * 48];
     bool has_icon;
+    char product[16];
+    bool friendly_name;
+    bool blacklisted;
+    bool is_system;
     bool ready;
     bool visible;
 } TitleInfo3ds;
@@ -207,6 +214,7 @@ void path_parent(char* path);
 void base_name_no_ext(const char* path, char* out, size_t out_size);
 const char* bucket_for_index(int index);
 bool is_nds_name(const char* name);
+bool is_3dsx_name(const char* name);
 bool path_has_prefix(const char* path, const char* prefix);
 void debug_set_enabled(bool on);
 bool debug_log_enabled(void);
@@ -219,6 +227,9 @@ bool write_nextrom_txt(const char* sd_path);
 bool write_nextrom_yaml(const char* sd_path);
 bool write_launch_txt_for_nds(const char* sd_path);
 bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
+bool decode_jpeg_rgba(const unsigned char* jpg, size_t jpg_size, unsigned char** out, unsigned* w, unsigned* h);
+bool homebrew_load_meta(const char* sd_path, char* title_out, size_t title_size, u16* icon_out, size_t icon_count);
+bool homebrew_launch_3dsx(const char* sd_path, char* status_message, size_t status_size);
 
 bool load_or_create_config(Config* cfg);
 
@@ -239,5 +250,10 @@ void ensure_titles_loaded(const Config* cfg);
 
 extern NdsCache g_nds_cache;
 extern TitleCatalog g_title_catalog;
+
+int title_count_user(void);
+int title_count_system(void);
+TitleInfo3ds* title_user_at(int idx);
+TitleInfo3ds* title_system_at(int idx);
 
 #endif

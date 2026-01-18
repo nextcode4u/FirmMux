@@ -64,6 +64,9 @@ bool parse_state(const char* text, State* state) {
 
 bool load_state(State* state) {
     ensure_dirs();
+    if (!file_exists(STATE_PATH) && file_exists(STATE_PATH_OLD)) {
+        rename(STATE_PATH_OLD, STATE_PATH);
+    }
     if (!file_exists(STATE_PATH)) {
         memset(state, 0, sizeof(*state));
         return true;
@@ -82,6 +85,7 @@ bool load_state(State* state) {
     free(data);
     if (ok) return true;
     rename(STATE_PATH, STATE_BAK_PATH);
+    if (file_exists(STATE_PATH_OLD)) rename(STATE_PATH_OLD, STATE_BAK_PATH_OLD);
     memset(state, 0, sizeof(*state));
     return true;
 }

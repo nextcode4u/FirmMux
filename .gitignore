@@ -1,9 +1,12 @@
 Refrences/
 *.o
 *.elf
-*.3dsx
-*.smdh
 *.lst
 *.map
 build/
 launch.txt
+Luma Dumps/
+SD/_nds/TWiLightMenu/
+build.log
+/FirmMux.3dsx
+/FirmMux.smdh

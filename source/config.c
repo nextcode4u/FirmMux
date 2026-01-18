@@ -24,7 +24,7 @@ static const char* base_config =
 "    type: rom_browser\n"
 "    label: \"NDS Titles\"\n"
 "    root: /roms/nds/\n"
-"    extensions: [\".nds\"]\n"
+"    extensions: [\".nds\", \".dsi\"]\n"
 "    folders:\n"
 "      alpha_buckets: true\n";
 

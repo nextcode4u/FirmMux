@@ -30,11 +30,15 @@ Config is stored at `/3ds/FirmMux/config.yaml` and state at `/3ds/FirmMux/state.
 
 ## NDS launching via FirmMuxBootstrapLauncher
 
-- Install the FirmMuxBootstrapLauncher CIA (TitleID `00040000FF401000`) on SD.
+- Install the FirmMuxBootstrapLauncher CIA (TitleID `000400000FF40500`) on SD.
 - Ensure `sd:/_nds/nds-bootstrap.nds` is present.
 - Place ROMs under `sd:/roms/nds/`.
 - Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA.
 - Default TitleID is defined in `include/fmux.h` as `FMUX_BOOTSTRAP_TITLEID`; you can override per NDS target via `loader_title_id` and optional `loader_media` in `config.yaml`.
+
+## Homebrew launching
+
+- FirmMux launches `.3dsx` via Rosalina `hb:ldr` (Luma).
 
 ## Autoboot and bypass
 

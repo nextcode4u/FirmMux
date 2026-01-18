@@ -46,7 +46,21 @@ void icon_free(IconTexture* icon) {
 
 bool icon_from_rgba(IconTexture* icon, const u8* data, int w, int h) {
     icon_free(icon);
-    return false;
+    if (!data) return false;
+    if (!C3D_TexInit(&icon->tex, w, h, GPU_RGBA8)) return false;
+    C3D_TexSetFilter(&icon->tex, GPU_LINEAR, GPU_LINEAR);
+    C3D_TexSetWrap(&icon->tex, GPU_CLAMP_TO_BORDER, GPU_CLAMP_TO_BORDER);
+    C3D_TexUpload(&icon->tex, data);
+    icon->image.tex = &icon->tex;
+    icon->image.subtex = &icon->subtex;
+    icon->subtex.width = w;
+    icon->subtex.height = h;
+    icon->subtex.left = 0;
+    icon->subtex.top = 0;
+    icon->subtex.right = w;
+    icon->subtex.bottom = h;
+    icon->loaded = true;
+    return true;
 }
 
 static u64 path_hash(const char* s) {

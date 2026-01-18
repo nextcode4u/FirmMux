@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <3ds.h>
+#include "stb_image.h"
 
 static bool g_debug_log_enabled = false;
 
@@ -156,7 +157,13 @@ bool file_exists(const char* path) {
 bool is_nds_name(const char* name) {
     const char* dot = strrchr(name, '.');
     if (!dot) return false;
-    return strcasecmp(dot, ".nds") == 0;
+    return strcasecmp(dot, ".nds") == 0 || strcasecmp(dot, ".dsi") == 0;
+}
+
+bool is_3dsx_name(const char* name) {
+    const char* dot = strrchr(name, '.');
+    if (!dot) return false;
+    return strcasecmp(dot, ".3dsx") == 0;
 }
 
 bool path_has_prefix(const char* path, const char* prefix) {
@@ -349,4 +356,16 @@ bool write_nextrom_txt(const char* sd_path) {
 
 bool write_launch_txt_for_nds(const char* sd_path) {
     return write_nextrom_txt(sd_path);
+}
+
+bool decode_jpeg_rgba(const unsigned char* jpg, size_t jpg_size, unsigned char** out, unsigned* w, unsigned* h) {
+    if (!jpg || jpg_size == 0 || !out || !w || !h) return false;
+    *out = NULL; *w = *h = 0;
+    int iw = 0, ih = 0, comp = 0;
+    unsigned char* data = stbi_load_from_memory(jpg, (int)jpg_size, &iw, &ih, &comp, 4);
+    if (!data) return false;
+    *out = data;
+    *w = (unsigned)iw;
+    *h = (unsigned)ih;
+    return true;
 }
