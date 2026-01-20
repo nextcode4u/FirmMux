@@ -60,6 +60,7 @@ export OFILES 	:=	$(OFILES_BIN) $(OFILES_SOURCES)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+			-I$(CURDIR) \
 			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 			-I$(CURDIR)/$(BUILD)
 override CFLAGS += $(INCLUDE)
@@ -89,5 +90,9 @@ DEPENDS	:=	$(OFILES:.o=.d)
 endif
 
 %.bin.o	%_bin.h :	%.bin
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%.bcfnt.o	%_bcfnt.h :	%.bcfnt
 	@echo $(notdir $<)
 	@$(bin2o)

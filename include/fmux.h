@@ -40,7 +40,7 @@
 #define PREVIEW_W 250
 #define TARGET_LIST_W 150
 
-#define LIST_ITEM_H 18
+#define LIST_ITEM_H 20
 #define HELP_BAR_H 16
 
 #define GRID_COLS 3
@@ -136,6 +136,7 @@ typedef struct {
     char bucket;
     u16 icon_raw[48 * 48];
     bool has_icon;
+    bool icon_linear;
     char product[16];
     bool friendly_name;
     bool blacklisted;

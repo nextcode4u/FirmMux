@@ -8,9 +8,17 @@
 #include <errno.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <time.h>
+#include <3ds/os.h>
 #include <3ds/ndsp/ndsp.h>
 #include <3ds/services/apt.h>
+#include <3ds/services/am.h>
+#include <3ds/services/ptmu.h>
+#include <3ds/services/ac.h>
+#include <3ds/services/cfgu.h>
+#include <3ds/services/mcuhwc.h>
 #include "dikbutt.h"
+#include "comfortaa_bold_bcfnt.h"
 
 static OptionItem g_options[MAX_OPTIONS];
 static int g_option_count = 0;
@@ -38,6 +46,8 @@ static IconTexture g_hb_preview_icon;
 static u16 g_hb_preview_raw[48 * 48];
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
+static C2D_Font g_font;
+static bool g_time_24 = true;
 
 static TargetRuntime g_runtimes[MAX_TARGETS];
 static Config g_cfg;
@@ -185,20 +195,37 @@ static bool launch_nds_loader(const Target* target, const char* sd_path, char* s
 
 static void draw_text(float x, float y, float scale, u32 color, const char* str) {
     C2D_Text text;
-    C2D_TextParse(&text, g_textbuf, str);
+    if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
+    else C2D_TextParse(&text, g_textbuf, str);
     C2D_TextOptimize(&text);
     C2D_DrawText(&text, C2D_WithColor, x, y, 0.0f, scale, scale, color);
 }
 
 static void draw_text_centered(float x, float y, float scale, u32 color, float box_h, const char* str) {
     C2D_Text text;
-    C2D_TextParse(&text, g_textbuf, str);
+    if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
+    else C2D_TextParse(&text, g_textbuf, str);
     C2D_TextOptimize(&text);
     float w = 0.0f;
     float h = 0.0f;
     C2D_TextGetDimensions(&text, scale, scale, &w, &h);
-    float ty = y + (box_h - h) * 0.5f;
+    float ty = y + (box_h - h) * 0.5f - 1.0f;
     C2D_DrawText(&text, C2D_WithColor, x, ty, 0.0f, scale, scale, color);
+}
+
+static float text_width(float scale, const char* str) {
+    C2D_Text text;
+    if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
+    else C2D_TextParse(&text, g_textbuf, str);
+    float w = 0.0f;
+    C2D_TextGetDimensions(&text, scale, scale, &w, NULL);
+    return w;
+}
+
+static void load_time_format(void) {
+    u8 fmt = 0;
+    if (R_SUCCEEDED(CFGU_GetConfigInfoBlk2(1, 0x000A, &fmt))) g_time_24 = (fmt == 0);
+    else g_time_24 = true;
 }
 
 static u8* downscale_rgba_nearest(const u8* src, unsigned sw, unsigned sh, unsigned max, unsigned* out_w, unsigned* out_h) {
@@ -250,6 +277,22 @@ static void smdh_icon_to_rgba_tiled(const u16* src, u8* out) {
                     d[3] = 255;
                 }
             }
+        }
+    }
+}
+
+static void rgb565_linear_to_rgba(const u16* src, u8* out) {
+    for (int y = 0; y < 48; y++) {
+        for (int x = 0; x < 48; x++) {
+            u16 pix = src[y * 48 + x];
+            u8 r = ((pix >> 11) & 0x1F) << 3;
+            u8 g = ((pix >> 5) & 0x3F) << 2;
+            u8 b = (pix & 0x1F) << 3;
+            u8* d = out + (y * 48 + x) * 4;
+            d[0] = r;
+            d[1] = g;
+            d[2] = b;
+            d[3] = 255;
         }
     }
 }
@@ -308,8 +351,17 @@ static bool update_title_preview_rgba(const TitleInfo3ds* tinfo) {
         g_title_preview_valid = false;
         return false;
     }
-    if (g_title_preview_valid && g_title_preview_tid == tinfo->titleId && g_title_preview_icon.loaded) return true;
+    if (g_title_preview_valid && g_title_preview_tid == tinfo->titleId) {
+        if (tinfo->icon_linear) return true;
+        if (g_title_preview_icon.loaded) return true;
+    }
     g_title_preview_tid = tinfo->titleId;
+    if (tinfo->icon_linear) {
+        rgb565_linear_to_rgba(tinfo->icon_raw, g_title_preview_rgba);
+        g_title_preview_valid = true;
+        icon_free(&g_title_preview_icon);
+        return true;
+    }
     smdh_icon_to_rgba_tiled(tinfo->icon_raw, g_title_preview_rgba);
     g_title_preview_valid = true;
     icon_from_smdh_raw(&g_title_preview_icon, tinfo->icon_raw);
@@ -368,7 +420,8 @@ static void draw_wrap_text(float x, float y, float scale, u32 color, float max_w
             line[line_len++] = *p++;
             line[line_len] = 0;
             C2D_Text text;
-            C2D_TextParse(&text, g_textbuf, line);
+            if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, line);
+            else C2D_TextParse(&text, g_textbuf, line);
             C2D_TextGetDimensions(&text, scale, scale, &width, NULL);
             if (width > max_w) break;
         }
@@ -403,7 +456,8 @@ static void draw_wrap_text_limited(float x, float y, float scale, u32 color, flo
             line[line_len++] = *p++;
             line[line_len] = 0;
             C2D_Text text;
-            C2D_TextParse(&text, g_textbuf, line);
+            if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, line);
+            else C2D_TextParse(&text, g_textbuf, line);
             C2D_TextGetDimensions(&text, scale, scale, &width, NULL);
             if (width > max_w) break;
         }
@@ -425,9 +479,333 @@ static void draw_rect(float x, float y, float w, float h, u32 color) {
     C2D_DrawRectSolid(x, y, 0.0f, w, h, color);
 }
 
+#define STATUS_H 16
+
+typedef struct {
+    u64 last_ms;
+    u64 sd_total;
+    u64 sd_free;
+    u64 nand_total;
+    u64 nand_free;
+    int cpu_mhz;
+    bool cpu_ok;
+    u32 am_counts[3];
+    u32 am_app_counts[3];
+    bool am_ok;
+    bool am_app_ok;
+    u8 model;
+    u8 region;
+    u8 language;
+    u8 slider_vol;
+    u8 battery_mv;
+    bool model_ok;
+    bool region_ok;
+    bool language_ok;
+    bool slider_ok;
+    bool battery_ok;
+    bool sd_speed_ok;
+    bool nand_speed_ok;
+    FS_SdMmcSpeedInfo sd_speed;
+    FS_SdMmcSpeedInfo nand_speed;
+    bool sd_ok;
+    bool nand_ok;
+} SystemInfoCache;
+
+static SystemInfoCache g_sysinfo;
+
+static bool get_sd_usage(u64* total, u64* free) {
+    FS_ArchiveResource res;
+    if (R_FAILED(FSUSER_GetSdmcArchiveResource(&res))) return false;
+    u64 cluster_bytes = (u64)res.clusterSize;
+    *total = cluster_bytes * res.totalClusters;
+    *free = cluster_bytes * res.freeClusters;
+    return true;
+}
+
+static bool get_nand_usage(u64* total, u64* free) {
+    FS_ArchiveResource res;
+    if (R_FAILED(FSUSER_GetNandArchiveResource(&res))) return false;
+    u64 cluster_bytes = (u64)res.clusterSize;
+    *total = cluster_bytes * res.totalClusters;
+    *free = cluster_bytes * res.freeClusters;
+    return true;
+}
+
+static void format_bytes(u64 bytes, char* out, size_t out_size) {
+    if (bytes >= 1024ULL * 1024ULL * 1024ULL) {
+        double gb = (double)bytes / (1024.0 * 1024.0 * 1024.0);
+        snprintf(out, out_size, "%.1f GB", gb);
+    } else if (bytes >= 1024ULL * 1024ULL) {
+        double mb = (double)bytes / (1024.0 * 1024.0);
+        snprintf(out, out_size, "%.1f MB", mb);
+    } else if (bytes >= 1024ULL) {
+        double kb = (double)bytes / 1024.0;
+        snprintf(out, out_size, "%.1f KB", kb);
+    } else {
+        snprintf(out, out_size, "%llu B", (unsigned long long)bytes);
+    }
+}
+
+static void update_system_info_cache(void) {
+    u64 now = osGetTime();
+    if (g_sysinfo.last_ms && now - g_sysinfo.last_ms < 1000) return;
+    g_sysinfo.last_ms = now;
+    g_sysinfo.sd_ok = get_sd_usage(&g_sysinfo.sd_total, &g_sysinfo.sd_free);
+    g_sysinfo.nand_ok = get_nand_usage(&g_sysinfo.nand_total, &g_sysinfo.nand_free);
+    g_sysinfo.cpu_ok = true;
+    g_sysinfo.cpu_mhz = 268;
+    bool is_new = false;
+    if (R_SUCCEEDED(APT_CheckNew3DS(&is_new)) && is_new) {
+        u32 limit = 0;
+        if (R_SUCCEEDED(APT_GetAppCpuTimeLimit(&limit)) && limit >= 80) g_sysinfo.cpu_mhz = 804;
+    }
+
+    g_sysinfo.model_ok = R_SUCCEEDED(CFGU_GetSystemModel(&g_sysinfo.model));
+    g_sysinfo.region_ok = R_SUCCEEDED(CFGU_SecureInfoGetRegion(&g_sysinfo.region));
+    g_sysinfo.language_ok = R_SUCCEEDED(CFGU_GetSystemLanguage(&g_sysinfo.language));
+    g_sysinfo.slider_ok = R_SUCCEEDED(MCUHWC_GetSoundSliderLevel(&g_sysinfo.slider_vol));
+    g_sysinfo.battery_ok = R_SUCCEEDED(MCUHWC_GetBatteryVoltage(&g_sysinfo.battery_mv));
+    g_sysinfo.sd_speed_ok = R_SUCCEEDED(FSUSER_GetSdmcSpeedInfo(&g_sysinfo.sd_speed));
+    g_sysinfo.nand_speed_ok = R_SUCCEEDED(FSUSER_GetNandSpeedInfo(&g_sysinfo.nand_speed));
+
+    g_sysinfo.am_ok = false;
+    g_sysinfo.am_app_ok = false;
+    if (R_SUCCEEDED(amInit())) {
+        g_sysinfo.am_ok = true;
+        AM_InitializeExternalTitleDatabase(false);
+        for (int i = 0; i < 3; i++) g_sysinfo.am_counts[i] = 0;
+        FS_MediaType medias[3] = { MEDIATYPE_SD, MEDIATYPE_NAND, MEDIATYPE_GAME_CARD };
+        for (int i = 0; i < 3; i++) {
+            u32 count = 0;
+            if (R_SUCCEEDED(AM_GetTitleCount(medias[i], &count))) g_sysinfo.am_counts[i] = count;
+        }
+        amExit();
+    }
+    if (R_SUCCEEDED(amAppInit())) {
+        g_sysinfo.am_app_ok = true;
+        AM_InitializeExternalTitleDatabase(false);
+        for (int i = 0; i < 3; i++) g_sysinfo.am_app_counts[i] = 0;
+        FS_MediaType medias[3] = { MEDIATYPE_SD, MEDIATYPE_NAND, MEDIATYPE_GAME_CARD };
+        for (int i = 0; i < 3; i++) {
+            u32 count = 0;
+            if (R_SUCCEEDED(AM_GetTitleCount(medias[i], &count))) g_sysinfo.am_app_counts[i] = count;
+        }
+        amExit();
+    }
+}
+
+static void draw_system_info(float x, float y) {
+    update_system_info_cache();
+    float line_h = 14.0f;
+    u32 color = C2D_Color32(220, 220, 220, 255);
+    u32 sub = C2D_Color32(180, 180, 180, 255);
+    draw_text(x, y, 0.5f, color, "System Info");
+    y += line_h;
+
+    char line[128];
+    const char* model_str = "--";
+    if (g_sysinfo.model_ok) {
+        switch (g_sysinfo.model) {
+            case CFG_MODEL_3DS: model_str = "3DS"; break;
+            case CFG_MODEL_3DSXL: model_str = "3DS XL"; break;
+            case CFG_MODEL_2DS: model_str = "2DS"; break;
+            case CFG_MODEL_N3DS: model_str = "New 3DS"; break;
+            case CFG_MODEL_N3DSXL: model_str = "New 3DS XL"; break;
+            case CFG_MODEL_N2DSXL: model_str = "New 2DS XL"; break;
+            default: model_str = "Unknown"; break;
+        }
+    }
+    const char* region_str = "--";
+    if (g_sysinfo.region_ok) {
+        switch (g_sysinfo.region) {
+            case CFG_REGION_JPN: region_str = "JPN"; break;
+            case CFG_REGION_USA: region_str = "USA"; break;
+            case CFG_REGION_EUR: region_str = "EUR"; break;
+            case CFG_REGION_AUS: region_str = "AUS"; break;
+            case CFG_REGION_CHN: region_str = "CHN"; break;
+            case CFG_REGION_KOR: region_str = "KOR"; break;
+            case CFG_REGION_TWN: region_str = "TWN"; break;
+            default: region_str = "UNK"; break;
+        }
+    }
+    const char* lang_str = "--";
+    if (g_sysinfo.language_ok) {
+        switch (g_sysinfo.language) {
+            case CFG_LANGUAGE_JP: lang_str = "JP"; break;
+            case CFG_LANGUAGE_EN: lang_str = "EN"; break;
+            case CFG_LANGUAGE_FR: lang_str = "FR"; break;
+            case CFG_LANGUAGE_DE: lang_str = "DE"; break;
+            case CFG_LANGUAGE_IT: lang_str = "IT"; break;
+            case CFG_LANGUAGE_ES: lang_str = "ES"; break;
+            case CFG_LANGUAGE_ZH: lang_str = "ZH"; break;
+            case CFG_LANGUAGE_KO: lang_str = "KO"; break;
+            case CFG_LANGUAGE_NL: lang_str = "NL"; break;
+            case CFG_LANGUAGE_PT: lang_str = "PT"; break;
+            case CFG_LANGUAGE_RU: lang_str = "RU"; break;
+            case CFG_LANGUAGE_TW: lang_str = "TW"; break;
+            default: lang_str = "UNK"; break;
+        }
+    }
+    snprintf(line, sizeof(line), "Model: %s  Region: %s  Lang: %s", model_str, region_str, lang_str);
+    draw_text(x, y, 0.5f, sub, line);
+    y += line_h;
+
+    char used_buf[32];
+    char free_buf[32];
+    if (g_sysinfo.sd_ok) {
+        u64 sd_used = g_sysinfo.sd_total - g_sysinfo.sd_free;
+        format_bytes(sd_used, used_buf, sizeof(used_buf));
+        format_bytes(g_sysinfo.sd_free, free_buf, sizeof(free_buf));
+        snprintf(line, sizeof(line), "SD used: %s", used_buf);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+        snprintf(line, sizeof(line), "SD free: %s", free_buf);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    } else {
+        draw_text(x, y, 0.5f, sub, "SD: unavailable");
+        y += line_h;
+    }
+
+    if (g_sysinfo.nand_ok) {
+        u64 nand_used = g_sysinfo.nand_total - g_sysinfo.nand_free;
+        format_bytes(nand_used, used_buf, sizeof(used_buf));
+        format_bytes(g_sysinfo.nand_free, free_buf, sizeof(free_buf));
+        snprintf(line, sizeof(line), "NAND used: %s", used_buf);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+        snprintf(line, sizeof(line), "NAND free: %s", free_buf);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    } else {
+        draw_text(x, y, 0.5f, sub, "NAND: unavailable");
+        y += line_h;
+    }
+
+    if (g_sysinfo.cpu_ok) {
+        snprintf(line, sizeof(line), "CPU: %d MHz", g_sysinfo.cpu_mhz);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    }
+    if (g_sysinfo.slider_ok) {
+        int vol_raw = g_sysinfo.slider_vol;
+        if (vol_raw > 0x3F) vol_raw = 0x3F;
+        int vol = (int)((vol_raw / 63.0f) * 100.0f + 0.5f);
+        snprintf(line, sizeof(line), "Volume: %d%%", vol);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    }
+
+    if (g_sysinfo.battery_ok) {
+        int mv = (int)g_sysinfo.battery_mv * 10;
+        snprintf(line, sizeof(line), "Battery: %d mV", mv);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    }
+
+    if (g_sysinfo.sd_speed_ok) {
+        snprintf(line, sizeof(line), "SD HS: %s  CLK: %s", g_sysinfo.sd_speed.highSpeedModeEnabled ? "On" : "Off", g_sysinfo.sd_speed.usesHighestClockRate ? "/2" : "/1");
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    }
+    if (g_sysinfo.nand_speed_ok) {
+        snprintf(line, sizeof(line), "NAND HS: %s  CLK: %s", g_sysinfo.nand_speed.highSpeedModeEnabled ? "On" : "Off", g_sysinfo.nand_speed.usesHighestClockRate ? "/2" : "/1");
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    }
+
+    if (g_sysinfo.am_ok) {
+        snprintf(line, sizeof(line), "AM SD/NAND/GC: %lu/%lu/%lu",
+                 (unsigned long)g_sysinfo.am_counts[0],
+                 (unsigned long)g_sysinfo.am_counts[1],
+                 (unsigned long)g_sysinfo.am_counts[2]);
+        draw_text(x, y, 0.5f, sub, line);
+        y += line_h;
+    }
+    if (g_sysinfo.am_app_ok) {
+        snprintf(line, sizeof(line), "AMapp SD/NAND/GC: %lu/%lu/%lu",
+                 (unsigned long)g_sysinfo.am_app_counts[0],
+                 (unsigned long)g_sysinfo.am_app_counts[1],
+                 (unsigned long)g_sysinfo.am_app_counts[2]);
+        draw_text(x, y, 0.5f, sub, line);
+    }
+}
+
+static void draw_status_bar(void) {
+    float y = TOP_H - STATUS_H;
+    draw_rect(0, y, TOP_W, STATUS_H, C2D_Color32(20, 22, 26, 255));
+
+    char timebuf[16];
+    time_t now = time(NULL);
+    struct tm* tmv = localtime(&now);
+    if (tmv) {
+        if (g_time_24) {
+            snprintf(timebuf, sizeof(timebuf), "%02d:%02d", tmv->tm_hour, tmv->tm_min);
+        } else {
+            int hour = tmv->tm_hour % 12;
+            if (hour == 0) hour = 12;
+            snprintf(timebuf, sizeof(timebuf), "%d:%02d %s", hour, tmv->tm_min, (tmv->tm_hour >= 12) ? "PM" : "AM");
+        }
+    } else {
+        copy_str(timebuf, sizeof(timebuf), "--:--");
+    }
+    draw_text_centered(8, y, 0.55f, C2D_Color32(210, 210, 210, 255), STATUS_H, timebuf);
+
+    u8 batt = 0;
+    u8 charging = 0;
+    if (R_FAILED(PTMU_GetBatteryLevel(&batt))) batt = 0;
+    if (R_FAILED(PTMU_GetBatteryChargeState(&charging))) charging = 0;
+    if (batt > 5) batt = 5;
+    int percent = (int)batt * 20;
+
+    char battbuf[8];
+    snprintf(battbuf, sizeof(battbuf), "%d%%", percent);
+    float batt_text_w = text_width(0.5f, battbuf);
+
+    int wifi_bars = 0;
+    u32 wifi_status = 0;
+    if (R_SUCCEEDED(ACU_GetStatus(&wifi_status)) && wifi_status == 3) wifi_bars = 3;
+
+    float batt_w = 22.0f;
+    float batt_h = 8.0f;
+    float batt_x = TOP_W - 8 - batt_w;
+    float batt_y = y + (STATUS_H - batt_h) * 0.5f;
+    float percent_x = batt_x - 4 - batt_text_w;
+    draw_text_centered(percent_x, y, 0.5f, C2D_Color32(200, 200, 200, 255), STATUS_H, battbuf);
+
+    float wifi_w = 19.0f;
+    float wifi_x = percent_x - 6 - wifi_w;
+    float wifi_y = y + (STATUS_H - 8.0f) * 0.5f;
+    u32 wifi_color = C2D_Color32(200, 200, 200, 255);
+    for (int i = 0; i < 3; i++) {
+        float bw = 5.0f;
+        float bh = 4.0f + i * 2.0f;
+        float bx = wifi_x + i * 7.0f;
+        float by = wifi_y + (8.0f - bh);
+        u32 c = (i < wifi_bars) ? wifi_color : C2D_Color32(90, 90, 90, 255);
+        draw_rect(bx, by, bw, bh, c);
+    }
+
+    u32 outline = C2D_Color32(200, 200, 200, 255);
+    draw_rect(batt_x, batt_y, batt_w, batt_h, outline);
+    draw_rect(batt_x + batt_w, batt_y + 2, 2, batt_h - 4, outline);
+    float fill_w = (batt_w - 4) * (batt / 5.0f);
+    u32 fill = C2D_Color32(200, 200, 200, 255);
+    draw_rect(batt_x + 2, batt_y + 2, fill_w, batt_h - 4, fill);
+    if (charging) {
+        u32 bolt = C2D_Color32(255, 220, 80, 255);
+        float bx = batt_x + (batt_w - 6) * 0.5f;
+        float by = batt_y - 1;
+        draw_rect(bx + 2, by + 0, 2, 4, bolt);
+        draw_rect(bx + 0, by + 3, 2, 4, bolt);
+        draw_rect(bx + 2, by + 5, 2, 3, bolt);
+    }
+}
+
 static void draw_help_bar(const char* label) {
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, C2D_Color32(70, 72, 80, 255));
     draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, C2D_Color32(20, 20, 20, 255));
-    draw_text(6, BOTTOM_H - HELP_BAR_H + 2, 0.5f, C2D_Color32(220, 220, 220, 255), label);
+    draw_text(6, BOTTOM_H - HELP_BAR_H + 2, 0.6f, C2D_Color32(220, 220, 220, 255), label);
 }
 
 
@@ -588,6 +966,13 @@ int main(int argc, char** argv) {
     C2D_Init(8192);
     C2D_Prepare();
     audio_init();
+    ptmuInit();
+    acInit();
+    cfguInit();
+    load_time_format();
+    mcuHwcInit();
+    g_font = C2D_FontLoadFromMem(comfortaa_bold_bcfnt, comfortaa_bold_bcfnt_size);
+    if (g_font) C2D_FontSetFilter(g_font, GPU_LINEAR, GPU_LINEAR);
 
     g_textbuf = C2D_TextBufNew(4096);
     g_top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
@@ -597,9 +982,14 @@ int main(int argc, char** argv) {
     if (hidKeysHeld() & KEY_B) {
     icon_free(&g_title_preview_icon);
     icon_free(&g_hb_preview_icon);
+    if (g_font) C2D_FontFree(g_font);
     C2D_TextBufDelete(g_textbuf);
     C2D_Fini();
     C3D_Fini();
+    mcuHwcExit();
+    cfguExit();
+    ptmuExit();
+    acExit();
     ndspExit();
     fsExit();
     gfxExit();
@@ -922,10 +1312,12 @@ int main(int argc, char** argv) {
 
         const char* preview_title = "";
         const TitleInfo3ds* preview_tinfo = NULL;
+        bool show_system_info = false;
         char preview_buf[64];
         if (!strcmp(target->type, "system_menu")) {
             if (ts->selection == 0) {
                 preview_title = "Return to HOME";
+                show_system_info = true;
             } else {
                 TitleInfo3ds* tinfo = title_system_at(ts->selection - 1);
                 if (tinfo) {
@@ -980,19 +1372,25 @@ int main(int argc, char** argv) {
             }
         }
 
-        float text_scale = 0.6f;
+        float text_scale = 0.7f;
         int max_lines = 3;
+        if (show_system_info) max_lines = 1;
         draw_wrap_text_limited(8, 8, text_scale, C2D_Color32(230, 230, 230, 255), PREVIEW_W - 16, max_lines, preview_title);
         float banner_y = TOP_H - 96 - 20;
-        u32 preview_color = C2D_Color32(40, 42, 48, 255);
-        draw_rect(8, banner_y, 96, 96, preview_color);
-        if (preview_tinfo) {
-            char tidbuf[32];
-            snprintf(tidbuf, sizeof(tidbuf), "TID: %016llX", (unsigned long long)preview_tinfo->titleId);
-            draw_text(8, banner_y - 14, 0.45f, C2D_Color32(180, 180, 180, 255), tidbuf);
-        }
         bool drew_icon = false;
-        if (!strcmp(target->type, "homebrew_browser")) {
+        if (show_system_info) {
+            float info_y = 8 + (26.0f * text_scale * max_lines) + 8.0f;
+            draw_system_info(8, info_y);
+        } else {
+            u32 preview_color = C2D_Color32(40, 42, 48, 255);
+            draw_rect(8, banner_y, 96, 96, preview_color);
+            if (preview_tinfo) {
+                char tidbuf[32];
+                snprintf(tidbuf, sizeof(tidbuf), "TID: %016llX", (unsigned long long)preview_tinfo->titleId);
+                draw_text(8, banner_y - 14, 0.45f, C2D_Color32(180, 180, 180, 255), tidbuf);
+            }
+        }
+        if (!show_system_info && !strcmp(target->type, "homebrew_browser")) {
             DirCache* cache = &g_runtimes[current_target].cache;
             if (cache->count > 0) {
                 FileEntry* fe = &cache->entries[ts->selection];
@@ -1008,7 +1406,7 @@ int main(int argc, char** argv) {
                     drew_icon = true;
                 }
             }
-        } else if (!strcmp(target->type, "rom_browser")) {
+        } else if (!show_system_info && !strcmp(target->type, "rom_browser")) {
             DirCache* cache = &g_runtimes[current_target].cache;
             if (cache->count > 0) {
                 char joined[512];
@@ -1038,7 +1436,7 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-        } else if (!strcmp(target->type, "installed_titles")) {
+        } else if (!show_system_info && !strcmp(target->type, "installed_titles")) {
             TitleInfo3ds* tinfo = title_user_at(ts->selection);
             if (update_title_preview_rgba(tinfo)) {
                 float scale = 2.0f;
@@ -1051,7 +1449,7 @@ int main(int argc, char** argv) {
                 }
                 drew_icon = true;
             }
-        } else if (!strcmp(target->type, "system_menu")) {
+        } else if (!show_system_info && !strcmp(target->type, "system_menu")) {
             if (ts->selection > 0) {
                 TitleInfo3ds* tinfo = title_system_at(ts->selection - 1);
                 if (update_title_preview_rgba(tinfo)) {
@@ -1067,26 +1465,8 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        if (!drew_icon) {
-            draw_text(12, banner_y + 36, 0.5f, C2D_Color32(160, 160, 160, 255), "Preview");
-        }
-
-        char debug_line[128] = "";
-        if (!strcmp(target->type, "rom_browser")) {
-            DirCache* cache = &g_runtimes[current_target].cache;
-            if (cache->count > 0) {
-                char joined[512];
-                path_join(ts->path, cache->entries[ts->selection].name, joined, sizeof(joined));
-                char sdpath[512];
-                make_sd_path(joined, sdpath, sizeof(sdpath));
-                NdsCacheEntry* nds = cache->entries[ts->selection].is_dir ? NULL : nds_cache_entry(sdpath);
-                if (nds) {
-                    snprintf(debug_line, sizeof(debug_line), "ofs:%lu ready:%d parsed:%d icon:%d", (unsigned long)nds->banner_off, nds->ready ? 1 : 0, nds->parsed ? 1 : 0, nds->has_rgba ? 1 : 0);
-                }
-            }
-        }
-        if (debug_line[0]) {
-            draw_text(8, TOP_H - 14, 0.45f, C2D_Color32(200, 200, 120, 255), debug_line);
+        if (!show_system_info && !drew_icon) {
+            draw_text(12, banner_y + 36, 0.6f, C2D_Color32(160, 160, 160, 255), "Preview");
         }
         if (g_easter_timer > 0 && g_easter_loaded && g_easter_rgba) {
             float max_w = PREVIEW_W - 16;
@@ -1102,7 +1482,7 @@ int main(int argc, char** argv) {
             draw_rgba_icon(ex, ey, scale, g_easter_rgba, g_easter_w, g_easter_h);
         }
 
-        int target_visible = TOP_H / LIST_ITEM_H;
+        int target_visible = (TOP_H - STATUS_H) / LIST_ITEM_H;
         int target_scroll = 0;
         clamp_scroll_list(&target_scroll, current_target, target_visible, cfg->target_count);
         for (int i = 0; i < target_visible; i++) {
@@ -1111,15 +1491,17 @@ int main(int argc, char** argv) {
             int y = i * LIST_ITEM_H + 2;
             u32 color = (idx == current_target) ? C2D_Color32(60, 90, 140, 255) : C2D_Color32(28, 30, 36, 255);
             draw_rect(PREVIEW_W + 2, y, TARGET_LIST_W - 4, LIST_ITEM_H - 2, color);
-            draw_text_centered(PREVIEW_W + 6, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, cfg->targets[idx].label);
+            draw_text_centered(PREVIEW_W + 6, y, 0.7f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, cfg->targets[idx].label);
         }
+
+        draw_status_bar();
 
         C2D_SceneBegin(g_bottom);
         C2D_TextBufClear(g_textbuf);
 
         if (options_open) {
             draw_rect(0, 0, BOTTOM_W, BOTTOM_H, C2D_Color32(12, 12, 16, 220));
-            draw_text(8, 6, 0.6f, C2D_Color32(240, 240, 240, 255), "Options");
+            draw_text(8, 6, 0.7f, C2D_Color32(240, 240, 240, 255), "Options");
             int visible = (BOTTOM_H - HELP_BAR_H - 20) / LIST_ITEM_H;
             for (int i = 0; i < visible; i++) {
                 int idx = options_scroll + i;
@@ -1127,7 +1509,7 @@ int main(int argc, char** argv) {
                 int y = 24 + i * LIST_ITEM_H;
                 u32 color = (idx == options_selection) ? C2D_Color32(70, 80, 120, 255) : C2D_Color32(28, 30, 36, 255);
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
-                draw_text_centered(10, y, 0.5f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, g_options[idx].label);
+                draw_text_centered(10, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, g_options[idx].label);
             }
             if (kDown & KEY_SELECT) {
                 if (!g_select_last) g_select_hits++;
@@ -1170,7 +1552,7 @@ int main(int argc, char** argv) {
                     shortname[29] = '.';
                     shortname[30] = 0;
                 }
-                draw_text_centered(12, y, 0.45f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, shortname);
+                draw_text_centered(12, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, shortname);
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
@@ -1183,7 +1565,7 @@ int main(int argc, char** argv) {
                 u32 color = (idx == ts->selection) ? C2D_Color32(70, 100, 150, 255) : C2D_Color32(26, 28, 34, 255);
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
                 if (idx == 0) {
-                    draw_text_centered(12, y, 0.45f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, "Return to HOME");
+                    draw_text_centered(12, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, "Return to HOME");
                 } else {
                     TitleInfo3ds* t = title_system_at(idx - 1);
                     if (!t) continue;
@@ -1195,7 +1577,7 @@ int main(int argc, char** argv) {
                         shortname[29] = '.';
                         shortname[30] = 0;
                     }
-                    draw_text_centered(12, y, 0.45f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, shortname);
+                    draw_text_centered(12, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, shortname);
                 }
             }
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
@@ -1215,11 +1597,11 @@ int main(int argc, char** argv) {
                     if (label_buf[0] == 0) copy_str(label_buf, sizeof(label_buf), cache->entries[idx].name);
                 }
                 float text_x = 10.0f;
-                draw_text_centered(text_x, y, 0.5f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, label_buf);
+                draw_text_centered(text_x, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, label_buf);
             }
         } else {
-            draw_text(8, 10, 0.6f, C2D_Color32(220, 220, 220, 255), "System Menu");
-            draw_text(8, 30, 0.5f, C2D_Color32(160, 160, 160, 255), "Press A to exit");
+            draw_text(8, 10, 0.7f, C2D_Color32(220, 220, 220, 255), "System Menu");
+            draw_text(8, 30, 0.6f, C2D_Color32(160, 160, 160, 255), "Press A to exit");
         }
 
         if (cfg->help_bar) {
@@ -1243,6 +1625,7 @@ int main(int argc, char** argv) {
 
     save_state(state);
 
+    if (g_font) C2D_FontFree(g_font);
     C2D_TextBufDelete(g_textbuf);
     C2D_Fini();
     C3D_Fini();

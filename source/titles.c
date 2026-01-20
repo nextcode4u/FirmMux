@@ -130,6 +130,10 @@ static bool smdh_copy_text(const u16* src, char* out, size_t out_size) {
     int units = (int)utf16_to_utf8((u8*)out, src, out_size - 1);
     if (units < 0) units = 0;
     out[units] = 0;
+    char* nl = strchr(out, '\n');
+    if (nl) *nl = 0;
+    nl = strchr(out, '\r');
+    if (nl) *nl = 0;
     while (*out == ' ' || *out == '\t') memmove(out, out + 1, strlen(out));
     size_t len = strlen(out);
     while (len > 0 && (out[len - 1] == ' ' || out[len - 1] == '\t')) out[--len] = 0;
@@ -160,6 +164,57 @@ static void smdh_to_entry(const smdh_s* smdh, TitleInfo3ds* out, bool* name_ok) 
     out->has_icon = true;
 }
 
+static u16 rgb555_to_rgb565(u16 rgb, bool transparent) {
+    if (transparent) return 0;
+    u16 r = rgb & 0x1F;
+    u16 g = (rgb >> 5) & 0x1F;
+    u16 b = (rgb >> 10) & 0x1F;
+    u16 g6 = (g << 1) | (g >> 4);
+    return (r << 11) | (g6 << 5) | b;
+}
+
+static bool decode_twl_banner(const u8* data, u16* icon_out, char* title_out, size_t title_size) {
+    if (!data || !icon_out) return false;
+    const u8* icon = data + 0x20;
+    const u8* palette = data + 0x220;
+    const u8* title_en = data + 0x240;
+    if (title_out && title_size > 0) {
+        size_t len = title_size - 1;
+        size_t out = 0;
+        for (size_t i = 0; i + 1 < 0x100 && out < len; i += 2) {
+            u16 ch = title_en[i] | (title_en[i + 1] << 8);
+            if (ch == 0 || ch == '\n' || ch == '\r') break;
+            if (ch < 128) title_out[out++] = (char)ch;
+        }
+        title_out[out] = 0;
+    }
+    u16 pal[16];
+    for (int i = 0; i < 16; i++) pal[i] = palette[i * 2] | (palette[i * 2 + 1] << 8);
+    u16 icon32[32 * 32];
+    memset(icon32, 0, sizeof(icon32));
+    for (int tile = 0; tile < 16; ++tile) {
+        for (int pixel = 0; pixel < 32; ++pixel) {
+            u8 a = icon[(tile << 5) + pixel];
+            int px = ((tile & 3) << 3) + ((pixel << 1) & 7);
+            int py = ((tile >> 2) << 3) + (pixel >> 2);
+            u8 idx1 = (a & 0xf0) >> 4;
+            u8 idx2 = (a & 0x0f);
+            int p1 = (py * 32) + (px + 1);
+            int p0 = (py * 32) + (px + 0);
+            icon32[p0] = rgb555_to_rgb565(pal[idx2], idx2 == 0);
+            icon32[p1] = rgb555_to_rgb565(pal[idx1], idx1 == 0);
+        }
+    }
+    for (int y = 0; y < 48; y++) {
+        int sy = y * 32 / 48;
+        for (int x = 0; x < 48; x++) {
+            int sx = x * 32 / 48;
+            icon_out[y * 48 + x] = icon32[sy * 32 + sx];
+        }
+    }
+    return true;
+}
+
 static char bucket_for_title(const char* name) {
     if (!name || !name[0]) return '#';
     const unsigned char* p = (const unsigned char*)name;
@@ -184,6 +239,7 @@ void ensure_titles_loaded(const Config* cfg) {
         g_title_catalog.loading = false;
         return;
     }
+    AM_InitializeExternalTitleDatabase(false);
 
     FS_MediaType medias[2] = { MEDIATYPE_SD, MEDIATYPE_NAND };
     for (int mi = 0; mi < 2; mi++) {
@@ -196,8 +252,8 @@ void ensure_titles_loaded(const Config* cfg) {
         for (u32 i = 0; i < read && g_title_catalog.count < MAX_3DS_TITLES; i++) {
             u64 tid = list[i];
             u32 high = (u32)(tid >> 32);
-            if (high == 0x0004000E || high == 0x0004008C) continue; // updates/DLC
-            if (high != 0x00040000 && high != 0x00040010) continue;
+            if (high == 0x0004000E || high == 0x0004008C) continue;
+            if (high != 0x00040000 && high != 0x00040010 && high != 0x00040002 && high != 0x00048004) continue;
             TitleInfo3ds* t = &g_title_catalog.entries[g_title_catalog.count++];
             memset(t, 0, sizeof(*t));
             t->titleId = tid;
@@ -205,7 +261,22 @@ void ensure_titles_loaded(const Config* cfg) {
             t->is_system = (high == 0x00040010);
             smdh_s smdh;
             bool name_ok = false;
-            if (load_smdh(&smdh, medias[mi], tid)) {
+            bool dsiware = ((high & 0x00008000) != 0);
+            if (dsiware) {
+                u8 banner[0x840];
+                char twl_name[128] = {0};
+                if (R_SUCCEEDED(FSUSER_GetLegacyBannerData(medias[mi], tid, banner)) &&
+                    decode_twl_banner(banner, t->icon_raw, twl_name, sizeof(twl_name))) {
+                    t->has_icon = true;
+                    t->icon_linear = true;
+                    if (twl_name[0]) {
+                        copy_str(t->name, sizeof(t->name), twl_name);
+                        name_ok = true;
+                    }
+                } else {
+                    t->has_icon = false;
+                }
+            } else if (load_smdh(&smdh, medias[mi], tid)) {
                 smdh_to_entry(&smdh, t, &name_ok);
             } else {
                 t->has_icon = false;
@@ -225,16 +296,20 @@ void ensure_titles_loaded(const Config* cfg) {
                 }
             }
             t->friendly_name = name_ok;
+            char tid_hex[32];
+            snprintf(tid_hex, sizeof(tid_hex), "%016llX", (unsigned long long)t->titleId);
+            const char* alias = NULL;
+            if (t->product[0]) alias = find_sys_alias(t->product);
+            if (!alias) alias = find_sys_alias(tid_hex);
             if (t->is_system) {
-                char tid_hex[32];
-                snprintf(tid_hex, sizeof(tid_hex), "%016llX", (unsigned long long)t->titleId);
-                const char* alias = NULL;
-                if (t->product[0]) alias = find_sys_alias(t->product);
-                if (!alias) alias = find_sys_alias(tid_hex);
-                if (alias && alias[0]) {
-                    copy_str(t->name, sizeof(t->name), alias);
-                    t->friendly_name = true;
-                }
+                bool sys_match = false;
+                if (t->product[0] && strncasecmp(t->product, "CTR-N-", 6) == 0) sys_match = true;
+                if (alias && alias[0]) sys_match = true;
+                if (!sys_match) t->is_system = false;
+            }
+            if (t->is_system && alias && alias[0]) {
+                copy_str(t->name, sizeof(t->name), alias);
+                t->friendly_name = true;
             }
             t->blacklisted = is_blacklisted(t);
             t->bucket = bucket_for_title(t->name);

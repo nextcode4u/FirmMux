@@ -4,9 +4,11 @@ Refrences/
 *.lst
 *.map
 build/
+*_bcfnt.h
 launch.txt
 Luma Dumps/
 SD/_nds/TWiLightMenu/
+www.3dbrew.org/
 build.log
 /FirmMux.3dsx
 /FirmMux.smdh
