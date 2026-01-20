@@ -1,4 +1,4 @@
-# FirmMux
+# FirmMux 3DS
 
 FirmMux is a unified front-end that multiplexes execution between CTR, TWL, the System Menu, and a Homebrew Launcher-style browser.
 
