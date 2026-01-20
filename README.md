@@ -28,6 +28,12 @@ Copy `FirmMux.3dsx` to your SD card and launch from the Homebrew Launcher.
 
 Config is stored at `/3ds/FirmMux/config.yaml` and state at `/3ds/FirmMux/state.json`.
 
+## Alpha release
+
+Current alpha: v0.1.0-alpha1. See `docs/release-v0.1.0-alpha1.md`.
+
+Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
+
 ## NDS launching via FirmMuxBootstrapLauncher
 
 - Install the FirmMuxBootstrapLauncher CIA (TitleID `000400000FF40500`) on SD.

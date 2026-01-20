@@ -6,6 +6,7 @@ Top screen
 - Left 75%: preview panel for the currently highlighted item
 - Right 25%: target selector list (scrollable if needed)
 - No other scrollable lists on the top screen
+- Status bar at the bottom edge (time, Wi-Fi, battery)
 
 Bottom screen
 - Primary navigation area
@@ -24,23 +25,26 @@ Bottom screen
 ## Target Types and Behavior
 
 system_menu
-- Single selectable entry
-- A exits to HOME Menu
+- First entry is "Return to HOME"
+- Remaining entries are system titles (friendly names when available)
+- Selecting a system title launches it
+- Return to HOME shows a System Info panel in the preview
 
 installed_titles
-- Mock list of 200 titles
-- Auto-bucketed into # and A-Z
-- Grid layout on the bottom screen
-- Alphabet index strip on the left side of the grid
+- Enumerated from SD/NAND (user titles only)
+- List layout on the bottom screen (text only)
+- Preview shows title icon and TitleID
 
 homebrew_browser
 - File browser rooted at configured path
 - Shows .3dsx entries
+- Preview uses SMDH title/description/icon when available
 
 rom_browser
 - File browser rooted at configured path
 - Folder-first sorting
 - Files filtered by configured extensions
+- List shows filenames; preview shows banner icon/title when enabled
 
 ## State Machine
 
@@ -70,6 +74,7 @@ Transitions
 - No full SD scans at boot
 - NDS banner/icon cache stored under /3ds/FirmMux/cache/nds keyed by path/size/mtime
 - Cache clears/rebuilds available from Options
+- Banner display mode for NDS is per-target (Sprite or Title Data)
 
 ## Launch flow
 
