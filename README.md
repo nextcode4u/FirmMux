@@ -36,10 +36,10 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 
 ## NDS launching via FirmMuxBootstrapLauncher
 
-- Install the FirmMuxBootstrapLauncher CIA (TitleID `000400000FF40500`) on SD.
+- Install the FirmMuxBootstrapLauncher CIA (TitleID `000400000FF40B00`) on SD.
 - Ensure `sd:/_nds/nds-bootstrap.nds` is present.
 - Place ROMs under `sd:/roms/nds/`.
-- Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA.
+- Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA. Slot‑1 uses `cart:` as the line.
 - Default TitleID is defined in `include/fmux.h` as `FMUX_BOOTSTRAP_TITLEID`; you can override per NDS target via `loader_title_id` and optional `loader_media` in `config.yaml`.
 
 ## Homebrew launching

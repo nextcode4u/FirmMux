@@ -12,12 +12,17 @@ static int g_sys_blacklist_count = 0;
 static char g_sys_alias_key[256][32];
 static char g_sys_alias_name[256][96];
 static int g_sys_alias_count = 0;
+static bool g_titles_dirty = false;
 
 static void clear_catalog(void) {
     for (int i = 0; i < g_title_catalog.count; i++) {
         // nothing to free for software RGBA icons
     }
     memset(&g_title_catalog, 0, sizeof(g_title_catalog));
+}
+
+void titles_mark_dirty(void) {
+    g_titles_dirty = true;
 }
 
 static void load_sys_blacklist(void) {
@@ -228,8 +233,9 @@ void ensure_titles_loaded(const Config* cfg) {
     bool show_system = true; // always load system titles for system tab
     static bool cached_show_system = true;
     if (g_title_catalog.loading) return;
-    if (g_title_catalog.count > 0 && cached_show_system == show_system) return;
+    if (!g_titles_dirty && g_title_catalog.count > 0 && cached_show_system == show_system) return;
     cached_show_system = show_system;
+    g_titles_dirty = false;
     clear_catalog();
     g_title_catalog.loading = true;
     load_sys_blacklist();
@@ -241,8 +247,17 @@ void ensure_titles_loaded(const Config* cfg) {
     }
     AM_InitializeExternalTitleDatabase(false);
 
-    FS_MediaType medias[2] = { MEDIATYPE_SD, MEDIATYPE_NAND };
-    for (int mi = 0; mi < 2; mi++) {
+    FS_MediaType medias[3];
+    int media_count = 0;
+    medias[media_count++] = MEDIATYPE_SD;
+    medias[media_count++] = MEDIATYPE_NAND;
+    bool inserted = false;
+    FS_CardType card_type = CARD_CTR;
+    if (R_SUCCEEDED(FSUSER_CardSlotIsInserted(&inserted)) && inserted &&
+        R_SUCCEEDED(FSUSER_GetCardType(&card_type)) && card_type == CARD_CTR) {
+        medias[media_count++] = MEDIATYPE_GAME_CARD;
+    }
+    for (int mi = 0; mi < media_count; mi++) {
         u32 count = 0;
         if (R_FAILED(AM_GetTitleCount(medias[mi], &count)) || count == 0) continue;
         u64* list = (u64*)malloc(sizeof(u64) * count);
@@ -353,5 +368,29 @@ int title_count_system(void) {
     return c;
 }
 
-TitleInfo3ds* title_user_at(int idx) { return find_by_filter(false, idx); }
+static TitleInfo3ds* title_user_card(void) {
+    for (int i = 0; i < g_title_catalog.count; i++) {
+        TitleInfo3ds* t = &g_title_catalog.entries[i];
+        if (t->is_system || !t->visible) continue;
+        if (t->media == MEDIATYPE_GAME_CARD) return t;
+    }
+    return NULL;
+}
+
+TitleInfo3ds* title_user_at(int idx) {
+    TitleInfo3ds* card = title_user_card();
+    if (card) {
+        if (idx == 0) return card;
+        idx--;
+    }
+    int count = 0;
+    for (int i = 0; i < g_title_catalog.count; i++) {
+        TitleInfo3ds* t = &g_title_catalog.entries[i];
+        if (t->is_system || !t->visible) continue;
+        if (card && t == card) continue;
+        if (count == idx) return t;
+        count++;
+    }
+    return NULL;
+}
 TitleInfo3ds* title_system_at(int idx) { return find_by_filter(true, idx); }

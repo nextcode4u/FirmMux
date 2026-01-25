@@ -89,6 +89,10 @@ void normalize_path_sd(char* path, size_t path_size) {
 }
 
 void normalize_path_to_sd_colon(char* path, size_t path_size) {
+    if (!path || !path[0]) return;
+    if (!strncasecmp(path, "cart:", 5)) return;
+    if (!strncasecmp(path, "slot1:", 6)) return;
+    if (!strncasecmp(path, "slot-1:", 7)) return;
     normalize_path_sd(path, path_size);
 }
 
@@ -346,7 +350,11 @@ bool write_nextrom_txt(const char* sd_path) {
     mkdir("sdmc:/_nds/firmux", 0777);
     char norm[512];
     snprintf(norm, sizeof(norm), "%s", sd_path);
-    normalize_path_sd(norm, sizeof(norm));
+    if (strncasecmp(norm, "cart:", 5) != 0 &&
+        strncasecmp(norm, "slot1:", 6) != 0 &&
+        strncasecmp(norm, "slot-1:", 7) != 0) {
+        normalize_path_sd(norm, sizeof(norm));
+    }
     FILE* f = fopen("sdmc:/_nds/firmux/launch.txt", "w");
     if (!f) return false;
     fprintf(f, "%s\n", norm);

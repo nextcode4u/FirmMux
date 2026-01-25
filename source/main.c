@@ -56,6 +56,13 @@ static State g_state;
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
 static C3D_RenderTarget* g_bottom;
+static bool g_card_twl_present = false;
+static bool g_card_ctr_present = false;
+static bool g_card_twl_ready = false;
+static bool g_card_twl_has_icon = false;
+static char g_card_twl_title[128];
+static u8 g_card_twl_rgba[32 * 32 * 4];
+static bool decode_twl_card_banner(const u8* data, size_t size, char* title_out, size_t title_size, u8* rgba_out);
 
 static bool parse_title_id(const char* s, u64* out) {
     if (!s || !s[0]) return false;
@@ -87,6 +94,11 @@ typedef struct {
     char product[16];
 } LauncherCandidate;
 
+static bool is_fmuxboot_product(const char* prod) {
+    if (!prod || !prod[0]) return false;
+    return strncasecmp(prod, "FMUXBOOT", 8) == 0;
+}
+
 static int find_launcher_candidates(LauncherCandidate* out, int max) {
     if (!out || max <= 0) return 0;
     int found = 0;
@@ -103,7 +115,7 @@ static int find_launcher_candidates(LauncherCandidate* out, int max) {
         for (u32 i = 0; i < read && found < max; i++) {
             char prod[16] = {0};
             if (R_FAILED(AM_GetTitleProductCode(m, list[i], prod))) continue;
-            if (strcmp(prod, "CTR-H-FMUX") != 0) continue;
+            if (!is_fmuxboot_product(prod)) continue;
             LauncherCandidate* c = &out[found++];
             c->tid = list[i];
             c->media = m;
@@ -209,7 +221,7 @@ static void draw_text_centered(float x, float y, float scale, u32 color, float b
     float w = 0.0f;
     float h = 0.0f;
     C2D_TextGetDimensions(&text, scale, scale, &w, &h);
-    float ty = y + (box_h - h) * 0.5f - 1.0f;
+    float ty = y + (box_h - h) * 0.5f - 3.0f;
     C2D_DrawText(&text, C2D_WithColor, x, ty, 0.0f, scale, scale, color);
 }
 
@@ -220,6 +232,52 @@ static float text_width(float scale, const char* str) {
     float w = 0.0f;
     C2D_TextGetDimensions(&text, scale, scale, &w, NULL);
     return w;
+}
+
+static bool show_nds_card(const Target* target, const TargetState* ts) {
+    if (!target || !ts) return false;
+    if (strcmp(target->type, "rom_browser") != 0) return false;
+    if (!g_card_twl_present) return false;
+    char cur[256];
+    char root[256];
+    snprintf(cur, sizeof(cur), "%s", ts->path);
+    snprintf(root, sizeof(root), "%s", target->root[0] ? target->root : "/roms/nds/");
+    normalize_path(cur);
+    normalize_path(root);
+    return strcasecmp(cur, root) == 0;
+}
+
+static void update_card_status(void) {
+    static u64 last_ms = 0;
+    u64 now = osGetTime();
+    if (last_ms && now - last_ms < 1000) return;
+    last_ms = now;
+    bool inserted = false;
+    FS_CardType type = CARD_CTR;
+    bool old_ctr = g_card_ctr_present;
+    bool old_twl = g_card_twl_present;
+    g_card_ctr_present = false;
+    g_card_twl_present = false;
+    if (R_SUCCEEDED(FSUSER_CardSlotIsInserted(&inserted)) && inserted && R_SUCCEEDED(FSUSER_GetCardType(&type))) {
+        g_card_ctr_present = (type == CARD_CTR);
+        g_card_twl_present = (type == CARD_TWL);
+    }
+    if (g_card_ctr_present != old_ctr) titles_mark_dirty();
+    if (g_card_twl_present != old_twl) {
+        g_card_twl_ready = false;
+        g_card_twl_has_icon = false;
+        g_card_twl_title[0] = 0;
+    }
+    if (g_card_twl_present && !g_card_twl_ready) {
+        u8 banner[0x23C0];
+        if (R_SUCCEEDED(FSUSER_GetLegacyBannerData(MEDIATYPE_GAME_CARD, 0, banner))) {
+            if (decode_twl_card_banner(banner, sizeof(banner), g_card_twl_title, sizeof(g_card_twl_title), g_card_twl_rgba)) {
+                g_card_twl_has_icon = true;
+            }
+        }
+        if (g_card_twl_title[0] == 0) copy_str(g_card_twl_title, sizeof(g_card_twl_title), "Game Card");
+        g_card_twl_ready = true;
+    }
 }
 
 static void load_time_format(void) {
@@ -295,6 +353,54 @@ static void rgb565_linear_to_rgba(const u16* src, u8* out) {
             d[3] = 255;
         }
     }
+}
+
+static void rgb555_to_rgba_card(u16 c, u8* out, bool transparent) {
+    if (transparent) {
+        out[0] = out[1] = out[2] = out[3] = 0;
+        return;
+    }
+    u8 r = (c & 0x1F) << 3;
+    u8 g = ((c >> 5) & 0x1F) << 3;
+    u8 b = ((c >> 10) & 0x1F) << 3;
+    out[0] = r;
+    out[1] = g;
+    out[2] = b;
+    out[3] = 255;
+}
+
+static bool decode_twl_card_banner(const u8* data, size_t size, char* title_out, size_t title_size, u8* rgba_out) {
+    if (!data || size < 0x840 || !rgba_out) return false;
+    const u8* icon = data + 0x20;
+    const u8* palette = data + 0x220;
+    const u8* title_en = data + 0x240;
+    if (title_out && title_size > 0) {
+        size_t len = title_size - 1;
+        size_t out = 0;
+        for (size_t i = 0; i + 1 < 0x100 && out < len; i += 2) {
+            u16 ch = title_en[i] | (title_en[i + 1] << 8);
+            if (ch == 0 || ch == '\n' || ch == '\r') break;
+            if (ch < 128) title_out[out++] = (char)ch;
+        }
+        title_out[out] = 0;
+    }
+    u16 pal[16];
+    for (int i = 0; i < 16; i++) pal[i] = palette[i * 2] | (palette[i * 2 + 1] << 8);
+    for (int i = 0; i < 32 * 32 * 4; i++) rgba_out[i] = 0;
+    for (int tile = 0; tile < 16; ++tile) {
+        for (int pixel = 0; pixel < 32; ++pixel) {
+            u8 a_byte = icon[(tile << 5) + pixel];
+            int px = ((tile & 3) << 3) + ((pixel << 1) & 7);
+            int py = ((tile >> 2) << 3) + (pixel >> 2);
+            u8 idx1 = (a_byte & 0xf0) >> 4;
+            u8 idx2 = (a_byte & 0x0f);
+            int p1 = ((py * 32) + (px + 1)) * 4;
+            int p0 = ((py * 32) + (px + 0)) * 4;
+            rgb555_to_rgba_card(pal[idx2], &rgba_out[p0], idx2 == 0);
+            rgb555_to_rgba_card(pal[idx1], &rgba_out[p1], idx1 == 0);
+        }
+    }
+    return true;
 }
 
 static void smdh_icon_to_rgba_morton(const u16* src, u8* out) {
@@ -803,7 +909,8 @@ static void draw_status_bar(void) {
 }
 
 static void draw_help_bar(const char* label) {
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, C2D_Color32(70, 72, 80, 255));
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, C2D_Color32(90, 92, 100, 255));
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, C2D_Color32(90, 92, 100, 255));
     draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, C2D_Color32(20, 20, 20, 255));
     draw_text(6, BOTTOM_H - HELP_BAR_H + 2, 0.6f, C2D_Color32(220, 220, 220, 255), label);
 }
@@ -828,10 +935,12 @@ static void clamp_scroll_grid(int* scroll, int selection, int visible_rows, int 
     if (*scroll < 0) *scroll = 0;
 }
 
-static void preload_nds_page(const TargetState* ts, const DirCache* cache, int visible, int budget) {
+static void preload_nds_page(const TargetState* ts, const DirCache* cache, int visible, int budget, int card_offset) {
     int done = 0;
     for (int i = 0; i < visible && done < budget; i++) {
-        int idx = ts->scroll + i;
+        int list_idx = ts->scroll + i;
+        int idx = list_idx - card_offset;
+        if (idx < 0) continue;
         if (idx >= cache->count) break;
         if (cache->entries[idx].is_dir) continue;
         if (!is_nds_name(cache->entries[idx].name)) continue;
@@ -927,7 +1036,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         LauncherCandidate cands[8];
         int found = find_launcher_candidates(cands, 8);
         if (found <= 0) {
-            snprintf(status_message, status_size, "Launcher not found (CTR-H-FMUX)");
+            snprintf(status_message, status_size, "Launcher not found (FMUXBOOT)");
         } else {
             int nds_target = *current_target;
             for (int i = 0; i < cfg->target_count; i++) {
@@ -1142,6 +1251,8 @@ int main(int argc, char** argv) {
             if (!cache_matches(cache, ts->path)) build_dir_cache(target, ts, cache);
         }
 
+        update_card_status();
+
         if (options_open) {
             int visible = (BOTTOM_H - HELP_BAR_H - 10) / LIST_ITEM_H;
             int prev = options_selection;
@@ -1214,6 +1325,9 @@ int main(int argc, char** argv) {
             } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
             DirCache* cache = &g_runtimes[current_target].cache;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / LIST_ITEM_H;
+            bool show_card = show_nds_card(target, ts);
+            int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
+            int total = cache->count + card_offset;
             int prev = ts->selection;
             bool moving = rep_up || rep_down;
             int step = 1;
@@ -1222,18 +1336,21 @@ int main(int argc, char** argv) {
             if (rep_down) ts->selection += step;
                 if (moving) move_cooldown = 8;
                 if (ts->selection < 0) ts->selection = 0;
-                if (cache->count <= 0) ts->selection = 0;
-                if (ts->selection >= cache->count && cache->count > 0) ts->selection = cache->count - 1;
-                clamp_scroll_list(&ts->scroll, ts->selection, visible, cache->count);
+                if (total <= 0) ts->selection = 0;
+                if (ts->selection >= total && total > 0) ts->selection = total - 1;
+                clamp_scroll_list(&ts->scroll, ts->selection, visible, total);
                 if (rep_up || rep_down) state_dirty = true;
                 if (ts->selection != prev) audio_play(SOUND_MOVE);
-                if (!moving && move_cooldown == 0 && g_nds_banners) preload_nds_page(ts, cache, visible, NDS_PRELOAD_BUDGET);
-                if (!moving && move_cooldown == 0 && g_nds_banners && cache->count > 0 && ts->selection < cache->count && !cache->entries[ts->selection].is_dir) {
+                if (!moving && move_cooldown == 0 && g_nds_banners) preload_nds_page(ts, cache, visible, NDS_PRELOAD_BUDGET, card_offset);
+                if (!moving && move_cooldown == 0 && g_nds_banners && cache->count > 0) {
+                    int entry_idx = ts->selection - card_offset;
+                    if (entry_idx >= 0 && entry_idx < cache->count && !cache->entries[entry_idx].is_dir) {
                     char joined[512];
-                    path_join(ts->path, cache->entries[ts->selection].name, joined, sizeof(joined));
+                    path_join(ts->path, cache->entries[entry_idx].name, joined, sizeof(joined));
                     char sdpath[512];
                     make_sd_path(joined, sdpath, sizeof(sdpath));
-                    if (is_nds_name(cache->entries[ts->selection].name)) build_nds_entry(sdpath);
+                    if (is_nds_name(cache->entries[entry_idx].name)) build_nds_entry(sdpath);
+                    }
                 }
                 if (kDown & KEY_B) {
                     char root[256];
@@ -1244,44 +1361,57 @@ int main(int argc, char** argv) {
                         ts->selection = 0;
                         ts->scroll = 0;
                         build_dir_cache(target, ts, cache);
-                        preload_nds_page(ts, cache, visible, NDS_PRELOAD_BUDGET);
+                        preload_nds_page(ts, cache, visible, NDS_PRELOAD_BUDGET, card_offset);
                         state_dirty = true;
                         audio_play(SOUND_BACK);
                     }
                 }
-                if (kDown & KEY_A && cache->count > 0) {
-                    FileEntry* fe = &cache->entries[ts->selection];
-                    char joined[512];
-                    path_join(ts->path, fe->name, joined, sizeof(joined));
-                    if (fe->is_dir) {
-                        copy_str(ts->path, sizeof(ts->path), joined);
-                        ts->selection = 0;
-                        ts->scroll = 0;
-                        build_dir_cache(target, ts, cache);
-                        state_dirty = true;
-                        snprintf(status_message, sizeof(status_message), "Opening...");
-                        audio_play(SOUND_OPEN);
-                    } else {
-                        if (!strcmp(target->type, "rom_browser") && is_nds_name(fe->name)) {
-                            char sdpath[512];
-                            make_sd_path(joined, sdpath, sizeof(sdpath));
-                            launch_nds_loader(target, sdpath, status_message, sizeof(status_message));
-                        } else if (!strcmp(target->type, "homebrew_browser") && is_3dsx_name(fe->name)) {
-                            char sdpath[512];
-                            make_sd_path(joined, sdpath, sizeof(sdpath));
-                            if (homebrew_launch_3dsx(sdpath, status_message, sizeof(status_message))) {
-                                snprintf(status_message, sizeof(status_message), "Launching...");
-                                save_state(state);
-                                g_exit_requested = true;
-                            } else if (status_message[0] == 0) {
-                                snprintf(status_message, sizeof(status_message), "Launch failed");
-                            }
-                        } else {
-                            snprintf(status_message, sizeof(status_message), "Unsupported");
+                if (kDown & KEY_A && total > 0) {
+                    if (!strcmp(target->type, "rom_browser") && show_card && ts->selection == 0) {
+                        if (launch_nds_loader(target, "cart:", status_message, sizeof(status_message))) {
+                            snprintf(status_message, sizeof(status_message), "Launching...");
+                        } else if (status_message[0] == 0) {
+                            snprintf(status_message, sizeof(status_message), "Launch failed");
                         }
                         audio_play(SOUND_SELECT);
+                        status_timer = 60;
+                    } else {
+                        int entry_idx = ts->selection - card_offset;
+                        if (entry_idx < 0) entry_idx = 0;
+                        if (entry_idx >= cache->count) entry_idx = cache->count - 1;
+                        FileEntry* fe = &cache->entries[entry_idx];
+                        char joined[512];
+                        path_join(ts->path, fe->name, joined, sizeof(joined));
+                        if (fe->is_dir) {
+                            copy_str(ts->path, sizeof(ts->path), joined);
+                            ts->selection = 0;
+                            ts->scroll = 0;
+                            build_dir_cache(target, ts, cache);
+                            state_dirty = true;
+                            snprintf(status_message, sizeof(status_message), "Opening...");
+                            audio_play(SOUND_OPEN);
+                        } else {
+                            if (!strcmp(target->type, "rom_browser") && is_nds_name(fe->name)) {
+                                char sdpath[512];
+                                make_sd_path(joined, sdpath, sizeof(sdpath));
+                                launch_nds_loader(target, sdpath, status_message, sizeof(status_message));
+                            } else if (!strcmp(target->type, "homebrew_browser") && is_3dsx_name(fe->name)) {
+                                char sdpath[512];
+                                make_sd_path(joined, sdpath, sizeof(sdpath));
+                                if (homebrew_launch_3dsx(sdpath, status_message, sizeof(status_message))) {
+                                    snprintf(status_message, sizeof(status_message), "Launching...");
+                                    save_state(state);
+                                    g_exit_requested = true;
+                                } else if (status_message[0] == 0) {
+                                    snprintf(status_message, sizeof(status_message), "Launch failed");
+                                }
+                            } else {
+                                snprintf(status_message, sizeof(status_message), "Unsupported");
+                            }
+                            audio_play(SOUND_SELECT);
+                        }
+                        status_timer = 60;
                     }
-                    status_timer = 60;
                 }
             }
         }
@@ -1357,16 +1487,26 @@ int main(int argc, char** argv) {
             }
         } else if (!strcmp(target->type, "rom_browser")) {
             DirCache* cache = &g_runtimes[current_target].cache;
-            if (cache->count > 0) {
+            bool show_card = show_nds_card(target, ts);
+            int card_offset = show_card ? 1 : 0;
+            int total = cache->count + card_offset;
+            if (total > 0) {
+                if (show_card && ts->selection == 0) {
+                    preview_title = g_card_twl_title[0] ? g_card_twl_title : "Game Card";
+                } else {
                 char joined[512];
-                path_join(ts->path, cache->entries[ts->selection].name, joined, sizeof(joined));
+                int entry_idx = ts->selection - card_offset;
+                if (entry_idx < 0) entry_idx = 0;
+                if (entry_idx >= cache->count) entry_idx = cache->count - 1;
+                path_join(ts->path, cache->entries[entry_idx].name, joined, sizeof(joined));
                 char sdpath[512];
                 make_sd_path(joined, sdpath, sizeof(sdpath));
-                bool is_file = !cache->entries[ts->selection].is_dir;
-                bool is_nds = is_file && is_nds_name(cache->entries[ts->selection].name);
+                bool is_file = !cache->entries[entry_idx].is_dir;
+                bool is_nds = is_file && is_nds_name(cache->entries[entry_idx].name);
                 NdsCacheEntry* nds = (is_nds ? nds_cache_entry(sdpath) : NULL);
                 if (g_nds_banners && nds && nds->title[0]) preview_title = nds->title;
-                if (preview_title[0] == 0) preview_title = cache->entries[ts->selection].name;
+                if (preview_title[0] == 0) preview_title = cache->entries[entry_idx].name;
+                }
             } else {
                 preview_title = "Empty";
             }
@@ -1408,31 +1548,43 @@ int main(int argc, char** argv) {
             }
         } else if (!show_system_info && !strcmp(target->type, "rom_browser")) {
             DirCache* cache = &g_runtimes[current_target].cache;
-            if (cache->count > 0) {
-                char joined[512];
-                path_join(ts->path, cache->entries[ts->selection].name, joined, sizeof(joined));
-                char sdpath[512];
-                make_sd_path(joined, sdpath, sizeof(sdpath));
-                bool is_file = !cache->entries[ts->selection].is_dir;
-                bool is_nds = is_file && is_nds_name(cache->entries[ts->selection].name);
-                NdsCacheEntry* nds = is_nds ? nds_cache_entry(sdpath) : NULL;
-                if (g_nds_banners && nds && nds->has_rgba) {
-                    draw_rgba_icon(8, banner_y, 3.0f, nds->rgba, 32, 32);
-                    drew_icon = true;
-                } else if (!g_nds_banners) {
-                    if (nds && nds->has_rgba) {
+            bool show_card = show_nds_card(target, ts);
+            if (cache->count > 0 || show_card) {
+                int card_offset = show_card ? 1 : 0;
+                if (show_card && ts->selection == 0) {
+                    if (g_card_twl_has_icon) {
+                        draw_rgba_icon(8, banner_y, 3.0f, g_card_twl_rgba, 32, 32);
+                        drew_icon = true;
+                    }
+                } else {
+                    int entry_idx = ts->selection - card_offset;
+                    if (entry_idx < 0) entry_idx = 0;
+                    if (entry_idx >= cache->count) entry_idx = cache->count - 1;
+                    char joined[512];
+                    path_join(ts->path, cache->entries[entry_idx].name, joined, sizeof(joined));
+                    char sdpath[512];
+                    make_sd_path(joined, sdpath, sizeof(sdpath));
+                    bool is_file = !cache->entries[entry_idx].is_dir;
+                    bool is_nds = is_file && is_nds_name(cache->entries[entry_idx].name);
+                    NdsCacheEntry* nds = is_nds ? nds_cache_entry(sdpath) : NULL;
+                    if (g_nds_banners && nds && nds->has_rgba) {
                         draw_rgba_icon(8, banner_y, 3.0f, nds->rgba, 32, 32);
                         drew_icon = true;
-                    } else if (move_cooldown == 0 && is_nds) {
-                        build_nds_entry(sdpath);
-                    }
-                    if (!drew_icon) {
-                        u32 col1 = hash_color(cache->entries[ts->selection].name);
-                        u32 col2 = hash_color(cache->entries[ts->selection].name + 1);
-                        u8 tmp[32 * 32 * 4];
-                        make_sprite(tmp, col1, col2);
-                        draw_rgba_icon(8, banner_y, 3.0f, tmp, 32, 32);
-                        drew_icon = true;
+                    } else if (!g_nds_banners) {
+                        if (nds && nds->has_rgba) {
+                            draw_rgba_icon(8, banner_y, 3.0f, nds->rgba, 32, 32);
+                            drew_icon = true;
+                        } else if (move_cooldown == 0 && is_nds) {
+                            build_nds_entry(sdpath);
+                        }
+                        if (!drew_icon) {
+                            u32 col1 = hash_color(cache->entries[entry_idx].name);
+                            u32 col2 = hash_color(cache->entries[entry_idx].name + 1);
+                            u8 tmp[32 * 32 * 4];
+                            make_sprite(tmp, col1, col2);
+                            draw_rgba_icon(8, banner_y, 3.0f, tmp, 32, 32);
+                            drew_icon = true;
+                        }
                     }
                 }
             }
@@ -1583,18 +1735,28 @@ int main(int argc, char** argv) {
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
             DirCache* cache = &g_runtimes[current_target].cache;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / LIST_ITEM_H;
+            bool show_card = show_nds_card(target, ts);
+            int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
+            int total = cache->count + card_offset;
             for (int i = 0; i < visible; i++) {
                 int idx = ts->scroll + i;
-                if (idx >= cache->count) break;
+                if (idx >= total) break;
                 int y = 6 + i * LIST_ITEM_H;
                 u32 color = (idx == ts->selection) ? C2D_Color32(70, 90, 140, 255) : C2D_Color32(26, 28, 34, 255);
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
                 char label_buf[256];
-                if (cache->entries[idx].is_dir) {
-                    snprintf(label_buf, sizeof(label_buf), "%s/", cache->entries[idx].name);
+                if (card_offset && idx == 0) {
+                    if (g_card_twl_title[0]) copy_str(label_buf, sizeof(label_buf), g_card_twl_title);
+                    else copy_str(label_buf, sizeof(label_buf), "Game Card");
                 } else {
-                    base_name_no_ext(cache->entries[idx].name, label_buf, sizeof(label_buf));
-                    if (label_buf[0] == 0) copy_str(label_buf, sizeof(label_buf), cache->entries[idx].name);
+                    int entry_idx = idx - card_offset;
+                    if (entry_idx < 0 || entry_idx >= cache->count) continue;
+                    if (cache->entries[entry_idx].is_dir) {
+                        snprintf(label_buf, sizeof(label_buf), "%s/", cache->entries[entry_idx].name);
+                    } else {
+                        base_name_no_ext(cache->entries[entry_idx].name, label_buf, sizeof(label_buf));
+                        if (label_buf[0] == 0) copy_str(label_buf, sizeof(label_buf), cache->entries[entry_idx].name);
+                    }
                 }
                 float text_x = 10.0f;
                 draw_text_centered(text_x, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, label_buf);
@@ -1608,7 +1770,10 @@ int main(int argc, char** argv) {
             const char* help = "A Launch   B Back   X Sort   Y Search";
             if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
                 DirCache* cache = &g_runtimes[current_target].cache;
-                if (cache->count > 0 && cache->entries[ts->selection].is_dir) {
+                bool show_card = show_nds_card(target, ts);
+                int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
+                int entry_idx = ts->selection - card_offset;
+                if (entry_idx >= 0 && entry_idx < cache->count && cache->entries[entry_idx].is_dir) {
                     help = "A Open   B Back   X Sort   Y Search";
                 }
             }

@@ -23,7 +23,7 @@
 #define DEBUG_ICON_PATH DEBUG_DIR "/icon"
 #define SYSTEM_BLACKLIST_PATH "sdmc:/3ds/FirmMux/system_blacklist.txt"
 #define SYSTEM_ALIAS_PATH "sdmc:/3ds/FirmMux/system_aliases.txt"
-#define FMUX_BOOTSTRAP_TITLEID 0x000400000FF40500ULL
+#define FMUX_BOOTSTRAP_TITLEID 0x000400000FF40B00ULL
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 
@@ -248,6 +248,7 @@ bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache);
 bool cache_matches(const DirCache* cache, const char* path);
 
 void ensure_titles_loaded(const Config* cfg);
+void titles_mark_dirty(void);
 
 extern NdsCache g_nds_cache;
 extern TitleCatalog g_title_catalog;
