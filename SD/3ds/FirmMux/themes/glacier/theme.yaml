@@ -1,4 +1,7 @@
 name: Glacier
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
 top_bg: 0x0C1216
 bottom_bg: 0x0F1519
 panel_left: 0x162026
@@ -28,3 +31,7 @@ status_dim: 0x5A6B76
 status_bolt: 0xAEE6FF
 toast_bg: 0xC80B1116
 toast_text: 0xF2FAFF
+top_image:
+bottom_image:
+status_strip:
+sprite_icon:

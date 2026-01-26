@@ -1,6 +1,7 @@
 #include "fmux.h"
 #include <string.h>
 #include <stdlib.h>
+#include "stb_image.h"
 
 static bool parse_color_value(const char* v, u32* out) {
     if (!v || !out) return false;
@@ -35,10 +36,68 @@ static bool parse_color_value(const char* v, u32* out) {
     return true;
 }
 
+static int clamp_int(int v, int minv, int maxv) {
+    if (v < minv) return minv;
+    if (v > maxv) return maxv;
+    return v;
+}
+
+static void theme_free_images(Theme* t) {
+    if (!t) return;
+    icon_free(&t->top_tex);
+    icon_free(&t->bottom_tex);
+    icon_free(&t->status_tex);
+    icon_free(&t->sprite_tex);
+    t->top_loaded = false;
+    t->bottom_loaded = false;
+    t->status_loaded = false;
+    t->sprite_loaded = false;
+}
+
+static bool build_theme_path(const char* name, const char* rel, char* out, size_t out_size) {
+    if (!rel || !rel[0] || !out || out_size == 0) return false;
+    if (!strncmp(rel, "sdmc:/", 6) || rel[0] == '/') {
+        snprintf(out, out_size, "%s", rel);
+        return true;
+    }
+    snprintf(out, out_size, "sdmc:/3ds/FirmMux/themes/%s/%s", name, rel);
+    return true;
+}
+
+static bool load_theme_image(const char* name, const char* rel, IconTexture* icon, int* out_w, int* out_h, bool* loaded) {
+    if (!rel || !rel[0]) return false;
+    char path[256];
+    if (!build_theme_path(name, rel, path, sizeof(path))) return false;
+    u8* file = NULL;
+    size_t fsize = 0;
+    if (!read_file(path, &file, &fsize) || !file || fsize == 0) {
+        if (file) free(file);
+        return false;
+    }
+    int w = 0, h = 0, comp = 0;
+    unsigned char* data = stbi_load_from_memory(file, (int)fsize, &w, &h, &comp, 4);
+    free(file);
+    if (!data || w <= 0 || h <= 0) {
+        if (data) stbi_image_free(data);
+        return false;
+    }
+    bool ok = icon_from_rgba(icon, data, w, h);
+    stbi_image_free(data);
+    if (ok) {
+        if (out_w) *out_w = w;
+        if (out_h) *out_h = h;
+        if (loaded) *loaded = true;
+    }
+    return ok;
+}
+
 void theme_default(Theme* t) {
     if (!t) return;
     memset(t, 0, sizeof(*t));
     copy_str(t->name, sizeof(t->name), "default");
+    t->list_item_h = 20;
+    t->line_spacing = 26;
+    t->status_h = 16;
     t->top_bg = C2D_Color32(10, 12, 14, 255);
     t->bottom_bg = C2D_Color32(15, 16, 18, 255);
     t->panel_left = C2D_Color32(24, 26, 30, 255);
@@ -72,6 +131,7 @@ void theme_default(Theme* t) {
 
 bool load_theme(Theme* t, const char* name) {
     if (!t) return false;
+    theme_free_images(t);
     theme_default(t);
     if (!name || !name[0]) return true;
     copy_str(t->name, sizeof(t->name), name);
@@ -98,6 +158,20 @@ bool load_theme(Theme* t, const char* name) {
             if (parse_value(p, val, sizeof(val))) {
                 if (!strncmp(p, "name:", 5)) {
                     copy_str(t->name, sizeof(t->name), val);
+                } else if (!strncmp(p, "list_item_h:", 12)) {
+                    t->list_item_h = clamp_int(atoi(val), 16, 30);
+                } else if (!strncmp(p, "line_spacing:", 13)) {
+                    t->line_spacing = clamp_int(atoi(val), 18, 34);
+                } else if (!strncmp(p, "status_bar_h:", 13)) {
+                    t->status_h = clamp_int(atoi(val), 10, 24);
+                } else if (!strncmp(p, "top_image:", 10)) {
+                    copy_str(t->top_image, sizeof(t->top_image), val);
+                } else if (!strncmp(p, "bottom_image:", 13)) {
+                    copy_str(t->bottom_image, sizeof(t->bottom_image), val);
+                } else if (!strncmp(p, "status_strip:", 12)) {
+                    copy_str(t->status_strip, sizeof(t->status_strip), val);
+                } else if (!strncmp(p, "sprite_icon:", 12)) {
+                    copy_str(t->sprite_icon, sizeof(t->sprite_icon), val);
                 } else {
                     u32 c;
                     if (parse_color_value(val, &c)) {
@@ -137,6 +211,10 @@ bool load_theme(Theme* t, const char* name) {
         if (!end) break;
         p = end + 1;
     }
+    if (t->top_image[0]) load_theme_image(t->name, t->top_image, &t->top_tex, &t->top_w, &t->top_h, &t->top_loaded);
+    if (t->bottom_image[0]) load_theme_image(t->name, t->bottom_image, &t->bottom_tex, &t->bottom_w, &t->bottom_h, &t->bottom_loaded);
+    if (t->status_strip[0]) load_theme_image(t->name, t->status_strip, &t->status_tex, &t->status_w, &t->status_h_img, &t->status_loaded);
+    if (t->sprite_icon[0]) load_theme_image(t->name, t->sprite_icon, &t->sprite_tex, &t->sprite_w, &t->sprite_h, &t->sprite_loaded);
     free(text);
     return true;
 }

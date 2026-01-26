@@ -17,7 +17,9 @@ FirmMux SD setup (alpha)
 5) In FirmMux Options:
    - Select NDS launcher (FMUXBOOT)
    - Select NTR launcher (NTR Launcher)
+   - Themes... (optional)
 
 Notes
 - FirmMux writes: sd:/_nds/firmux/launch.txt for .nds launches.
 - NDS card row only appears at /roms/nds/ root.
+- Theme files live at /3ds/FirmMux/themes/<name>/theme.yaml.

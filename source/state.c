@@ -32,6 +32,9 @@ bool parse_state(const char* text, State* state) {
     if (!json_find_string(text, "last_target", state->last_target, sizeof(state->last_target))) {
         state->last_target[0] = 0;
     }
+    if (!json_find_string(text, "theme", state->theme, sizeof(state->theme))) {
+        state->theme[0] = 0;
+    }
     const char* p = strstr(text, "\"targets\":");
     if (!p) return true;
     p = strchr(p, '[');
@@ -109,9 +112,12 @@ bool save_state(const State* state) {
     FILE* f = fopen(STATE_PATH, "w");
     if (!f) return false;
     char last_esc[64];
+    char theme_esc[64];
     json_escape(state->last_target, last_esc, sizeof(last_esc));
+    json_escape(state->theme, theme_esc, sizeof(theme_esc));
     fprintf(f, "{\n");
     fprintf(f, "  \"last_target\":\"%s\",\n", last_esc);
+    fprintf(f, "  \"theme\":\"%s\",\n", theme_esc);
     fprintf(f, "  \"targets\":[\n");
     for (int i = 0; i < state->count; i++) {
         const TargetState* ts = &state->entries[i];

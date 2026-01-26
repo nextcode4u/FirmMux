@@ -30,6 +30,7 @@
 #define MAX_EXTENSIONS 8
 #define MAX_ENTRIES 1024
 #define MAX_OPTIONS 32
+#define MAX_THEMES 32
 
 #define TOP_W 400
 #define TOP_H 240
@@ -94,6 +95,7 @@ typedef struct {
 
 typedef struct {
     char last_target[32];
+    char theme[32];
     TargetState entries[MAX_TARGETS];
     int count;
 } State;
@@ -118,6 +120,7 @@ typedef enum {
     OPTION_ACTION_TOGGLE_NDS_BANNERS,
     OPTION_ACTION_SELECT_LAUNCHER,
     OPTION_ACTION_SELECT_CARD_LAUNCHER,
+    OPTION_ACTION_THEME_MENU,
     OPTION_ACTION_AUTOBOOT_STATUS,
     OPTION_ACTION_ABOUT
 } OptionAction;
@@ -136,6 +139,9 @@ typedef struct {
 
 typedef struct {
     char name[32];
+    int list_item_h;
+    int line_spacing;
+    int status_h;
     u32 top_bg;
     u32 bottom_bg;
     u32 panel_left;
@@ -165,6 +171,26 @@ typedef struct {
     u32 status_bolt;
     u32 toast_bg;
     u32 toast_text;
+    char top_image[64];
+    char bottom_image[64];
+    char status_strip[64];
+    char sprite_icon[64];
+    IconTexture top_tex;
+    IconTexture bottom_tex;
+    IconTexture status_tex;
+    IconTexture sprite_tex;
+    int top_w;
+    int top_h;
+    int bottom_w;
+    int bottom_h;
+    int status_w;
+    int status_h_img;
+    int sprite_w;
+    int sprite_h;
+    bool top_loaded;
+    bool bottom_loaded;
+    bool status_loaded;
+    bool sprite_loaded;
 } Theme;
 
 typedef struct {

@@ -1,0 +1,37 @@
+name: Sage
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+top_bg: 0x0F1310
+bottom_bg: 0x111513
+panel_left: 0x18201A
+panel_right: 0x141A16
+preview_bg: 0x202A22
+text_primary: 0xE6EFE7
+text_secondary: 0xC3D4C6
+text_muted: 0x94A69A
+tab_bg: 0x1B231D
+tab_sel: 0x4B7C5C
+tab_text: 0xE6EFE7
+list_bg: 0x17201A
+list_sel: 0x3D6B4E
+list_text: 0xE6EFE7
+option_bg: 0x1B231D
+option_sel: 0x345240
+option_text: 0xE6EFE7
+option_header: 0xF0FFF2
+overlay_bg: 0xD00D130F
+help_bg: 0x121813
+help_line: 0x5A6A5F
+help_text: 0xDCE8DE
+status_bg: 0x121813
+status_text: 0xDCE8DE
+status_icon: 0xC3D4C6
+status_dim: 0x5A6A5F
+status_bolt: 0xBCECC4
+toast_bg: 0xC80D130F
+toast_text: 0xF0FFF2
+top_image:
+bottom_image:
+status_strip:
+sprite_icon:

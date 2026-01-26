@@ -57,12 +57,17 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 ## Themes
 
 - Set `theme: <name>` at the top of `sdmc:/3ds/FirmMux/config.yaml`.
+- Or use Options → Themes... to pick from installed themes (saved in `state.json`).
+- Image assets are optional PNG/JPEG files and can be referenced with relative filenames (e.g. `top.png`) inside the theme folder.
 - Theme files live at `sdmc:/3ds/FirmMux/themes/<name>/theme.yaml`.
 
 Theme schema (colors are hex RGB or ARGB, e.g. `0xRRGGBB` or `0xAARRGGBB`):
 
 ```yaml
 name: Default
+list_item_h:
+line_spacing:
+status_bar_h:
 top_bg:
 bottom_bg:
 panel_left:
@@ -92,4 +97,8 @@ status_dim:
 status_bolt:
 toast_bg:
 toast_text:
+top_image:
+bottom_image:
+status_strip:
+sprite_icon:
 ```

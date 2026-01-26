@@ -1,4 +1,7 @@
 name: Default
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
 top_bg: 0x0A0C0E
 bottom_bg: 0x0F1012
 panel_left: 0x181A1E
@@ -28,3 +31,7 @@ status_dim: 0x5A5A5A
 status_bolt: 0xFFDC50
 toast_bg: 0xC8000000
 toast_text: 0xF0F0F0
+top_image:
+bottom_image:
+status_strip:
+sprite_icon:

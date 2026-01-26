@@ -1,4 +1,7 @@
 name: Amber
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
 top_bg: 0x120E0A
 bottom_bg: 0x15100B
 panel_left: 0x1E1812
@@ -28,3 +31,7 @@ status_dim: 0x6A5A4A
 status_bolt: 0xFFD27A
 toast_bg: 0xC8100C0A
 toast_text: 0xFFF3E0
+top_image:
+bottom_image:
+status_strip:
+sprite_icon:
