@@ -30,7 +30,7 @@ Config is stored at `/3ds/FirmMux/config.yaml` and state at `/3ds/FirmMux/state.
 
 ## Alpha release
 
-Current alpha: v0.1.0-alpha2. See `docs/release-v0.1.0-alpha2.md`.
+Current alpha: v0.1.0-alpha2.
 
 Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 
