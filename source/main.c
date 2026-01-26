@@ -25,8 +25,12 @@ static int g_option_count = 0;
 static bool g_nds_banners = false;
 static int g_launcher_cycle = 0;
 static bool g_launcher_ready = false;
-static u64 g_launcher_tid = FMUX_BOOTSTRAP_TITLEID;
+static u64 g_launcher_tid = 0;
 static FS_MediaType g_launcher_media = MEDIATYPE_SD;
+static int g_card_launcher_cycle = 0;
+static bool g_card_launcher_ready = false;
+static u64 g_card_launcher_tid = 0;
+static FS_MediaType g_card_launcher_media = MEDIATYPE_SD;
 static int g_select_hits = 0;
 static int g_easter_timer = 0;
 static u8* g_easter_rgba = NULL;
@@ -94,9 +98,18 @@ typedef struct {
     char product[16];
 } LauncherCandidate;
 
-static bool is_fmuxboot_product(const char* prod) {
-    if (!prod || !prod[0]) return false;
-    return strncasecmp(prod, "FMUXBOOT", 8) == 0;
+static bool product_matches(const char* prod, const char* want) {
+    if (!prod || !want || !want[0]) return false;
+    char buf[16];
+    size_t len = strlen(prod);
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+    memcpy(buf, prod, len);
+    buf[len] = 0;
+    while (len > 0 && (buf[len - 1] == ' ' || buf[len - 1] == '\0')) {
+        buf[len - 1] = 0;
+        len--;
+    }
+    return strcasecmp(buf, want) == 0;
 }
 
 static int find_launcher_candidates(LauncherCandidate* out, int max) {
@@ -115,7 +128,35 @@ static int find_launcher_candidates(LauncherCandidate* out, int max) {
         for (u32 i = 0; i < read && found < max; i++) {
             char prod[16] = {0};
             if (R_FAILED(AM_GetTitleProductCode(m, list[i], prod))) continue;
-            if (!is_fmuxboot_product(prod)) continue;
+            if (!product_matches(prod, "FMUXBOOT")) continue;
+            LauncherCandidate* c = &out[found++];
+            c->tid = list[i];
+            c->media = m;
+            snprintf(c->product, sizeof(c->product), "%s", prod);
+        }
+        free(list);
+    }
+    amExit();
+    return found;
+}
+
+static int find_card_launcher_candidates(LauncherCandidate* out, int max) {
+    if (!out || max <= 0) return 0;
+    int found = 0;
+    if (R_FAILED(amInit())) return 0;
+    FS_MediaType medias[2] = { MEDIATYPE_SD, MEDIATYPE_NAND };
+    for (int mi = 0; mi < 2 && found < max; mi++) {
+        FS_MediaType m = medias[mi];
+        u32 count = 0;
+        if (R_FAILED(AM_GetTitleCount(m, &count)) || count == 0) continue;
+        u64* list = (u64*)malloc(sizeof(u64) * count);
+        if (!list) continue;
+        u32 read = 0;
+        if (R_FAILED(AM_GetTitleList(&read, m, count, list))) { free(list); continue; }
+        for (u32 i = 0; i < read && found < max; i++) {
+            char prod[16] = {0};
+            if (R_FAILED(AM_GetTitleProductCode(m, list[i], prod))) continue;
+            if (!product_matches(prod, "NTR Launcher")) continue;
             LauncherCandidate* c = &out[found++];
             c->tid = list[i];
             c->media = m;
@@ -159,6 +200,38 @@ static void auto_set_launcher(Config* cfg, State* state, bool* state_dirty, char
     }
 }
 
+static void auto_set_card_launcher(Config* cfg, State* state, bool* state_dirty, char* status_message, size_t status_size, int* status_timer) {
+    int nds_idx = -1;
+    for (int i = 0; i < cfg->target_count; i++) {
+        if (!strcmp(cfg->targets[i].type, "rom_browser")) { nds_idx = i; break; }
+    }
+    if (nds_idx < 0) return;
+    Target* targ = &cfg->targets[nds_idx];
+    TargetState* ts = get_target_state(state, targ->id);
+    bool have_loader = (targ->card_launcher_title_id[0] != 0) || (ts && ts->card_launcher_title_id[0] != 0);
+    if (have_loader) return;
+    LauncherCandidate cands[4];
+    int found = find_card_launcher_candidates(cands, 4);
+    if (found <= 0) return;
+    LauncherCandidate* c = &cands[0];
+    char tid_hex[32];
+    snprintf(tid_hex, sizeof(tid_hex), "%016llX", (unsigned long long)c->tid);
+    copy_str(targ->card_launcher_title_id, sizeof(targ->card_launcher_title_id), tid_hex);
+    copy_str(targ->card_launcher_media, sizeof(targ->card_launcher_media), media_to_string(c->media));
+    if (ts) {
+        copy_str(ts->card_launcher_title_id, sizeof(ts->card_launcher_title_id), tid_hex);
+        copy_str(ts->card_launcher_media, sizeof(ts->card_launcher_media), media_to_string(c->media));
+    }
+    g_card_launcher_ready = true;
+    g_card_launcher_tid = c->tid;
+    g_card_launcher_media = c->media;
+    if (state_dirty) *state_dirty = true;
+    if (status_message && status_size > 0) {
+        snprintf(status_message, status_size, "NTR launcher set");
+        if (status_timer) *status_timer = 90;
+    }
+}
+
 bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
     if (status_message && status_size > 0) status_message[0] = 0;
     Result rc = APT_PrepareToDoApplicationJump(0, title_id, media);
@@ -186,7 +259,18 @@ static int find_target_index(const Config* cfg, const char* id) {
 }
 
 static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size) {
-    (void)target;
+    u64 tid = 0;
+    FS_MediaType media = MEDIATYPE_SD;
+    if (target && target->loader_title_id[0]) parse_title_id(target->loader_title_id, &tid);
+    if (target && target->loader_media[0]) media = media_from_string(target->loader_media);
+    if (!tid && g_launcher_ready) {
+        tid = g_launcher_tid;
+        media = g_launcher_media;
+    }
+    if (!tid) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launcher not set");
+        return false;
+    }
     char norm[512];
     snprintf(norm, sizeof(norm), "%s", sd_path ? sd_path : "");
     normalize_path_to_sd_colon(norm, sizeof(norm));
@@ -194,14 +278,30 @@ static bool launch_nds_loader(const Target* target, const char* sd_path, char* s
         snprintf(status_message, status_size, "launch.txt failed");
         return false;
     }
-    u64 tid = g_launcher_ready ? g_launcher_tid : FMUX_BOOTSTRAP_TITLEID;
-    FS_MediaType media = g_launcher_ready ? g_launcher_media : MEDIATYPE_SD;
-    if (target && target->loader_title_id[0]) parse_title_id(target->loader_title_id, &tid);
-    if (target && target->loader_media[0]) media = media_from_string(target->loader_media);
     if (launch_title_id(tid, media, status_message, status_size)) return true;
     FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
     if (launch_title_id(tid, alt, status_message, status_size)) return true;
     if (status_message && status_size > 0) snprintf(status_message, status_size, "Install FirmMuxBootstrapLauncher (ID %016llX)", (unsigned long long)tid);
+    return false;
+}
+
+static bool launch_card_launcher(const Target* target, char* status_message, size_t status_size) {
+    u64 tid = 0;
+    FS_MediaType media = MEDIATYPE_SD;
+    if (target && target->card_launcher_title_id[0]) parse_title_id(target->card_launcher_title_id, &tid);
+    if (target && target->card_launcher_media[0]) media = media_from_string(target->card_launcher_media);
+    if (!tid && g_card_launcher_ready) {
+        tid = g_card_launcher_tid;
+        media = g_card_launcher_media;
+    }
+    if (!tid) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Card launcher not set");
+        return false;
+    }
+    if (launch_title_id(tid, media, status_message, status_size)) return true;
+    FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
+    if (launch_title_id(tid, alt, status_message, status_size)) return true;
+    if (status_message && status_size > 0) snprintf(status_message, status_size, "Install card launcher (ID %016llX)", (unsigned long long)tid);
     return false;
 }
 
@@ -983,6 +1083,10 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_SELECT_LAUNCHER;
 
     o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Select NTR launcher");
+    o->action = OPTION_ACTION_SELECT_CARD_LAUNCHER;
+
+    o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Autoboot: Enabled");
     o->action = OPTION_ACTION_AUTOBOOT_STATUS;
 
@@ -1060,6 +1164,35 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
             g_launcher_tid = c->tid;
             g_launcher_media = c->media;
             snprintf(status_message, status_size, "Launcher set");
+        }
+    } else if (action == OPTION_ACTION_SELECT_CARD_LAUNCHER) {
+        LauncherCandidate cands[8];
+        int found = find_card_launcher_candidates(cands, 8);
+        if (found <= 0) {
+            snprintf(status_message, status_size, "NTR Launcher not found");
+        } else {
+            int nds_target = *current_target;
+            for (int i = 0; i < cfg->target_count; i++) {
+                if (!strcmp(cfg->targets[i].type, "rom_browser")) { nds_target = i; break; }
+            }
+            int pick = g_card_launcher_cycle % found;
+            g_card_launcher_cycle++;
+            LauncherCandidate* c = &cands[pick];
+            char tid_hex[32];
+            snprintf(tid_hex, sizeof(tid_hex), "%016llX", (unsigned long long)c->tid);
+            TargetState* cur = get_target_state(state, cfg->targets[nds_target].id);
+            if (cur) {
+                copy_str(cur->card_launcher_title_id, sizeof(cur->card_launcher_title_id), tid_hex);
+                copy_str(cur->card_launcher_media, sizeof(cur->card_launcher_media), media_to_string(c->media));
+                if (state_dirty) *state_dirty = true;
+            }
+            Target* targ = &cfg->targets[nds_target];
+            copy_str(targ->card_launcher_title_id, sizeof(targ->card_launcher_title_id), tid_hex);
+            copy_str(targ->card_launcher_media, sizeof(targ->card_launcher_media), media_to_string(c->media));
+            g_card_launcher_ready = true;
+            g_card_launcher_tid = c->tid;
+            g_card_launcher_media = c->media;
+            snprintf(status_message, status_size, "NTR launcher set");
         }
     } else if (action == OPTION_ACTION_AUTOBOOT_STATUS) {
         snprintf(status_message, status_size, "Autoboot enabled");
@@ -1189,6 +1322,12 @@ int main(int argc, char** argv) {
         if (ts && ts->loader_media[0]) {
             copy_str(t->loader_media, sizeof(t->loader_media), ts->loader_media);
         }
+        if (ts && ts->card_launcher_title_id[0]) {
+            copy_str(t->card_launcher_title_id, sizeof(t->card_launcher_title_id), ts->card_launcher_title_id);
+        }
+        if (ts && ts->card_launcher_media[0]) {
+            copy_str(t->card_launcher_media, sizeof(t->card_launcher_media), ts->card_launcher_media);
+        }
     }
 
     bool options_open = false;
@@ -1207,6 +1346,7 @@ int main(int argc, char** argv) {
     TargetState* cur_ts = get_target_state(state, cfg->targets[current_target].id);
     if (cur_ts) g_nds_banners = cur_ts->nds_banner_mode != 0;
     auto_set_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
+    auto_set_card_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
 
     while (aptMainLoop()) {
         hidScanInput();
@@ -1368,7 +1508,7 @@ int main(int argc, char** argv) {
                 }
                 if (kDown & KEY_A && total > 0) {
                     if (!strcmp(target->type, "rom_browser") && show_card && ts->selection == 0) {
-                        if (launch_nds_loader(target, "cart:", status_message, sizeof(status_message))) {
+                        if (launch_card_launcher(target, status_message, sizeof(status_message))) {
                             snprintf(status_message, sizeof(status_message), "Launching...");
                         } else if (status_message[0] == 0) {
                             snprintf(status_message, sizeof(status_message), "Launch failed");

@@ -76,6 +76,12 @@ static bool parse_config(const char* text, Config* cfg) {
             } else if (!strncmp(line, "loader_media:", 13)) {
                 char val[16];
                 if (parse_value(line, val, sizeof(val))) snprintf(current->loader_media, sizeof(current->loader_media), "%s", val);
+            } else if (!strncmp(line, "card_launcher_title_id:", 23)) {
+                char val[32];
+                if (parse_value(line, val, sizeof(val))) snprintf(current->card_launcher_title_id, sizeof(current->card_launcher_title_id), "%s", val);
+            } else if (!strncmp(line, "card_launcher_media:", 21)) {
+                char val[16];
+                if (parse_value(line, val, sizeof(val))) snprintf(current->card_launcher_media, sizeof(current->card_launcher_media), "%s", val);
             } else if (!strncmp(line, "extensions:", 11)) {
                 const char* lb = strchr(line, '[');
                 const char* rb = strchr(line, ']');

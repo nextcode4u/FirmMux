@@ -39,8 +39,11 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 - Install the FirmMuxBootstrapLauncher CIA (TitleID `000400000FF40B00`) on SD.
 - Ensure `sd:/_nds/nds-bootstrap.nds` is present.
 - Place ROMs under `sd:/roms/nds/`.
-- Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA. Slot‑1 uses `cart:` as the line.
-- Default TitleID is defined in `include/fmux.h` as `FMUX_BOOTSTRAP_TITLEID`; you can override per NDS target via `loader_title_id` and optional `loader_media` in `config.yaml`.
+- Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA.
+- Use “Select NDS launcher” in Options to bind the launcher by product code `FMUXBOOT`, or set `loader_title_id` and optional `loader_media` on the NDS target in `config.yaml`.
+- NDS card entries launch a separate card launcher title; use “Select NTR launcher” in Options (product code `NTR Launcher`) or set `card_launcher_title_id` (and optional `card_launcher_media`) on the NDS target.
+- NTR Launcher can be installed from: https://github.com/ApacheThunder/NTR_Launcher/releases (install `NTR Launcher.cia`).
+- NTR Forwarder pack (includes nds-bootstrap for both NTR Forwarder and FirmMux Bootstrap Launcher): https://github.com/RocketRobz/NTR_Forwarder/releases
 
 ## Homebrew launching
 

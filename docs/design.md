@@ -86,7 +86,7 @@ Transitions
     ```
     sd:/roms/nds/Game.nds
     ```
-  - Launcher TitleID constant: `FMUX_BOOTSTRAP_TITLEID` in `include/fmux.h`
+  - Launcher is selected by product code (`FMUXBOOT`) or `loader_title_id` in config
 
 ## Autoboot
 

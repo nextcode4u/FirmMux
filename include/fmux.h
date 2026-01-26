@@ -23,7 +23,6 @@
 #define DEBUG_ICON_PATH DEBUG_DIR "/icon"
 #define SYSTEM_BLACKLIST_PATH "sdmc:/3ds/FirmMux/system_blacklist.txt"
 #define SYSTEM_ALIAS_PATH "sdmc:/3ds/FirmMux/system_aliases.txt"
-#define FMUX_BOOTSTRAP_TITLEID 0x000400000FF40B00ULL
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 
@@ -63,6 +62,8 @@ typedef struct {
     char root[256];
     char loader_title_id[32];
     char loader_media[16];
+    char card_launcher_title_id[32];
+    char card_launcher_media[16];
     bool show_system_titles;
     bool alpha_buckets;
     char extensions[MAX_EXTENSIONS][16];
@@ -86,6 +87,8 @@ typedef struct {
     int nds_banner_mode;
     char loader_title_id[32];
     char loader_media[16];
+    char card_launcher_title_id[32];
+    char card_launcher_media[16];
 } TargetState;
 
 typedef struct {
@@ -113,6 +116,7 @@ typedef enum {
     OPTION_ACTION_TOGGLE_DEBUG,
     OPTION_ACTION_TOGGLE_NDS_BANNERS,
     OPTION_ACTION_SELECT_LAUNCHER,
+    OPTION_ACTION_SELECT_CARD_LAUNCHER,
     OPTION_ACTION_AUTOBOOT_STATUS,
     OPTION_ACTION_ABOUT
 } OptionAction;
