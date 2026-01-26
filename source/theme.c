@@ -54,39 +54,45 @@ static void theme_free_images(Theme* t) {
     t->sprite_loaded = false;
 }
 
-static bool build_theme_path(const char* name, const char* rel, char* out, size_t out_size) {
+static bool build_theme_path(const char* folder, const char* rel, char* out, size_t out_size) {
     if (!rel || !rel[0] || !out || out_size == 0) return false;
     if (!strncmp(rel, "sdmc:/", 6) || rel[0] == '/') {
         snprintf(out, out_size, "%s", rel);
         return true;
     }
-    snprintf(out, out_size, "sdmc:/3ds/FirmMux/themes/%s/%s", name, rel);
+    snprintf(out, out_size, "sdmc:/3ds/FirmMux/themes/%s/%s", folder, rel);
     return true;
 }
 
-static bool load_theme_image(const char* name, const char* rel, IconTexture* icon, int* out_w, int* out_h, bool* loaded) {
+static bool load_theme_image(const char* folder, const char* rel, IconTexture* icon, int* out_w, int* out_h, bool* loaded) {
     if (!rel || !rel[0]) return false;
     char path[256];
-    if (!build_theme_path(name, rel, path, sizeof(path))) return false;
+    if (!build_theme_path(folder, rel, path, sizeof(path))) return false;
+    if (debug_log_enabled()) debug_log("theme: load image %s", path);
     u8* file = NULL;
     size_t fsize = 0;
     if (!read_file(path, &file, &fsize) || !file || fsize == 0) {
         if (file) free(file);
+        if (debug_log_enabled()) debug_log("theme: read failed %s", path);
         return false;
     }
     int w = 0, h = 0, comp = 0;
     unsigned char* data = stbi_load_from_memory(file, (int)fsize, &w, &h, &comp, 4);
     free(file);
     if (!data || w <= 0 || h <= 0) {
+        if (debug_log_enabled()) debug_log("theme: decode failed %s (%s)", path, stbi_failure_reason() ? stbi_failure_reason() : "unknown");
         if (data) stbi_image_free(data);
         return false;
     }
     bool ok = icon_from_rgba(icon, data, w, h);
     stbi_image_free(data);
     if (ok) {
+        if (debug_log_enabled()) debug_log("theme: loaded %s (%dx%d)", path, w, h);
         if (out_w) *out_w = w;
         if (out_h) *out_h = h;
         if (loaded) *loaded = true;
+    } else if (debug_log_enabled()) {
+        debug_log("theme: upload failed %s", path);
     }
     return ok;
 }
@@ -134,6 +140,7 @@ bool load_theme(Theme* t, const char* name) {
     theme_free_images(t);
     theme_default(t);
     if (!name || !name[0]) return true;
+    const char* folder = name;
     copy_str(t->name, sizeof(t->name), name);
     char path[256];
     snprintf(path, sizeof(path), "sdmc:/3ds/FirmMux/themes/%s/theme.yaml", name);
@@ -141,6 +148,7 @@ bool load_theme(Theme* t, const char* name) {
     size_t size = 0;
     if (!read_file(path, &data, &size) || !data || size == 0) {
         if (data) free(data);
+        if (debug_log_enabled()) debug_log("theme: missing %s", path);
         return false;
     }
     char* text = (char*)malloc(size + 1);
@@ -211,10 +219,10 @@ bool load_theme(Theme* t, const char* name) {
         if (!end) break;
         p = end + 1;
     }
-    if (t->top_image[0]) load_theme_image(t->name, t->top_image, &t->top_tex, &t->top_w, &t->top_h, &t->top_loaded);
-    if (t->bottom_image[0]) load_theme_image(t->name, t->bottom_image, &t->bottom_tex, &t->bottom_w, &t->bottom_h, &t->bottom_loaded);
-    if (t->status_strip[0]) load_theme_image(t->name, t->status_strip, &t->status_tex, &t->status_w, &t->status_h_img, &t->status_loaded);
-    if (t->sprite_icon[0]) load_theme_image(t->name, t->sprite_icon, &t->sprite_tex, &t->sprite_w, &t->sprite_h, &t->sprite_loaded);
+    if (t->top_image[0]) load_theme_image(folder, t->top_image, &t->top_tex, &t->top_w, &t->top_h, &t->top_loaded);
+    if (t->bottom_image[0]) load_theme_image(folder, t->bottom_image, &t->bottom_tex, &t->bottom_w, &t->bottom_h, &t->bottom_loaded);
+    if (t->status_strip[0]) load_theme_image(folder, t->status_strip, &t->status_tex, &t->status_w, &t->status_h_img, &t->status_loaded);
+    if (t->sprite_icon[0]) load_theme_image(folder, t->sprite_icon, &t->sprite_tex, &t->sprite_w, &t->sprite_h, &t->sprite_loaded);
     free(text);
     return true;
 }

@@ -23,15 +23,11 @@ option_header: 0xF0F0F0
 overlay_bg: 0xDC0C0C10
 help_bg: 0x141414
 help_line: 0x5A5C64
-help_text: 0xDCDCDC
+help_text: 0xE0E0E0
 status_bg: 0x14161A
 status_text: 0xD2D2D2
 status_icon: 0xC8C8C8
-status_dim: 0x5A5A5A
-status_bolt: 0xFFDC50
+status_dim: 0x5A5C64
+status_bolt: 0xFFD050
 toast_bg: 0xC8000000
 toast_text: 0xF0F0F0
-top_image:
-bottom_image:
-status_strip:
-sprite_icon:

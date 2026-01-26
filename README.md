@@ -40,10 +40,13 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 - Ensure `sd:/_nds/nds-bootstrap.nds` is present.
 - Place ROMs under `sd:/roms/nds/`.
 - Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA.
-- Use “Select NDS launcher” in Options to bind the launcher by product code `FMUXBOOT`, or set `loader_title_id` and optional `loader_media` on the NDS target in `config.yaml`.
+- Use “Select NDS launcher” in Options to bind the launcher by product code `CTR-P-FMBP`, or set `loader_title_id` and optional `loader_media` on the NDS target in `config.yaml`.
+- FirmMux Bootstrap Launcher releases: https://github.com/nextcode4u/firmux-bootstrap-prep/releases
 - NDS card entries launch a separate card launcher title; use “Select NTR launcher” in Options (product code `NTR Launcher`) or set `card_launcher_title_id` (and optional `card_launcher_media`) on the NDS target.
 - NTR Launcher can be installed from: https://github.com/ApacheThunder/NTR_Launcher/releases (install `NTR Launcher.cia`).
 - NTR Forwarder pack (includes nds-bootstrap for both NTR Forwarder and FirmMux Bootstrap Launcher): https://github.com/RocketRobz/NTR_Forwarder/releases
+- YANBF releases: https://github.com/YANBForwarder/YANBF/releases
+- FirmMux Bootstrap depends on YANBF Bootstrap (`bootstrap.cia`).
 
 ## Homebrew launching
 

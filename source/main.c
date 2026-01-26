@@ -182,6 +182,12 @@ static void draw_theme_image(const IconTexture* icon, float x, float y, float sc
     C2D_DrawImageAt(icon->image, x, y, 0.0f, NULL, scale, scale);
 }
 
+static u32 scale_alpha(u32 c, int num, int den) {
+    u32 a = (c >> 24) & 0xFF;
+    a = (a * (u32)num) / (u32)den;
+    return (c & 0x00FFFFFF) | (a << 24);
+}
+
 static bool product_matches(const char* prod, const char* want) {
     if (!prod || !want || !want[0]) return false;
     char buf[16];
@@ -212,7 +218,7 @@ static int find_launcher_candidates(LauncherCandidate* out, int max) {
         for (u32 i = 0; i < read && found < max; i++) {
             char prod[16] = {0};
             if (R_FAILED(AM_GetTitleProductCode(m, list[i], prod))) continue;
-            if (!product_matches(prod, "FMUXBOOT")) continue;
+            if (!product_matches(prod, "CTR-P-FMBP")) continue;
             LauncherCandidate* c = &out[found++];
             c->tid = list[i];
             c->media = m;
@@ -1235,7 +1241,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         LauncherCandidate cands[8];
         int found = find_launcher_candidates(cands, 8);
         if (found <= 0) {
-            snprintf(status_message, status_size, "Launcher not found (FMUXBOOT)");
+            snprintf(status_message, status_size, "Launcher not found (CTR-P-FMBP)");
         } else {
             int nds_target = *current_target;
             for (int i = 0; i < cfg->target_count; i++) {
@@ -1735,8 +1741,14 @@ int main(int argc, char** argv) {
             draw_theme_image(&g_theme.top_tex, 0.0f, 0.0f, 1.0f);
         }
 
-        draw_rect(0, 0, PREVIEW_W, TOP_H, g_theme.panel_left);
-        draw_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, g_theme.panel_right);
+        u32 panel_left = g_theme.panel_left;
+        u32 panel_right = g_theme.panel_right;
+        if (g_theme.top_loaded) {
+            panel_left = scale_alpha(panel_left, 3, 4);
+            panel_right = scale_alpha(panel_right, 3, 4);
+        }
+        draw_rect(0, 0, PREVIEW_W, TOP_H, panel_left);
+        draw_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, panel_right);
 
         const char* preview_title = "";
         const TitleInfo3ds* preview_tinfo = NULL;
