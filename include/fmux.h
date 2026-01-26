@@ -75,6 +75,7 @@ typedef struct {
     char default_target[32];
     bool remember_last_position;
     bool help_bar;
+    char theme[32];
     Target targets[MAX_TARGETS];
     int target_count;
 } Config;
@@ -132,6 +133,39 @@ typedef struct {
     Tex3DS_SubTexture subtex;
     bool loaded;
 } IconTexture;
+
+typedef struct {
+    char name[32];
+    u32 top_bg;
+    u32 bottom_bg;
+    u32 panel_left;
+    u32 panel_right;
+    u32 preview_bg;
+    u32 text_primary;
+    u32 text_secondary;
+    u32 text_muted;
+    u32 tab_bg;
+    u32 tab_sel;
+    u32 tab_text;
+    u32 list_bg;
+    u32 list_sel;
+    u32 list_text;
+    u32 option_bg;
+    u32 option_sel;
+    u32 option_text;
+    u32 option_header;
+    u32 overlay_bg;
+    u32 help_bg;
+    u32 help_line;
+    u32 help_text;
+    u32 status_bg;
+    u32 status_text;
+    u32 status_icon;
+    u32 status_dim;
+    u32 status_bolt;
+    u32 toast_bg;
+    u32 toast_text;
+} Theme;
 
 typedef struct {
     u64 titleId;
@@ -237,6 +271,8 @@ bool homebrew_load_meta(const char* sd_path, char* title_out, size_t title_size,
 bool homebrew_launch_3dsx(const char* sd_path, char* status_message, size_t status_size);
 
 bool load_or_create_config(Config* cfg);
+void theme_default(Theme* t);
+bool load_theme(Theme* t, const char* name);
 
 bool load_state(State* state);
 bool save_state(const State* state);

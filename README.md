@@ -36,7 +36,7 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 
 ## NDS launching via FirmMuxBootstrapLauncher
 
-- Install the FirmMuxBootstrapLauncher CIA (TitleID `000400000FF40B00`) on SD.
+- Install the FirmMuxBootstrapLauncher CIA on SD.
 - Ensure `sd:/_nds/nds-bootstrap.nds` is present.
 - Place ROMs under `sd:/roms/nds/`.
 - Selecting an `.nds` in FirmMux writes `sd:/_nds/firmux/launch.txt` with a single line `sd:/roms/nds/<file>.nds` (newline terminated) then jumps to the launcher CIA.
@@ -53,3 +53,43 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 
 - Set FirmMux as the autoboot target in Luma Hbmenu autoboot.
 - On cold boot, hold `B` to bypass FirmMux and return to HOME Menu.
+
+## Themes
+
+- Set `theme: <name>` at the top of `sdmc:/3ds/FirmMux/config.yaml`.
+- Theme files live at `sdmc:/3ds/FirmMux/themes/<name>/theme.yaml`.
+
+Theme schema (colors are hex RGB or ARGB, e.g. `0xRRGGBB` or `0xAARRGGBB`):
+
+```yaml
+name: Default
+top_bg:
+bottom_bg:
+panel_left:
+panel_right:
+preview_bg:
+text_primary:
+text_secondary:
+text_muted:
+tab_bg:
+tab_sel:
+tab_text:
+list_bg:
+list_sel:
+list_text:
+option_bg:
+option_sel:
+option_text:
+option_header:
+overlay_bg:
+help_bg:
+help_line:
+help_text:
+status_bg:
+status_text:
+status_icon:
+status_dim:
+status_bolt:
+toast_bg:
+toast_text:
+```

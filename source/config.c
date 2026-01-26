@@ -4,6 +4,7 @@
 
 static const char* base_config =
 "version: 1\n"
+"theme: default\n"
 "ui:\n"
 "  default_target: 3ds\n"
 "  remember_last_position: true\n"
@@ -45,6 +46,9 @@ static bool parse_config(const char* text, Config* cfg) {
         if (!strncmp(line, "version:", 8)) {
             int v = atoi(line + 8);
             cfg->version = v;
+        } else if (!strncmp(line, "theme:", 6)) {
+            char val[32];
+            if (parse_value(line, val, sizeof(val))) snprintf(cfg->theme, sizeof(cfg->theme), "%s", val);
         } else if (!strncmp(line, "default_target:", 15)) {
             char val[64];
             if (parse_value(line, val, sizeof(val))) snprintf(cfg->default_target, sizeof(cfg->default_target), "%s", val);

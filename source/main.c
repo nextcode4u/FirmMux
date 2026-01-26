@@ -56,6 +56,7 @@ static bool g_time_24 = true;
 static TargetRuntime g_runtimes[MAX_TARGETS];
 static Config g_cfg;
 static State g_state;
+static Theme g_theme;
 
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
@@ -803,8 +804,8 @@ static void update_system_info_cache(void) {
 static void draw_system_info(float x, float y) {
     update_system_info_cache();
     float line_h = 14.0f;
-    u32 color = C2D_Color32(220, 220, 220, 255);
-    u32 sub = C2D_Color32(180, 180, 180, 255);
+    u32 color = g_theme.text_primary;
+    u32 sub = g_theme.text_secondary;
     draw_text(x, y, 0.5f, color, "System Info");
     y += line_h;
 
@@ -939,7 +940,7 @@ static void draw_system_info(float x, float y) {
 
 static void draw_status_bar(void) {
     float y = TOP_H - STATUS_H;
-    draw_rect(0, y, TOP_W, STATUS_H, C2D_Color32(20, 22, 26, 255));
+    draw_rect(0, y, TOP_W, STATUS_H, g_theme.status_bg);
 
     char timebuf[16];
     time_t now = time(NULL);
@@ -955,7 +956,7 @@ static void draw_status_bar(void) {
     } else {
         copy_str(timebuf, sizeof(timebuf), "--:--");
     }
-    draw_text_centered(8, y, 0.55f, C2D_Color32(210, 210, 210, 255), STATUS_H, timebuf);
+    draw_text_centered(8, y, 0.55f, g_theme.status_text, STATUS_H, timebuf);
 
     u8 batt = 0;
     u8 charging = 0;
@@ -977,29 +978,29 @@ static void draw_status_bar(void) {
     float batt_x = TOP_W - 8 - batt_w;
     float batt_y = y + (STATUS_H - batt_h) * 0.5f;
     float percent_x = batt_x - 4 - batt_text_w;
-    draw_text_centered(percent_x, y, 0.5f, C2D_Color32(200, 200, 200, 255), STATUS_H, battbuf);
+    draw_text_centered(percent_x, y, 0.5f, g_theme.status_text, STATUS_H, battbuf);
 
     float wifi_w = 19.0f;
     float wifi_x = percent_x - 6 - wifi_w;
     float wifi_y = y + (STATUS_H - 8.0f) * 0.5f;
-    u32 wifi_color = C2D_Color32(200, 200, 200, 255);
+    u32 wifi_color = g_theme.status_icon;
     for (int i = 0; i < 3; i++) {
         float bw = 5.0f;
         float bh = 4.0f + i * 2.0f;
         float bx = wifi_x + i * 7.0f;
         float by = wifi_y + (8.0f - bh);
-        u32 c = (i < wifi_bars) ? wifi_color : C2D_Color32(90, 90, 90, 255);
+        u32 c = (i < wifi_bars) ? wifi_color : g_theme.status_dim;
         draw_rect(bx, by, bw, bh, c);
     }
 
-    u32 outline = C2D_Color32(200, 200, 200, 255);
+    u32 outline = g_theme.status_icon;
     draw_rect(batt_x, batt_y, batt_w, batt_h, outline);
     draw_rect(batt_x + batt_w, batt_y + 2, 2, batt_h - 4, outline);
     float fill_w = (batt_w - 4) * (batt / 5.0f);
-    u32 fill = C2D_Color32(200, 200, 200, 255);
+    u32 fill = g_theme.status_icon;
     draw_rect(batt_x + 2, batt_y + 2, fill_w, batt_h - 4, fill);
     if (charging) {
-        u32 bolt = C2D_Color32(255, 220, 80, 255);
+        u32 bolt = g_theme.status_bolt;
         float bx = batt_x + (batt_w - 6) * 0.5f;
         float by = batt_y - 1;
         draw_rect(bx + 2, by + 0, 2, 4, bolt);
@@ -1009,10 +1010,10 @@ static void draw_status_bar(void) {
 }
 
 static void draw_help_bar(const char* label) {
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, C2D_Color32(90, 92, 100, 255));
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, C2D_Color32(90, 92, 100, 255));
-    draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, C2D_Color32(20, 20, 20, 255));
-    draw_text(6, BOTTOM_H - HELP_BAR_H + 2, 0.6f, C2D_Color32(220, 220, 220, 255), label);
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, g_theme.help_line);
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, g_theme.help_line);
+    draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, g_theme.help_bg);
+    draw_text(6, BOTTOM_H - HELP_BAR_H + 2, 0.6f, g_theme.help_text, label);
 }
 
 
@@ -1112,6 +1113,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         Config newcfg;
         if (load_or_create_config(&newcfg)) {
             *cfg = newcfg;
+            load_theme(&g_theme, cfg->theme[0] ? cfg->theme : "default");
             refresh_options_menu(cfg);
             int idx_target = find_target_index(cfg, state->last_target);
             if (idx_target < 0) {
@@ -1243,6 +1245,7 @@ int main(int argc, char** argv) {
         gfxExit();
         return 1;
     }
+    load_theme(&g_theme, cfg->theme[0] ? cfg->theme : "default");
     for (int i = 0; i < cfg->target_count; i++) {
         Target* t = &cfg->targets[i];
         if (t->id[0] == 0) {
@@ -1571,14 +1574,14 @@ int main(int argc, char** argv) {
         }
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        C2D_TargetClear(g_top, C2D_Color32(10, 12, 14, 255));
-        C2D_TargetClear(g_bottom, C2D_Color32(15, 16, 18, 255));
+        C2D_TargetClear(g_top, g_theme.top_bg);
+        C2D_TargetClear(g_bottom, g_theme.bottom_bg);
 
         C2D_SceneBegin(g_top);
         C2D_TextBufClear(g_textbuf);
 
-        draw_rect(0, 0, PREVIEW_W, TOP_H, C2D_Color32(24, 26, 30, 255));
-        draw_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, C2D_Color32(18, 20, 24, 255));
+        draw_rect(0, 0, PREVIEW_W, TOP_H, g_theme.panel_left);
+        draw_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, g_theme.panel_right);
 
         const char* preview_title = "";
         const TitleInfo3ds* preview_tinfo = NULL;
@@ -1655,19 +1658,18 @@ int main(int argc, char** argv) {
         float text_scale = 0.7f;
         int max_lines = 3;
         if (show_system_info) max_lines = 1;
-        draw_wrap_text_limited(8, 8, text_scale, C2D_Color32(230, 230, 230, 255), PREVIEW_W - 16, max_lines, preview_title);
+        draw_wrap_text_limited(8, 8, text_scale, g_theme.text_primary, PREVIEW_W - 16, max_lines, preview_title);
         float banner_y = TOP_H - 96 - 20;
         bool drew_icon = false;
         if (show_system_info) {
             float info_y = 8 + (26.0f * text_scale * max_lines) + 8.0f;
             draw_system_info(8, info_y);
         } else {
-            u32 preview_color = C2D_Color32(40, 42, 48, 255);
-            draw_rect(8, banner_y, 96, 96, preview_color);
+            draw_rect(8, banner_y, 96, 96, g_theme.preview_bg);
             if (preview_tinfo) {
                 char tidbuf[32];
                 snprintf(tidbuf, sizeof(tidbuf), "TID: %016llX", (unsigned long long)preview_tinfo->titleId);
-                draw_text(8, banner_y - 14, 0.45f, C2D_Color32(180, 180, 180, 255), tidbuf);
+                draw_text(8, banner_y - 14, 0.45f, g_theme.text_secondary, tidbuf);
             }
         }
         if (!show_system_info && !strcmp(target->type, "homebrew_browser")) {
@@ -1758,7 +1760,7 @@ int main(int argc, char** argv) {
             }
         }
         if (!show_system_info && !drew_icon) {
-            draw_text(12, banner_y + 36, 0.6f, C2D_Color32(160, 160, 160, 255), "Preview");
+            draw_text(12, banner_y + 36, 0.6f, g_theme.text_muted, "Preview");
         }
         if (g_easter_timer > 0 && g_easter_loaded && g_easter_rgba) {
             float max_w = PREVIEW_W - 16;
@@ -1781,9 +1783,9 @@ int main(int argc, char** argv) {
             int idx = target_scroll + i;
             if (idx >= cfg->target_count) break;
             int y = i * LIST_ITEM_H + 2;
-            u32 color = (idx == current_target) ? C2D_Color32(60, 90, 140, 255) : C2D_Color32(28, 30, 36, 255);
+            u32 color = (idx == current_target) ? g_theme.tab_sel : g_theme.tab_bg;
             draw_rect(PREVIEW_W + 2, y, TARGET_LIST_W - 4, LIST_ITEM_H - 2, color);
-            draw_text_centered(PREVIEW_W + 6, y, 0.7f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, cfg->targets[idx].label);
+            draw_text_centered(PREVIEW_W + 6, y, 0.7f, g_theme.tab_text, LIST_ITEM_H - 2, cfg->targets[idx].label);
         }
 
         draw_status_bar();
@@ -1792,16 +1794,16 @@ int main(int argc, char** argv) {
         C2D_TextBufClear(g_textbuf);
 
         if (options_open) {
-            draw_rect(0, 0, BOTTOM_W, BOTTOM_H, C2D_Color32(12, 12, 16, 220));
-            draw_text(8, 6, 0.7f, C2D_Color32(240, 240, 240, 255), "Options");
+            draw_rect(0, 0, BOTTOM_W, BOTTOM_H, g_theme.overlay_bg);
+            draw_text(8, 6, 0.7f, g_theme.option_header, "Options");
             int visible = (BOTTOM_H - HELP_BAR_H - 20) / LIST_ITEM_H;
             for (int i = 0; i < visible; i++) {
                 int idx = options_scroll + i;
                 if (idx >= g_option_count) break;
                 int y = 24 + i * LIST_ITEM_H;
-                u32 color = (idx == options_selection) ? C2D_Color32(70, 80, 120, 255) : C2D_Color32(28, 30, 36, 255);
+                u32 color = (idx == options_selection) ? g_theme.option_sel : g_theme.option_bg;
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
-                draw_text_centered(10, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, g_options[idx].label);
+                draw_text_centered(10, y, 0.6f, g_theme.option_text, LIST_ITEM_H - 2, g_options[idx].label);
             }
             if (kDown & KEY_SELECT) {
                 if (!g_select_last) g_select_hits++;
@@ -1832,7 +1834,7 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * LIST_ITEM_H;
-                u32 color = (idx == ts->selection) ? C2D_Color32(70, 100, 150, 255) : C2D_Color32(26, 28, 34, 255);
+                u32 color = (idx == ts->selection) ? g_theme.list_sel : g_theme.list_bg;
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
                 char shortname[56];
                 TitleInfo3ds* t = title_user_at(idx);
@@ -1844,7 +1846,7 @@ int main(int argc, char** argv) {
                     shortname[29] = '.';
                     shortname[30] = 0;
                 }
-                draw_text_centered(12, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, shortname);
+                draw_text_centered(12, y, 0.6f, g_theme.list_text, LIST_ITEM_H - 2, shortname);
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
@@ -1854,10 +1856,10 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * LIST_ITEM_H;
-                u32 color = (idx == ts->selection) ? C2D_Color32(70, 100, 150, 255) : C2D_Color32(26, 28, 34, 255);
+                u32 color = (idx == ts->selection) ? g_theme.list_sel : g_theme.list_bg;
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
                 if (idx == 0) {
-                    draw_text_centered(12, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, "Return to HOME");
+                    draw_text_centered(12, y, 0.6f, g_theme.list_text, LIST_ITEM_H - 2, "Return to HOME");
                 } else {
                     TitleInfo3ds* t = title_system_at(idx - 1);
                     if (!t) continue;
@@ -1869,7 +1871,7 @@ int main(int argc, char** argv) {
                         shortname[29] = '.';
                         shortname[30] = 0;
                     }
-                    draw_text_centered(12, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, shortname);
+                    draw_text_centered(12, y, 0.6f, g_theme.list_text, LIST_ITEM_H - 2, shortname);
                 }
             }
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
@@ -1882,7 +1884,7 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * LIST_ITEM_H;
-                u32 color = (idx == ts->selection) ? C2D_Color32(70, 90, 140, 255) : C2D_Color32(26, 28, 34, 255);
+                u32 color = (idx == ts->selection) ? g_theme.list_sel : g_theme.list_bg;
                 draw_rect(6, y, BOTTOM_W - 12, LIST_ITEM_H - 2, color);
                 char label_buf[256];
                 if (card_offset && idx == 0) {
@@ -1899,11 +1901,11 @@ int main(int argc, char** argv) {
                     }
                 }
                 float text_x = 10.0f;
-                draw_text_centered(text_x, y, 0.6f, C2D_Color32(220, 220, 220, 255), LIST_ITEM_H - 2, label_buf);
+                draw_text_centered(text_x, y, 0.6f, g_theme.list_text, LIST_ITEM_H - 2, label_buf);
             }
         } else {
-            draw_text(8, 10, 0.7f, C2D_Color32(220, 220, 220, 255), "System Menu");
-            draw_text(8, 30, 0.6f, C2D_Color32(160, 160, 160, 255), "Press A to exit");
+            draw_text(8, 10, 0.7f, g_theme.text_primary, "System Menu");
+            draw_text(8, 30, 0.6f, g_theme.text_muted, "Press A to exit");
         }
 
         if (cfg->help_bar) {
@@ -1921,8 +1923,8 @@ int main(int argc, char** argv) {
         }
 
         if (status_message[0]) {
-            draw_rect(60, 90, 200, 40, C2D_Color32(0, 0, 0, 200));
-            draw_text(90, 104, 0.6f, C2D_Color32(240, 240, 240, 255), status_message);
+            draw_rect(60, 90, 200, 40, g_theme.toast_bg);
+            draw_text(90, 104, 0.6f, g_theme.toast_text, status_message);
         }
 
         C3D_FrameEnd(0);
