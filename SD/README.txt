@@ -23,4 +23,4 @@ Notes
 - FirmMux writes: sd:/_nds/firmux/launch.txt for .nds launches.
 - NDS card row only appears at /roms/nds/ root.
 - Theme files live at /3ds/FirmMux/themes/<name>/theme.yaml.
-- Sample themes: default, amber, glacier, ember, sage, retro_pixel, nds_style, frutiger_aurora, ios6_dark, wii.
+- Sample themes: default, amber, cobalt, ember, epoxy_resin, glacier, graphite, sage.
