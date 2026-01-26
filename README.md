@@ -107,4 +107,4 @@ sprite_icon:
 ```
 
 Sample themes shipped in SD layout:
-`default`, `amber`, `glacier`, `ember`, `sage`, `retro_pixel`, `nds_style`, `frutiger_aurora`, `ios6_dark`, `wii`.
+`default`, `amber`, `cobalt`, `ember`, `epoxy_resin`, `glacier`, `graphite`, `sage`.
