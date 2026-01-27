@@ -18,6 +18,8 @@ FirmMux SD setup (alpha)
    - Select NDS launcher (CTR-P-FMBP)
    - Select NTR launcher (NTR Launcher)
    - Themes... (optional)
+   - Top background / Bottom background (optional)
+   - Background visibility (optional)
 
 FirmMux Bootstrap Launcher releases:
 https://github.com/nextcode4u/firmux-bootstrap-prep/releases
@@ -26,7 +28,11 @@ Notes
 - FirmMux writes: sd:/_nds/firmux/launch.txt for .nds launches.
 - NDS card row only appears at /roms/nds/ root.
 - Theme files live at /3ds/FirmMux/themes/<name>/theme.yaml.
-- Sample themes: default, amber, cobalt, ember, epoxy_resin, glacier, graphite, sage, synthwave.
+- Background PNGs go in:
+  - /3ds/FirmMux/backgrounds/top/
+  - /3ds/FirmMux/backgrounds/bottom/
+  Recommended sizes: top 400x240, bottom 320x240. Images are stretched to fit.
+- Sample themes: default, amber, cobalt, dark_material, ember, glacier, graphite, midnight, mint, neon_cyber, paper_light, sage, sandstone, sunset, synthwave_hass.
 - RetroArch rules + emulator settings live at /3ds/Emulators/.
 - RetroArch BIOS go in /retroarch/system/.
  - Use the RetroArch homebrew 3DSX package (not the CIA build).

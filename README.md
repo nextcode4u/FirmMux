@@ -34,6 +34,22 @@ Current alpha: v0.1.0-alpha2.
 
 Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 
+## Backgrounds
+
+Background images are independent from themes and can be picked at runtime.
+
+- Put PNGs in:
+  - `sd:/3ds/FirmMux/backgrounds/top/`
+  - `sd:/3ds/FirmMux/backgrounds/bottom/`
+- Backgrounds are stretched to fit.
+- Recommended sizes:
+  - top: `400x240`
+  - bottom: `320x240`
+
+In FirmMux:
+- Options → Top background / Bottom background opens a picker.
+- Options → Background visibility controls how strongly UI panels overlay the background (higher means more background showing).
+
 ## NDS launching via FirmMuxBootstrapLauncher
 
 - Install the FirmMuxBootstrapLauncher CIA on SD.
@@ -61,6 +77,7 @@ Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
 
 - Set `theme: <name>` at the top of `sdmc:/3ds/FirmMux/config.yaml`.
 - Or use Options → Themes... to pick from installed themes (saved in `state.json`).
+- Themes control UI colors and optional UI asset strips. Top/bottom backgrounds are configured separately via the Background options.
 - Image assets are optional PNG/JPEG files and can be referenced with relative filenames (e.g. `top.png`) inside the theme folder.
 - Theme files live at `sdmc:/3ds/FirmMux/themes/<name>/theme.yaml`.
 
@@ -138,4 +155,4 @@ Offsets are in pixels (can be negative) and are applied to theme assets/text for
 image_channel_order can be: rgb, bgr, grb, brg (or with an extra "a" anywhere, e.g. abgr). Alpha is always preserved from the source.
 
 Sample themes shipped in SD layout:
-`default`, `amber`, `cobalt`, `ember`, `epoxy_resin`, `glacier`, `graphite`, `sage`, `synthwave`.
+`default`, `amber`, `cobalt`, `dark_material`, `ember`, `glacier`, `graphite`, `midnight`, `mint`, `neon_cyber`, `paper_light`, `sage`, `sandstone`, `sunset`, `synthwave_hass`.
