@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "systems": {
+    "a26": {"displayName":"Atari 2600","enabled":true,"romFolder":"sd:/roms/a26"},
+    "a52": {"displayName":"Atari 5200","enabled":true,"romFolder":"sd:/roms/a52"},
+    "a78": {"displayName":"Atari 7800","enabled":true,"romFolder":"sd:/roms/a78"},
+    "col": {"displayName":"ColecoVision","enabled":true,"romFolder":"sd:/roms/col"},
+    "cpc": {"displayName":"Amstrad CPC","enabled":true,"romFolder":"sd:/roms/cpc"},
+    "gb": {"displayName":"GB/GBC","enabled":true,"romFolder":"sd:/roms/gb"},
+    "gen": {"displayName":"Genesis","enabled":true,"romFolder":"sd:/roms/gen"},
+    "gg": {"displayName":"Game Gear","enabled":true,"romFolder":"sd:/roms/gg"},
+    "intv": {"displayName":"Intellivision","enabled":true,"romFolder":"sd:/roms/intv"},
+    "m5": {"displayName":"Sord M5","enabled":true,"romFolder":"sd:/roms/m5"},
+    "nes": {"displayName":"NES","enabled":true,"romFolder":"sd:/roms/nes"},
+    "ngp": {"displayName":"Neo Geo Pocket","enabled":true,"romFolder":"sd:/roms/ngp"},
+    "pkmni": {"displayName":"PokeMini","enabled":true,"romFolder":"sd:/roms/pkmni"},
+    "sg": {"displayName":"SG-1000","enabled":true,"romFolder":"sd:/roms/sg"},
+    "sms": {"displayName":"Master System","enabled":true,"romFolder":"sd:/roms/sms"},
+    "snes": {"displayName":"SNES","enabled":true,"romFolder":"sd:/roms/snes"},
+    "tg16": {"displayName":"TurboGrafx-16","enabled":true,"romFolder":"sd:/roms/tg16"},
+    "ws": {"displayName":"WonderSwan","enabled":true,"romFolder":"sd:/roms/ws"}
+  }
+}

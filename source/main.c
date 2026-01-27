@@ -19,6 +19,7 @@
 #include <3ds/services/mcuhwc.h>
 #include "dikbutt.h"
 #include "comfortaa_bold_bcfnt.h"
+#include "stb_image.h"
 
 static OptionItem g_options[MAX_OPTIONS];
 static int g_option_count = 0;
@@ -65,6 +66,22 @@ static char g_theme_names[MAX_THEMES][32];
 static int g_theme_name_count = 0;
 static OptionItem g_theme_options[MAX_THEMES + 1];
 static int g_theme_option_count = 0;
+static OptionItem g_top_bg_options[MAX_BACKGROUNDS + 1];
+static OptionItem g_bottom_bg_options[MAX_BACKGROUNDS + 1];
+static int g_top_bg_option_count = 0;
+static int g_bottom_bg_option_count = 0;
+static OptionItem g_bg_vis_options[16];
+static int g_bg_vis_option_count = 0;
+static char g_top_bg_names[MAX_BACKGROUNDS][64];
+static char g_bottom_bg_names[MAX_BACKGROUNDS][64];
+static int g_top_bg_count = 0;
+static int g_bottom_bg_count = 0;
+static int g_top_bg_index = 0;
+static int g_bottom_bg_index = 0;
+static IconTexture g_top_bg_tex;
+static IconTexture g_bottom_bg_tex;
+
+static int clamp_pct(int v);
 
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
@@ -177,15 +194,260 @@ static void build_theme_options(const char* current) {
     }
 }
 
+static bool is_png_name(const char* name) {
+    if (!name) return false;
+    const char* dot = strrchr(name, '.');
+    if (!dot) return false;
+    return strcasecmp(dot, ".png") == 0;
+}
+
+static void bg_add_name(char names[MAX_BACKGROUNDS][64], int* count, const char* name) {
+    if (!names || !count || !name || !name[0]) return;
+    if (*count >= MAX_BACKGROUNDS) return;
+    for (int i = 0; i < *count; i++) {
+        if (!strcasecmp(names[i], name)) return;
+    }
+    copy_str(names[*count], sizeof(names[*count]), name);
+    (*count)++;
+}
+
+static void bg_sort_names(char names[MAX_BACKGROUNDS][64], int count) {
+    for (int i = 1; i + 1 < count; i++) {
+        for (int j = i + 1; j < count; j++) {
+            if (strcasecmp(names[i], names[j]) > 0) {
+                char tmp[64];
+                copy_str(tmp, sizeof(tmp), names[i]);
+                copy_str(names[i], sizeof(names[i]), names[j]);
+                copy_str(names[j], sizeof(names[j]), tmp);
+            }
+        }
+    }
+}
+
+static int scan_background_dir(const char* dir, char names[MAX_BACKGROUNDS][64]) {
+    int count = 0;
+    names[count++][0] = 0;
+    DIR* d = opendir(dir);
+    if (!d) return count;
+    struct dirent* ent;
+    while ((ent = readdir(d))) {
+        if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) continue;
+        if (!is_png_name(ent->d_name)) continue;
+        bg_add_name(names, &count, ent->d_name);
+    }
+    closedir(d);
+    bg_sort_names(names, count);
+    return count;
+}
+
+static int find_background_index(char names[MAX_BACKGROUNDS][64], int count, const char* want) {
+    if (!want || !want[0]) return 0;
+    for (int i = 1; i < count; i++) {
+        if (!strcasecmp(names[i], want)) return i;
+    }
+    return 0;
+}
+
+static void background_label(const char* name, char* out, size_t out_size) {
+    if (!name || !name[0]) {
+        copy_str(out, out_size, "None");
+        return;
+    }
+    base_name_no_ext(name, out, out_size);
+    if (!out[0]) copy_str(out, out_size, name);
+}
+
+static bool load_background_tex(const char* dir, const char* name, IconTexture* icon) {
+    if (!icon) return false;
+    if (!name || !name[0]) {
+        icon_free(icon);
+        return false;
+    }
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", dir, name);
+    u8* file = NULL;
+    size_t fsize = 0;
+    if (!read_file(path, &file, &fsize) || !file || fsize == 0) {
+        if (file) free(file);
+        icon_free(icon);
+        return false;
+    }
+    int w = 0, h = 0, comp = 0;
+    unsigned char* data = stbi_load_from_memory(file, (int)fsize, &w, &h, &comp, 4);
+    free(file);
+    if (!data || w <= 0 || h <= 0) {
+        if (data) stbi_image_free(data);
+        icon_free(icon);
+        return false;
+    }
+    bool ok = icon_from_rgba(icon, data, w, h);
+    stbi_image_free(data);
+    return ok;
+}
+
+static void scan_backgrounds(State* state) {
+    g_top_bg_count = scan_background_dir(BACKGROUNDS_TOP_DIR, g_top_bg_names);
+    g_bottom_bg_count = scan_background_dir(BACKGROUNDS_BOTTOM_DIR, g_bottom_bg_names);
+    g_top_bg_index = find_background_index(g_top_bg_names, g_top_bg_count, state ? state->top_background : NULL);
+    g_bottom_bg_index = find_background_index(g_bottom_bg_names, g_bottom_bg_count, state ? state->bottom_background : NULL);
+    if (state) {
+        copy_str(state->top_background, sizeof(state->top_background), g_top_bg_names[g_top_bg_index]);
+        copy_str(state->bottom_background, sizeof(state->bottom_background), g_bottom_bg_names[g_bottom_bg_index]);
+    }
+    load_background_tex(BACKGROUNDS_TOP_DIR, g_top_bg_names[g_top_bg_index], &g_top_bg_tex);
+    load_background_tex(BACKGROUNDS_BOTTOM_DIR, g_bottom_bg_names[g_bottom_bg_index], &g_bottom_bg_tex);
+}
+
+static void build_background_options(bool top, State* state) {
+    scan_backgrounds(state);
+    OptionItem* list = top ? g_top_bg_options : g_bottom_bg_options;
+    int* out_count = top ? &g_top_bg_option_count : &g_bottom_bg_option_count;
+    char (*names)[64] = top ? g_top_bg_names : g_bottom_bg_names;
+    int count = top ? g_top_bg_count : g_bottom_bg_count;
+    const char* current = top ? state->top_background : state->bottom_background;
+
+    *out_count = 0;
+    OptionItem* o = &list[(*out_count)++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = OPTION_ACTION_NONE;
+
+    for (int i = 0; i < count && *out_count < MAX_BACKGROUNDS + 1; i++) {
+        o = &list[(*out_count)++];
+        char label[96];
+        background_label(names[i], label, sizeof(label));
+        bool is_current = false;
+        if (current && current[0]) {
+            is_current = (strcasecmp(current, names[i]) == 0);
+        } else {
+            is_current = (i == 0);
+        }
+        if (is_current) snprintf(o->label, sizeof(o->label), "%s (current)", label);
+        else snprintf(o->label, sizeof(o->label), "%s", label);
+        o->action = OPTION_ACTION_NONE;
+    }
+}
+
+static void set_background_from_index(bool top, int idx, State* state, char* status_message, size_t status_size) {
+    char (*names)[64] = top ? g_top_bg_names : g_bottom_bg_names;
+    int count = top ? g_top_bg_count : g_bottom_bg_count;
+    if (idx < 0 || idx >= count) return;
+
+    if (top) {
+        g_top_bg_index = idx;
+        if (state) copy_str(state->top_background, sizeof(state->top_background), names[idx]);
+        load_background_tex(BACKGROUNDS_TOP_DIR, names[idx], &g_top_bg_tex);
+    } else {
+        g_bottom_bg_index = idx;
+        if (state) copy_str(state->bottom_background, sizeof(state->bottom_background), names[idx]);
+        load_background_tex(BACKGROUNDS_BOTTOM_DIR, names[idx], &g_bottom_bg_tex);
+    }
+
+    char label[96];
+    background_label(names[idx], label, sizeof(label));
+    snprintf(status_message, status_size, "%s background: %s", top ? "Top" : "Bottom", label);
+}
+
+static const int g_bg_vis_values[] = { 0, 10, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100 };
+static const int g_bg_vis_value_count = (int)(sizeof(g_bg_vis_values) / sizeof(g_bg_vis_values[0]));
+
+static int bg_vis_index_from_value(int value) {
+    if (value < 0) value = 0;
+    if (value > 100) value = 100;
+    int best = 0;
+    int best_diff = 1000;
+    for (int i = 0; i < g_bg_vis_value_count; i++) {
+        int diff = g_bg_vis_values[i] - value;
+        if (diff < 0) diff = -diff;
+        if (diff < best_diff) {
+            best_diff = diff;
+            best = i;
+        }
+    }
+    return best;
+}
+
+static void build_bg_visibility_options(int current) {
+    g_bg_vis_option_count = 0;
+    OptionItem* o = &g_bg_vis_options[g_bg_vis_option_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = OPTION_ACTION_NONE;
+
+    int cur_idx = bg_vis_index_from_value(current);
+    for (int i = 0; i < g_bg_vis_value_count && g_bg_vis_option_count < (int)(sizeof(g_bg_vis_options) / sizeof(g_bg_vis_options[0])); i++) {
+        o = &g_bg_vis_options[g_bg_vis_option_count++];
+        int v = g_bg_vis_values[i];
+        if (i == cur_idx) snprintf(o->label, sizeof(o->label), "%d%% (current)", v);
+        else snprintf(o->label, sizeof(o->label), "%d%%", v);
+        o->action = OPTION_ACTION_NONE;
+    }
+}
+
+static void set_bg_visibility_from_index(int idx, State* state, char* status_message, size_t status_size) {
+    if (!state) return;
+    if (idx < 0 || idx >= g_bg_vis_value_count) return;
+    state->background_visibility = g_bg_vis_values[idx];
+    snprintf(status_message, status_size, "Background visibility: %d%%", state->background_visibility);
+}
+
 static void draw_theme_image(const IconTexture* icon, float x, float y, float scale) {
     if (!icon || !icon->loaded) return;
     C2D_DrawImageAt(icon->image, x, y, 0.0f, NULL, scale, scale);
+}
+
+static void draw_theme_image_scaled(const IconTexture* icon, float x, float y, float w, float h) {
+    if (!icon || !icon->loaded) return;
+    float iw = icon->subtex.width > 0 ? icon->subtex.width : 1.0f;
+    float ih = icon->subtex.height > 0 ? icon->subtex.height : 1.0f;
+    float sx = w / iw;
+    float sy = h / ih;
+    C2D_DrawImageAt(icon->image, x, y, 0.0f, NULL, sx, sy);
 }
 
 static u32 scale_alpha(u32 c, int num, int den) {
     u32 a = (c >> 24) & 0xFF;
     a = (a * (u32)num) / (u32)den;
     return (c & 0x00FFFFFF) | (a << 24);
+}
+
+static int clamp_pct(int v) {
+    if (v < 0) return 0;
+    if (v > 100) return 100;
+    return v;
+}
+
+static int overlay_pct(void) {
+    int vis = clamp_pct(g_state.background_visibility);
+    return 100 - vis;
+}
+
+static u32 overlay_color(u32 c, bool has_bg) {
+    if (!has_bg) return c;
+    return scale_alpha(c, overlay_pct(), 100);
+}
+
+static u8 overlay_alpha(bool has_bg) {
+    if (!has_bg) return 255;
+    int pct = overlay_pct();
+    return (u8)((pct * 255) / 100);
+}
+
+static void draw_theme_image_scaled_alpha(const IconTexture* icon, float x, float y, float w, float h, u8 alpha) {
+    if (!icon || !icon->loaded) return;
+    float iw = icon->subtex.width > 0 ? icon->subtex.width : 1.0f;
+    float ih = icon->subtex.height > 0 ? icon->subtex.height : 1.0f;
+    float sx = w / iw;
+    float sy = h / ih;
+    if (alpha >= 255) {
+        C2D_DrawImageAt(icon->image, x, y, 0.0f, NULL, sx, sy);
+        return;
+    }
+    C2D_ImageTint tint;
+    C2D_PlainImageTint(&tint, C2D_Color32(255, 255, 255, alpha), 0.0f);
+    C2D_DrawImageAt(icon->image, x, y, 0.0f, &tint, sx, sy);
+}
+
+static float align_offset_from_center(float center_norm, float box_h) {
+    return (0.5f - center_norm) * box_h;
 }
 
 static bool product_matches(const char* prod, const char* want) {
@@ -403,7 +665,7 @@ static void draw_text(float x, float y, float scale, u32 color, const char* str)
     C2D_DrawText(&text, C2D_WithColor, x, y, 0.0f, scale, scale, color);
 }
 
-static void draw_text_centered(float x, float y, float scale, u32 color, float box_h, const char* str) {
+static void draw_text_centered_bias(float x, float y, float scale, u32 color, float box_h, const char* str, float bias) {
     C2D_Text text;
     if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
     else C2D_TextParse(&text, g_textbuf, str);
@@ -411,8 +673,12 @@ static void draw_text_centered(float x, float y, float scale, u32 color, float b
     float w = 0.0f;
     float h = 0.0f;
     C2D_TextGetDimensions(&text, scale, scale, &w, &h);
-    float ty = y + (box_h - h) * 0.5f - 3.0f;
+    float ty = y + (box_h - h) * 0.5f + bias;
     C2D_DrawText(&text, C2D_WithColor, x, ty, 0.0f, scale, scale, color);
+}
+
+static void draw_text_centered(float x, float y, float scale, u32 color, float box_h, const char* str) {
+    draw_text_centered_bias(x, y, scale, color, box_h, str, -3.0f);
 }
 
 static float text_width(float scale, const char* str) {
@@ -1029,10 +1295,8 @@ static void draw_system_info(float x, float y) {
 
 static void draw_status_bar(void) {
     float y = TOP_H - g_status_h;
-    if (g_theme.status_loaded) {
-        draw_theme_image(&g_theme.status_tex, 0.0f, y, 1.0f);
-    }
-    draw_rect(0, y, TOP_W, g_status_h, g_theme.status_bg);
+    u32 status_bg = overlay_color(g_theme.status_bg, g_top_bg_tex.loaded);
+    draw_rect(0, y, TOP_W, g_status_h, status_bg);
 
     char timebuf[16];
     time_t now = time(NULL);
@@ -1048,7 +1312,7 @@ static void draw_status_bar(void) {
     } else {
         copy_str(timebuf, sizeof(timebuf), "--:--");
     }
-    draw_text_centered(8, y, 0.55f, g_theme.status_text, g_status_h, timebuf);
+    draw_text_centered(8, y + g_theme.status_text_offset_y, 0.55f, g_theme.status_text, g_status_h, timebuf);
 
     u8 batt = 0;
     u8 charging = 0;
@@ -1070,7 +1334,7 @@ static void draw_status_bar(void) {
     float batt_x = TOP_W - 8 - batt_w;
     float batt_y = y + (g_status_h - batt_h) * 0.5f;
     float percent_x = batt_x - 4 - batt_text_w;
-    draw_text_centered(percent_x, y, 0.5f, g_theme.status_text, g_status_h, battbuf);
+    draw_text_centered(percent_x, y + g_theme.status_text_offset_y, 0.5f, g_theme.status_text, g_status_h, battbuf);
 
     float wifi_w = 19.0f;
     float wifi_x = percent_x - 6 - wifi_w;
@@ -1102,10 +1366,12 @@ static void draw_status_bar(void) {
 }
 
 static void draw_help_bar(const char* label) {
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, g_theme.help_line);
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, g_theme.help_line);
-    draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, g_theme.help_bg);
-    draw_text(6, BOTTOM_H - HELP_BAR_H + 2, 0.6f, g_theme.help_text, label);
+    u32 help_line = overlay_color(g_theme.help_line, g_bottom_bg_tex.loaded);
+    u32 help_bg = overlay_color(g_theme.help_bg, g_bottom_bg_tex.loaded);
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, help_line);
+    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, help_line);
+    draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, help_bg);
+    draw_text(6, BOTTOM_H - HELP_BAR_H + 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
 }
 
 
@@ -1150,6 +1416,7 @@ static void preload_nds_page(const TargetState* ts, const DirCache* cache, int v
 }
 
 static void refresh_options_menu(const Config* cfg) {
+    scan_backgrounds(&g_state);
     g_option_count = 0;
     OptionItem* o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Rebuild NDS cache");
@@ -1178,6 +1445,21 @@ static void refresh_options_menu(const Config* cfg) {
     o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Themes...");
     o->action = OPTION_ACTION_THEME_MENU;
+
+    char bg_label[96];
+    background_label(g_top_bg_names[g_top_bg_index], bg_label, sizeof(bg_label));
+    o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Top background: %s", bg_label);
+    o->action = OPTION_ACTION_TOP_BACKGROUND;
+
+    background_label(g_bottom_bg_names[g_bottom_bg_index], bg_label, sizeof(bg_label));
+    o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Bottom background: %s", bg_label);
+    o->action = OPTION_ACTION_BOTTOM_BACKGROUND;
+
+    o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Background visibility: %d%%", clamp_pct(g_state.background_visibility));
+    o->action = OPTION_ACTION_BG_VISIBILITY;
 
     o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Select NTR launcher");
@@ -1302,6 +1584,21 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         if (options_mode) *options_mode = 1;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_TOP_BACKGROUND) {
+        build_background_options(true, state);
+        if (options_mode) *options_mode = 2;
+        if (options_selection) *options_selection = 0;
+        if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_BOTTOM_BACKGROUND) {
+        build_background_options(false, state);
+        if (options_mode) *options_mode = 3;
+        if (options_selection) *options_selection = 0;
+        if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_BG_VISIBILITY) {
+        build_bg_visibility_options(state->background_visibility);
+        if (options_mode) *options_mode = 4;
+        if (options_selection) *options_selection = 0;
+        if (options_scroll) *options_scroll = 0;
     } else if (action == OPTION_ACTION_AUTOBOOT_STATUS) {
         snprintf(status_message, status_size, "Autoboot enabled");
     } else if (action == OPTION_ACTION_ABOUT) {
@@ -1315,6 +1612,7 @@ int main(int argc, char** argv) {
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
     C2D_Init(8192);
     C2D_Prepare();
+    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
     audio_init();
     ptmuInit();
     acInit();
@@ -1388,10 +1686,22 @@ int main(int argc, char** argv) {
 
     if (!cfg->remember_last_position) {
         char saved_theme[32];
+        char saved_top_bg[64];
+        char saved_bottom_bg[64];
+        int saved_vis = state->background_visibility;
         copy_str(saved_theme, sizeof(saved_theme), state->theme);
+        copy_str(saved_top_bg, sizeof(saved_top_bg), state->top_background);
+        copy_str(saved_bottom_bg, sizeof(saved_bottom_bg), state->bottom_background);
         memset(state, 0, sizeof(*state));
         copy_str(state->last_target, sizeof(state->last_target), cfg->default_target);
         if (saved_theme[0]) copy_str(state->theme, sizeof(state->theme), saved_theme);
+        if (saved_top_bg[0]) copy_str(state->top_background, sizeof(state->top_background), saved_top_bg);
+        if (saved_bottom_bg[0]) copy_str(state->bottom_background, sizeof(state->bottom_background), saved_bottom_bg);
+        state->background_visibility = saved_vis;
+    }
+
+    if (state->background_visibility < 0 || state->background_visibility > 100) {
+        state->background_visibility = 25;
     }
 
     apply_theme_from_state_or_config(cfg, state);
@@ -1512,7 +1822,12 @@ int main(int argc, char** argv) {
 
         if (options_open) {
             int visible = (BOTTOM_H - HELP_BAR_H - 10) / g_list_item_h;
-            int active_count = (g_options_mode == 0) ? g_option_count : g_theme_option_count;
+            int active_count = g_option_count;
+            if (g_options_mode == 1) active_count = g_theme_option_count;
+            else if (g_options_mode == 2) active_count = g_top_bg_option_count;
+            else if (g_options_mode == 3) active_count = g_bottom_bg_option_count;
+            else if (g_options_mode == 4) active_count = g_bg_vis_option_count;
+            if (active_count <= 0) active_count = 1;
             int prev = options_selection;
             if (rep_up) options_selection--;
             if (rep_down) options_selection++;
@@ -1528,7 +1843,7 @@ int main(int argc, char** argv) {
                 if (g_options_mode == 0) {
                     handle_option_action(options_selection, cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer, &g_options_mode, &options_selection, &options_scroll);
                     audio_play(SOUND_SELECT);
-                } else {
+                } else if (g_options_mode == 1) {
                     if (options_selection == 0) {
                         g_options_mode = 0;
                         options_selection = 0;
@@ -1555,10 +1870,47 @@ int main(int argc, char** argv) {
                         }
                         audio_play(SOUND_SELECT);
                     }
+                } else if (g_options_mode == 2 || g_options_mode == 3) {
+                    bool top = (g_options_mode == 2);
+                    if (options_selection == 0) {
+                        g_options_mode = 0;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        refresh_options_menu(cfg);
+                        audio_play(SOUND_BACK);
+                    } else {
+                        int idx = options_selection - 1;
+                        set_background_from_index(top, idx, state, status_message, sizeof(status_message));
+                        refresh_options_menu(cfg);
+                        build_background_options(top, state);
+                        options_selection = idx + 1;
+                        clamp_scroll_list(&options_scroll, options_selection, visible, top ? g_top_bg_option_count : g_bottom_bg_option_count);
+                        state_dirty = true;
+                        status_timer = 90;
+                        audio_play(SOUND_SELECT);
+                    }
+                } else if (g_options_mode == 4) {
+                    if (options_selection == 0) {
+                        g_options_mode = 0;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        refresh_options_menu(cfg);
+                        audio_play(SOUND_BACK);
+                    } else {
+                        int idx = options_selection - 1;
+                        set_bg_visibility_from_index(idx, state, status_message, sizeof(status_message));
+                        refresh_options_menu(cfg);
+                        build_bg_visibility_options(state->background_visibility);
+                        options_selection = idx + 1;
+                        clamp_scroll_list(&options_scroll, options_selection, visible, g_bg_vis_option_count);
+                        state_dirty = true;
+                        status_timer = 90;
+                        audio_play(SOUND_SELECT);
+                    }
                 }
             }
             if (kDown & KEY_B) {
-                if (g_options_mode == 1) {
+                if (g_options_mode != 0) {
                     g_options_mode = 0;
                     options_selection = 0;
                     options_scroll = 0;
@@ -1737,16 +2089,13 @@ int main(int argc, char** argv) {
 
         C2D_SceneBegin(g_top);
         C2D_TextBufClear(g_textbuf);
-        if (g_theme.top_loaded) {
-            draw_theme_image(&g_theme.top_tex, 0.0f, 0.0f, 1.0f);
+        if (g_top_bg_tex.loaded) {
+            draw_theme_image_scaled(&g_top_bg_tex, 0.0f, 0.0f, TOP_W, TOP_H);
         }
 
-        u32 panel_left = g_theme.panel_left;
-        u32 panel_right = g_theme.panel_right;
-        if (g_theme.top_loaded) {
-            panel_left = scale_alpha(panel_left, 3, 4);
-            panel_right = scale_alpha(panel_right, 3, 4);
-        }
+        bool top_has_bg = g_top_bg_tex.loaded;
+        u32 panel_left = overlay_color(g_theme.panel_left, top_has_bg);
+        u32 panel_right = overlay_color(g_theme.panel_right, top_has_bg);
         draw_rect(0, 0, PREVIEW_W, TOP_H, panel_left);
         draw_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, panel_right);
 
@@ -1832,7 +2181,8 @@ int main(int argc, char** argv) {
             float info_y = 8 + ((float)g_line_spacing * text_scale * max_lines) + 8.0f;
             draw_system_info(8, info_y);
         } else {
-            draw_rect(8, banner_y, 96, 96, g_theme.preview_bg);
+            u32 preview_bg = overlay_color(g_theme.preview_bg, top_has_bg);
+            draw_rect(8, banner_y, 96, 96, preview_bg);
             if (preview_tinfo) {
                 char tidbuf[32];
                 snprintf(tidbuf, sizeof(tidbuf), "TID: %016llX", (unsigned long long)preview_tinfo->titleId);
@@ -1934,6 +2284,11 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if (!show_system_info && g_theme.preview_frame_loaded) {
+            float off = align_offset_from_center(g_theme.preview_frame_center_y, 96.0f);
+            u8 alpha = overlay_alpha(top_has_bg);
+            draw_theme_image_scaled_alpha(&g_theme.preview_frame_tex, 8.0f, banner_y + off, 96.0f, 96.0f, alpha);
+        }
         if (!show_system_info && !drew_icon) {
             draw_text(12, banner_y + 36, 0.6f, g_theme.text_muted, "Preview");
         }
@@ -1954,36 +2309,83 @@ int main(int argc, char** argv) {
         int target_visible = (TOP_H - g_status_h) / g_list_item_h;
         int target_scroll = 0;
         clamp_scroll_list(&target_scroll, current_target, target_visible, cfg->target_count);
+        u8 tab_alpha = overlay_alpha(top_has_bg);
         for (int i = 0; i < target_visible; i++) {
             int idx = target_scroll + i;
             if (idx >= cfg->target_count) break;
             int y = i * g_list_item_h + 2;
-            u32 color = (idx == current_target) ? g_theme.tab_sel : g_theme.tab_bg;
-            draw_rect(PREVIEW_W + 2, y, TARGET_LIST_W - 4, g_list_item_h - 2, color);
-            draw_text_centered(PREVIEW_W + 6, y, 0.7f, g_theme.tab_text, g_list_item_h - 2, cfg->targets[idx].label);
+            int row_y = y + 1;
+            int row_h = g_list_item_h - 2;
+            bool sel = (idx == current_target);
+            if (sel && g_theme.tab_sel_loaded) {
+                float off = align_offset_from_center(g_theme.tab_sel_center_y, row_h);
+                draw_theme_image_scaled_alpha(&g_theme.tab_sel_tex, PREVIEW_W + 2, row_y + g_theme.tab_item_offset_y + off, TARGET_LIST_W - 4, row_h, tab_alpha);
+            } else if (!sel && g_theme.tab_item_loaded) {
+                float off = align_offset_from_center(g_theme.tab_item_center_y, row_h);
+                draw_theme_image_scaled_alpha(&g_theme.tab_item_tex, PREVIEW_W + 2, row_y + g_theme.tab_item_offset_y + off, TARGET_LIST_W - 4, row_h, tab_alpha);
+            } else {
+                u32 color = overlay_color(sel ? g_theme.tab_sel : g_theme.tab_bg, top_has_bg);
+                draw_rect(PREVIEW_W + 2, row_y, TARGET_LIST_W - 4, row_h, color);
+            }
+            float tab_bias = -2.0f;
+            if (sel && g_theme.tab_sel_loaded) tab_bias = align_offset_from_center(g_theme.tab_sel_center_y, row_h);
+            else if (!sel && g_theme.tab_item_loaded) tab_bias = align_offset_from_center(g_theme.tab_item_center_y, row_h);
+            draw_text_centered_bias(PREVIEW_W + 6, row_y + g_theme.tab_text_offset_y, 0.7f, g_theme.tab_text, row_h, cfg->targets[idx].label, tab_bias);
         }
 
         draw_status_bar();
 
         C2D_SceneBegin(g_bottom);
         C2D_TextBufClear(g_textbuf);
-        if (g_theme.bottom_loaded) {
-            draw_theme_image(&g_theme.bottom_tex, 0.0f, 0.0f, 1.0f);
+        if (g_bottom_bg_tex.loaded) {
+            draw_theme_image_scaled(&g_bottom_bg_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H);
         }
+        bool bottom_has_bg = g_bottom_bg_tex.loaded;
+        u8 bottom_alpha = overlay_alpha(bottom_has_bg);
 
         if (options_open) {
-            OptionItem* list = (g_options_mode == 0) ? g_options : g_theme_options;
-            int count = (g_options_mode == 0) ? g_option_count : g_theme_option_count;
-            draw_rect(0, 0, BOTTOM_W, BOTTOM_H, g_theme.overlay_bg);
-            draw_text(8, 6, 0.7f, g_theme.option_header, (g_options_mode == 0) ? "Options" : "Themes");
+            OptionItem* list = g_options;
+            int count = g_option_count;
+            const char* header = "Options";
+            if (g_options_mode == 1) {
+                list = g_theme_options;
+                count = g_theme_option_count;
+                header = "Themes";
+            } else if (g_options_mode == 2) {
+                list = g_top_bg_options;
+                count = g_top_bg_option_count;
+                header = "Top background";
+            } else if (g_options_mode == 3) {
+                list = g_bottom_bg_options;
+                count = g_bottom_bg_option_count;
+                header = "Bottom background";
+            } else if (g_options_mode == 4) {
+                list = g_bg_vis_options;
+                count = g_bg_vis_option_count;
+                header = "Background visibility";
+            }
+            draw_rect(0, 0, BOTTOM_W, BOTTOM_H, overlay_color(g_theme.overlay_bg, bottom_has_bg));
+            draw_text(8, 6, 0.7f, g_theme.option_header, header);
             int visible = (BOTTOM_H - HELP_BAR_H - 20) / g_list_item_h;
             for (int i = 0; i < visible; i++) {
                 int idx = options_scroll + i;
                 if (idx >= count) break;
                 int y = 24 + i * g_list_item_h;
-                u32 color = (idx == options_selection) ? g_theme.option_sel : g_theme.option_bg;
-                draw_rect(6, y, BOTTOM_W - 12, g_list_item_h - 2, color);
-                draw_text_centered(10, y, 0.6f, g_theme.option_text, g_list_item_h - 2, list[idx].label);
+                bool sel = (idx == options_selection);
+                if (sel && g_theme.option_sel_loaded) {
+                    float off = align_offset_from_center(g_theme.option_sel_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.option_sel_tex, 6, y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else if (!sel && g_theme.option_item_loaded) {
+                    float off = align_offset_from_center(g_theme.option_item_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.option_item_tex, 6, y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else {
+                    u32 color = overlay_color(sel ? g_theme.option_sel : g_theme.option_bg, bottom_has_bg);
+                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                }
+                float opt_bias = -2.0f;
+                if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, g_list_item_h);
+                else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, g_list_item_h);
+                draw_text_centered_bias(10, y + g_theme.option_text_offset_y, 0.6f, g_theme.option_text, g_list_item_h, list[idx].label, opt_bias);
             }
             if (kDown & KEY_SELECT) {
                 if (!g_select_last) g_select_hits++;
@@ -2014,8 +2416,17 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * g_list_item_h;
-                u32 color = (idx == ts->selection) ? g_theme.list_sel : g_theme.list_bg;
-                draw_rect(6, y, BOTTOM_W - 12, g_list_item_h - 2, color);
+                bool sel = (idx == ts->selection);
+                if (sel && g_theme.list_sel_loaded) {
+                    float off = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else if (!sel && g_theme.list_item_loaded) {
+                    float off = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else {
+                    u32 color = overlay_color(sel ? g_theme.list_sel : g_theme.list_bg, bottom_has_bg);
+                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                }
                 char shortname[56];
                 TitleInfo3ds* t = title_user_at(idx);
                 if (!t) continue;
@@ -2026,7 +2437,10 @@ int main(int argc, char** argv) {
                     shortname[29] = '.';
                     shortname[30] = 0;
                 }
-                draw_text_centered(12, y, 0.6f, g_theme.list_text, g_list_item_h - 2, shortname);
+                float list_bias = -2.0f;
+                if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, shortname, list_bias);
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
@@ -2036,10 +2450,22 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * g_list_item_h;
-                u32 color = (idx == ts->selection) ? g_theme.list_sel : g_theme.list_bg;
-                draw_rect(6, y, BOTTOM_W - 12, g_list_item_h - 2, color);
+                bool sel = (idx == ts->selection);
+                if (sel && g_theme.list_sel_loaded) {
+                    float off = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else if (!sel && g_theme.list_item_loaded) {
+                    float off = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else {
+                    u32 color = overlay_color(sel ? g_theme.list_sel : g_theme.list_bg, bottom_has_bg);
+                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                }
                 if (idx == 0) {
-                    draw_text_centered(12, y, 0.6f, g_theme.list_text, g_list_item_h - 2, "Return to HOME");
+                    float list_bias = -2.0f;
+                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                    draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, "Return to HOME", list_bias);
                 } else {
                     TitleInfo3ds* t = title_system_at(idx - 1);
                     if (!t) continue;
@@ -2051,7 +2477,10 @@ int main(int argc, char** argv) {
                         shortname[29] = '.';
                         shortname[30] = 0;
                     }
-                    draw_text_centered(12, y, 0.6f, g_theme.list_text, g_list_item_h - 2, shortname);
+                    float list_bias = -2.0f;
+                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                    draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, shortname, list_bias);
                 }
             }
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
@@ -2060,12 +2489,30 @@ int main(int argc, char** argv) {
             bool show_card = show_nds_card(target, ts);
             int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
             int total = cache->count + card_offset;
+            int list_x = 6;
+            int list_y = 6;
+            int list_w = BOTTOM_W - 12;
+            int list_h = BOTTOM_H - HELP_BAR_H - 8;
+            u32 border = overlay_color(g_theme.help_line, bottom_has_bg);
+            draw_rect(list_x, list_y, list_w, 1, border);
+            draw_rect(list_x, list_y + list_h - 1, list_w, 1, border);
+            draw_rect(list_x, list_y, 1, list_h, border);
+            draw_rect(list_x + list_w - 1, list_y, 1, list_h, border);
             for (int i = 0; i < visible; i++) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * g_list_item_h;
-                u32 color = (idx == ts->selection) ? g_theme.list_sel : g_theme.list_bg;
-                draw_rect(6, y, BOTTOM_W - 12, g_list_item_h - 2, color);
+                bool sel = (idx == ts->selection);
+                if (sel && g_theme.list_sel_loaded) {
+                    float off = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else if (!sel && g_theme.list_item_loaded) {
+                    float off = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                } else {
+                    u32 color = overlay_color(sel ? g_theme.list_sel : g_theme.list_bg, bottom_has_bg);
+                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                }
                 char label_buf[256];
                 if (card_offset && idx == 0) {
                     if (g_card_twl_title[0]) copy_str(label_buf, sizeof(label_buf), g_card_twl_title);
@@ -2081,7 +2528,10 @@ int main(int argc, char** argv) {
                     }
                 }
                 float text_x = 10.0f;
-                draw_text_centered(text_x, y, 0.6f, g_theme.list_text, g_list_item_h - 2, label_buf);
+                float list_bias = -2.0f;
+                if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
+                else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
+                draw_text_centered_bias(text_x, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, label_buf, list_bias);
             }
         } else {
             draw_text(8, 10, 0.7f, g_theme.text_primary, "System Menu");
@@ -2112,6 +2562,10 @@ int main(int argc, char** argv) {
 
     save_state(state);
 
+    icon_free(&g_top_bg_tex);
+    icon_free(&g_bottom_bg_tex);
+    icon_free(&g_title_preview_icon);
+    icon_free(&g_hb_preview_icon);
     if (g_font) C2D_FontFree(g_font);
     C2D_TextBufDelete(g_textbuf);
     C2D_Fini();

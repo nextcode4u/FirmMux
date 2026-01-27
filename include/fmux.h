@@ -23,6 +23,9 @@
 #define DEBUG_ICON_PATH DEBUG_DIR "/icon"
 #define SYSTEM_BLACKLIST_PATH "sdmc:/3ds/FirmMux/system_blacklist.txt"
 #define SYSTEM_ALIAS_PATH "sdmc:/3ds/FirmMux/system_aliases.txt"
+#define BACKGROUNDS_DIR "sdmc:/3ds/FirmMux/backgrounds"
+#define BACKGROUNDS_TOP_DIR BACKGROUNDS_DIR "/top"
+#define BACKGROUNDS_BOTTOM_DIR BACKGROUNDS_DIR "/bottom"
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 
@@ -31,6 +34,7 @@
 #define MAX_ENTRIES 1024
 #define MAX_OPTIONS 32
 #define MAX_THEMES 32
+#define MAX_BACKGROUNDS 64
 
 #define TOP_W 400
 #define TOP_H 240
@@ -96,6 +100,9 @@ typedef struct {
 typedef struct {
     char last_target[32];
     char theme[32];
+    char top_background[64];
+    char bottom_background[64];
+    int background_visibility;
     TargetState entries[MAX_TARGETS];
     int count;
 } State;
@@ -121,6 +128,9 @@ typedef enum {
     OPTION_ACTION_SELECT_LAUNCHER,
     OPTION_ACTION_SELECT_CARD_LAUNCHER,
     OPTION_ACTION_THEME_MENU,
+    OPTION_ACTION_TOP_BACKGROUND,
+    OPTION_ACTION_BOTTOM_BACKGROUND,
+    OPTION_ACTION_BG_VISIBILITY,
     OPTION_ACTION_AUTOBOOT_STATUS,
     OPTION_ACTION_ABOUT
 } OptionAction;
@@ -175,10 +185,45 @@ typedef struct {
     char bottom_image[64];
     char status_strip[64];
     char sprite_icon[64];
+    char list_item_image[64];
+    char list_sel_image[64];
+    char tab_item_image[64];
+    char tab_sel_image[64];
+    char option_item_image[64];
+    char option_sel_image[64];
+    char preview_frame[64];
+    char help_strip[64];
+    int list_item_offset_y;
+    int list_text_offset_y;
+    int tab_item_offset_y;
+    int tab_text_offset_y;
+    int option_item_offset_y;
+    int option_text_offset_y;
+    int help_text_offset_y;
+    int status_text_offset_y;
+    float list_item_center_y;
+    float list_sel_center_y;
+    float tab_item_center_y;
+    float tab_sel_center_y;
+    float option_item_center_y;
+    float option_sel_center_y;
+    float preview_frame_center_y;
+    float help_strip_center_y;
+    float status_strip_center_y;
+    bool image_swap_rb;
+    char image_channel_order[8];
     IconTexture top_tex;
     IconTexture bottom_tex;
     IconTexture status_tex;
     IconTexture sprite_tex;
+    IconTexture list_item_tex;
+    IconTexture list_sel_tex;
+    IconTexture tab_item_tex;
+    IconTexture tab_sel_tex;
+    IconTexture option_item_tex;
+    IconTexture option_sel_tex;
+    IconTexture preview_frame_tex;
+    IconTexture help_tex;
     int top_w;
     int top_h;
     int bottom_w;
@@ -187,10 +232,34 @@ typedef struct {
     int status_h_img;
     int sprite_w;
     int sprite_h;
+    int list_item_w;
+    int list_item_h_img;
+    int list_sel_w;
+    int list_sel_h_img;
+    int tab_item_w;
+    int tab_item_h_img;
+    int tab_sel_w;
+    int tab_sel_h_img;
+    int option_item_w;
+    int option_item_h_img;
+    int option_sel_w;
+    int option_sel_h_img;
+    int preview_frame_w;
+    int preview_frame_h;
+    int help_w;
+    int help_h;
     bool top_loaded;
     bool bottom_loaded;
     bool status_loaded;
     bool sprite_loaded;
+    bool list_item_loaded;
+    bool list_sel_loaded;
+    bool tab_item_loaded;
+    bool tab_sel_loaded;
+    bool option_item_loaded;
+    bool option_sel_loaded;
+    bool preview_frame_loaded;
+    bool help_loaded;
 } Theme;
 
 typedef struct {

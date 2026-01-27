@@ -1,0 +1,13 @@
+# One entry per line. Matches TitleID (hex), Product Code (CTR-...), or title text.
+CTR-N-HKY?
+CTR-N-HMV?
+CTR-N-HCC?
+CTR-N-HMC?
+CTR-N-HMS?
+CTR-N-HAA?
+CTR-N-HAH?
+CTR-N-HCS?
+CTR-P-CTAP
+CTR-P-HMM?
+CTR-N-HSH?
+CTR-N-HCB?

@@ -1,0 +1,41 @@
+name: Synthwave Hass
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x2A2139
+bottom_bg: 0x241B2F
+panel_left: 0xCC34294F
+panel_right: 0xCC34294F
+preview_bg: 0xCC34294F
+
+text_primary: 0xFFFFFFFF
+text_secondary: 0xCAFFFFFF
+text_muted: 0xFFBDBDBD
+
+tab_bg: 0xCC241B2F
+tab_sel: 0xFFF92AAD
+tab_text: 0xFFFFFFFF
+
+list_bg: 0xCC34294F
+list_sel: 0xFFF92AAD
+list_text: 0xFFFFFFFF
+
+option_bg: 0xCC241B2F
+option_sel: 0xFFF92AAD
+option_text: 0xFFFFFFFF
+option_header: 0xFFF4EEE4
+
+overlay_bg: 0xD02A2139
+help_bg: 0xFF241B2F
+help_line: 0x39495495
+help_text: 0xFFFFFFFF
+
+status_bg: 0xFF241B2F
+status_text: 0xFFFFFFFF
+status_icon: 0xFFFFFFFF
+status_dim: 0xFFBDBDBD
+status_bolt: 0xFFFFCC00
+
+toast_bg: 0xD02A2139
+toast_text: 0xFFFFFFFF

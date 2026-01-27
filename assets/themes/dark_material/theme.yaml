@@ -1,0 +1,41 @@
+name: Dark Material
+list_item_h: 24
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x121212
+bottom_bg: 0x121212
+panel_left: 0xAA1E1E1E
+panel_right: 0xAA1E1E1E
+preview_bg: 0xAA1F1F1F
+
+text_primary: 0xFFFFFFFF
+text_secondary: 0xFFE0E0E0
+text_muted: 0xFFB0B0B0
+
+tab_bg: 0xAA232323
+tab_sel: 0xFFBB86FC
+tab_text: 0xFFFFFFFF
+
+list_bg: 0xAA1F1F1F
+list_sel: 0xFFBB86FC
+list_text: 0xFFFFFFFF
+
+option_bg: 0xAA232323
+option_sel: 0xFFBB86FC
+option_text: 0xFFFFFFFF
+option_header: 0xFFFFFFFF
+
+overlay_bg: 0xD0121212
+help_bg: 0xFF1E1E1E
+help_line: 0xFF2C2C2C
+help_text: 0xFFFFFFFF
+
+status_bg: 0x00000000
+status_text: 0xFFFFFFFF
+status_icon: 0xFFFFFFFF
+status_dim: 0xFF9E9E9E
+status_bolt: 0xFFFFD54F
+
+toast_bg: 0xD01E1E1E
+toast_text: 0xFFFFFFFF

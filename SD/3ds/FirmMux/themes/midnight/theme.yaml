@@ -1,0 +1,41 @@
+name: Midnight
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x081225
+bottom_bg: 0x0A1830
+panel_left: 0x11284A
+panel_right: 0x0E223F
+preview_bg: 0x18345E
+
+text_primary: 0xEAF2FF
+text_secondary: 0xBFD4F2
+text_muted: 0x8AA4CC
+
+tab_bg: 0x12305A
+tab_sel: 0x3D7BFF
+tab_text: 0xEAF2FF
+
+list_bg: 0x11284A
+list_sel: 0x3566CC
+list_text: 0xEAF2FF
+
+option_bg: 0x12305A
+option_sel: 0x2C4F99
+option_text: 0xEAF2FF
+option_header: 0xF5F8FF
+
+overlay_bg: 0xCC081225
+help_bg: 0x0B1A33
+help_line: 0x335A99
+help_text: 0xDCE9FF
+
+status_bg: 0x0B1A33
+status_text: 0xDCE9FF
+status_icon: 0xCFE0FF
+status_dim: 0x335A99
+status_bolt: 0xFFD36A
+
+toast_bg: 0xCC0A1830
+toast_text: 0xF5F8FF

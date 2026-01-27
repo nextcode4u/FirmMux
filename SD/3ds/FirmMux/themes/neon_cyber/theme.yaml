@@ -1,0 +1,41 @@
+name: Neon Cyber
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x05060A
+bottom_bg: 0x0A0B12
+panel_left: 0x111226
+panel_right: 0x0F1022
+preview_bg: 0x1A1C3A
+
+text_primary: 0xE8F9FF
+text_secondary: 0xB7ECFF
+text_muted: 0x6FB8D6
+
+tab_bg: 0x131642
+tab_sel: 0x00E5FF
+tab_text: 0xE8F9FF
+
+list_bg: 0x111226
+list_sel: 0x00A6CC
+list_text: 0xE8F9FF
+
+option_bg: 0x131642
+option_sel: 0xFF2BD6
+option_text: 0xE8F9FF
+option_header: 0xFFFFFF
+
+overlay_bg: 0xCC05060A
+help_bg: 0x0B0D1E
+help_line: 0x00E5FF
+help_text: 0xE8F9FF
+
+status_bg: 0x0B0D1E
+status_text: 0xE8F9FF
+status_icon: 0x00E5FF
+status_dim: 0x254F66
+status_bolt: 0xFFD36A
+
+toast_bg: 0xCC05060A
+toast_text: 0xE8F9FF

@@ -1,0 +1,41 @@
+name: Sandstone
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x2A221A
+bottom_bg: 0x33281E
+panel_left: 0x4A3A2A
+panel_right: 0x423428
+preview_bg: 0x5A4836
+
+text_primary: 0xF8F1E7
+text_secondary: 0xE4D4BF
+text_muted: 0xB59A7C
+
+tab_bg: 0x5A4836
+tab_sel: 0xC58A3A
+tab_text: 0xF8F1E7
+
+list_bg: 0x4A3A2A
+list_sel: 0xA57232
+list_text: 0xF8F1E7
+
+option_bg: 0x5A4836
+option_sel: 0x8C5C28
+option_text: 0xF8F1E7
+option_header: 0xFFF8EE
+
+overlay_bg: 0xCC2A221A
+help_bg: 0x3A2E22
+help_line: 0x8C6A3A
+help_text: 0xF2E6D5
+
+status_bg: 0x3A2E22
+status_text: 0xF2E6D5
+status_icon: 0xE8D6BE
+status_dim: 0x8C6A3A
+status_bolt: 0xFFD36A
+
+toast_bg: 0xCC2A221A
+toast_text: 0xFFF8EE

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "mode": "pure-retroarch-3dsx",
+  "retroarch_entry": "sd:/3ds/RetroArch/retroarch.3dsx",
+  "handoff_path": "sd:/3ds/firmmux/launch.json",
+  "rules": [
+    {"match":{"folder":"a26","ext":["a26"]},"core":"Stella 2014"},
+    {"match":{"folder":"a52","ext":["a52"]},"core":"Atari800"},
+    {"match":{"folder":"a78","ext":["a78"]},"core":"ProSystem"},
+    {"match":{"folder":"col","ext":["col"]},"core":"blueMSX"},
+    {"match":{"folder":"cpc","ext":["dsk","cdt","cpr"]},"core":"Caprice32"},
+    {"match":{"folder":"gb","ext":["gb","gbc"]},"core":"Gambatte"},
+    {"match":{"folder":"gen","ext":["gen","md","smd","bin"]},"core":"Genesis Plus GX"},
+    {"match":{"folder":"gg","ext":["gg"]},"core":"Genesis Plus GX"},
+    {"match":{"folder":"intv","ext":["int","bin","rom"]},"core":"FreeIntv"},
+    {"match":{"folder":"m5","ext":["bin"]},"core":"O2EM"},
+    {"match":{"folder":"nes","ext":["nes"]},"core":"Nestopia UE"},
+    {"match":{"folder":"ngp","ext":["ngp","ngc"]},"core":"Beetle NeoPop"},
+    {"match":{"folder":"pkmni","ext":["min"]},"core":"PokeMini"},
+    {"match":{"folder":"sg","ext":["sg"]},"core":"Genesis Plus GX"},
+    {"match":{"folder":"sms","ext":["sms"]},"core":"Genesis Plus GX"},
+    {"match":{"folder":"snes","ext":["smc","sfc"]},"core":"Snes9x 2002"},
+    {"match":{"folder":"tg16","ext":["pce"]},"core":"Beetle PCE Fast"},
+    {"match":{"folder":"ws","ext":["ws","wsc"]},"core":"Beetle Cygne"}
+  ]
+}

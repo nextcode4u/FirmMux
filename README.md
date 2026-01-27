@@ -104,7 +104,38 @@ top_image:
 bottom_image:
 status_strip:
 sprite_icon:
+list_item_image:
+list_sel_image:
+tab_item_image:
+tab_sel_image:
+option_item_image:
+option_sel_image:
+preview_frame:
+help_strip:
+list_item_offset_y:
+list_text_offset_y:
+tab_item_offset_y:
+tab_text_offset_y:
+option_item_offset_y:
+option_text_offset_y:
+help_text_offset_y:
+status_text_offset_y:
+image_swap_rb:
+image_channel_order:
 ```
 
+Recommended asset sizes (scaled if different):
+- `top_image`: 400×240
+- `bottom_image`: 320×240
+- `status_strip`: 400×16 (matches `status_bar_h`)
+- `list_item_image` / `list_sel_image`: 308×(list_item_h)
+- `tab_item_image` / `tab_sel_image`: 146×(list_item_h)
+- `option_item_image` / `option_sel_image`: 308×(list_item_h)
+- `preview_frame`: 96×96
+- `help_strip`: 320×16
+
+Offsets are in pixels (can be negative) and are applied to theme assets/text for fine alignment.
+image_channel_order can be: rgb, bgr, grb, brg (or with an extra "a" anywhere, e.g. abgr). Alpha is always preserved from the source.
+
 Sample themes shipped in SD layout:
-`default`, `amber`, `cobalt`, `ember`, `epoxy_resin`, `glacier`, `graphite`, `sage`.
+`default`, `amber`, `cobalt`, `ember`, `epoxy_resin`, `glacier`, `graphite`, `sage`, `synthwave`.

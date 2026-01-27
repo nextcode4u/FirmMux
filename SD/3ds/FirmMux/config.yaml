@@ -1,0 +1,25 @@
+version: 1
+theme: default
+ui:
+  default_target: 3ds
+  remember_last_position: true
+  help_bar: true
+targets:
+  - id: system
+    type: system_menu
+    label: "System Menu"
+  - id: 3ds
+    type: installed_titles
+    label: "3DS Titles"
+    show_system_titles: false
+  - id: hbl
+    type: homebrew_browser
+    label: "Homebrew Launcher"
+    root: /3ds/
+  - id: nds
+    type: rom_browser
+    label: "NDS Titles"
+    root: /roms/nds/
+    extensions: [".nds", ".dsi"]
+    folders:
+      alpha_buckets: true

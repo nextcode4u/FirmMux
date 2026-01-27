@@ -1,0 +1,41 @@
+name: Sunset
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x2A0E1A
+bottom_bg: 0x3A1220
+panel_left: 0x4A1A28
+panel_right: 0x421524
+preview_bg: 0x5A2234
+
+text_primary: 0xFFF1E9
+text_secondary: 0xFFD8C6
+text_muted: 0xD6A28F
+
+tab_bg: 0x5A2234
+tab_sel: 0xFF7A3D
+tab_text: 0xFFF1E9
+
+list_bg: 0x4A1A28
+list_sel: 0xD85A2F
+list_text: 0xFFF1E9
+
+option_bg: 0x5A2234
+option_sel: 0xB8462A
+option_text: 0xFFF1E9
+option_header: 0xFFF8F2
+
+overlay_bg: 0xCC2A0E1A
+help_bg: 0x3A1220
+help_line: 0xA34A3A
+help_text: 0xFFEFE6
+
+status_bg: 0x3A1220
+status_text: 0xFFEFE6
+status_icon: 0xFFD9C8
+status_dim: 0xA34A3A
+status_bolt: 0xFFD36A
+
+toast_bg: 0xCC3A1220
+toast_text: 0xFFF8F2

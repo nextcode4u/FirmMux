@@ -1,7 +1,10 @@
 #include "fmux.h"
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "stb_image.h"
+
+static void reorder_channels(u8* data, int count, const char* order);
 
 static bool parse_color_value(const char* v, u32* out) {
     if (!v || !out) return false;
@@ -48,10 +51,26 @@ static void theme_free_images(Theme* t) {
     icon_free(&t->bottom_tex);
     icon_free(&t->status_tex);
     icon_free(&t->sprite_tex);
+    icon_free(&t->list_item_tex);
+    icon_free(&t->list_sel_tex);
+    icon_free(&t->tab_item_tex);
+    icon_free(&t->tab_sel_tex);
+    icon_free(&t->option_item_tex);
+    icon_free(&t->option_sel_tex);
+    icon_free(&t->preview_frame_tex);
+    icon_free(&t->help_tex);
     t->top_loaded = false;
     t->bottom_loaded = false;
     t->status_loaded = false;
     t->sprite_loaded = false;
+    t->list_item_loaded = false;
+    t->list_sel_loaded = false;
+    t->tab_item_loaded = false;
+    t->tab_sel_loaded = false;
+    t->option_item_loaded = false;
+    t->option_sel_loaded = false;
+    t->preview_frame_loaded = false;
+    t->help_loaded = false;
 }
 
 static bool build_theme_path(const char* folder, const char* rel, char* out, size_t out_size) {
@@ -64,7 +83,26 @@ static bool build_theme_path(const char* folder, const char* rel, char* out, siz
     return true;
 }
 
-static bool load_theme_image(const char* folder, const char* rel, IconTexture* icon, int* out_w, int* out_h, bool* loaded) {
+static float compute_alpha_center_norm(const u8* data, int w, int h) {
+    if (!data || w <= 0 || h <= 0) return 0.5f;
+    int min_y = h;
+    int max_y = -1;
+    for (int y = 0; y < h; y++) {
+        const u8* row = data + (size_t)y * (size_t)w * 4;
+        for (int x = 0; x < w; x++) {
+            if (row[x * 4 + 3] != 0) {
+                if (y < min_y) min_y = y;
+                if (y > max_y) max_y = y;
+                break;
+            }
+        }
+    }
+    if (max_y < min_y) return 0.5f;
+    float center = (min_y + max_y + 1) * 0.5f;
+    return center / (float)h;
+}
+
+static bool load_theme_image(const char* folder, const char* rel, IconTexture* icon, int* out_w, int* out_h, bool* loaded, const char* order, bool swap_rb, float* out_center_y) {
     if (!rel || !rel[0]) return false;
     char path[256];
     if (!build_theme_path(folder, rel, path, sizeof(path))) return false;
@@ -84,6 +122,10 @@ static bool load_theme_image(const char* folder, const char* rel, IconTexture* i
         if (data) stbi_image_free(data);
         return false;
     }
+    const char* use_order = order && order[0] ? order : "rgba";
+    if (swap_rb && (!order || !order[0])) use_order = "bgra";
+    if (use_order) reorder_channels(data, w * h, use_order);
+    if (out_center_y) *out_center_y = compute_alpha_center_norm(data, w, h);
     bool ok = icon_from_rgba(icon, data, w, h);
     stbi_image_free(data);
     if (ok) {
@@ -95,6 +137,34 @@ static bool load_theme_image(const char* folder, const char* rel, IconTexture* i
         debug_log("theme: upload failed %s", path);
     }
     return ok;
+}
+
+static void reorder_channels(u8* data, int count, const char* order) {
+    if (!data || !order) return;
+    char rgb[4] = {0,0,0,0};
+    int ri = 0;
+    for (size_t i = 0; order[i] && ri < 3; i++) {
+        char c = (char)tolower((unsigned char)order[i]);
+        if (c == 'a') continue;
+        if (c == 'r' || c == 'g' || c == 'b') {
+            rgb[ri++] = c;
+        }
+    }
+    if (ri < 3) return;
+    int map[3] = {0,1,2};
+    for (int i = 0; i < 3; i++) {
+        if (rgb[i] == 'r') map[i] = 0;
+        else if (rgb[i] == 'g') map[i] = 1;
+        else if (rgb[i] == 'b') map[i] = 2;
+    }
+    for (int i = 0; i < count; i++) {
+        u8* px = data + i * 4;
+        u8 src[4] = { px[0], px[1], px[2], px[3] };
+        px[0] = src[map[0]];
+        px[1] = src[map[1]];
+        px[2] = src[map[2]];
+        px[3] = src[3];
+    }
 }
 
 void theme_default(Theme* t) {
@@ -133,6 +203,25 @@ void theme_default(Theme* t) {
     t->status_bolt = C2D_Color32(255, 220, 80, 255);
     t->toast_bg = C2D_Color32(0, 0, 0, 200);
     t->toast_text = C2D_Color32(240, 240, 240, 255);
+    t->list_item_offset_y = 0;
+    t->list_text_offset_y = 0;
+    t->tab_item_offset_y = 0;
+    t->tab_text_offset_y = 0;
+    t->option_item_offset_y = 0;
+    t->option_text_offset_y = 0;
+    t->help_text_offset_y = 0;
+    t->status_text_offset_y = 0;
+    t->image_swap_rb = false;
+    copy_str(t->image_channel_order, sizeof(t->image_channel_order), "rgba");
+    t->list_item_center_y = 0.5f;
+    t->list_sel_center_y = 0.5f;
+    t->tab_item_center_y = 0.5f;
+    t->tab_sel_center_y = 0.5f;
+    t->option_item_center_y = 0.5f;
+    t->option_sel_center_y = 0.5f;
+    t->preview_frame_center_y = 0.5f;
+    t->help_strip_center_y = 0.5f;
+    t->status_strip_center_y = 0.5f;
 }
 
 bool load_theme(Theme* t, const char* name) {
@@ -140,7 +229,6 @@ bool load_theme(Theme* t, const char* name) {
     theme_free_images(t);
     theme_default(t);
     if (!name || !name[0]) return true;
-    const char* folder = name;
     copy_str(t->name, sizeof(t->name), name);
     char path[256];
     snprintf(path, sizeof(path), "sdmc:/3ds/FirmMux/themes/%s/theme.yaml", name);
@@ -180,6 +268,43 @@ bool load_theme(Theme* t, const char* name) {
                     copy_str(t->status_strip, sizeof(t->status_strip), val);
                 } else if (!strncmp(p, "sprite_icon:", 12)) {
                     copy_str(t->sprite_icon, sizeof(t->sprite_icon), val);
+                } else if (!strncmp(p, "list_item_image:", 16)) {
+                    copy_str(t->list_item_image, sizeof(t->list_item_image), val);
+                } else if (!strncmp(p, "list_sel_image:", 15)) {
+                    copy_str(t->list_sel_image, sizeof(t->list_sel_image), val);
+                } else if (!strncmp(p, "tab_item_image:", 15)) {
+                    copy_str(t->tab_item_image, sizeof(t->tab_item_image), val);
+                } else if (!strncmp(p, "tab_sel_image:", 14)) {
+                    copy_str(t->tab_sel_image, sizeof(t->tab_sel_image), val);
+                } else if (!strncmp(p, "option_item_image:", 18)) {
+                    copy_str(t->option_item_image, sizeof(t->option_item_image), val);
+                } else if (!strncmp(p, "option_sel_image:", 17)) {
+                    copy_str(t->option_sel_image, sizeof(t->option_sel_image), val);
+                } else if (!strncmp(p, "preview_frame:", 14)) {
+                    copy_str(t->preview_frame, sizeof(t->preview_frame), val);
+                } else if (!strncmp(p, "help_strip:", 11)) {
+                    copy_str(t->help_strip, sizeof(t->help_strip), val);
+                } else if (!strncmp(p, "list_item_offset_y:", 19)) {
+                    t->list_item_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "list_text_offset_y:", 19)) {
+                    t->list_text_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "tab_item_offset_y:", 18)) {
+                    t->tab_item_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "tab_text_offset_y:", 18)) {
+                    t->tab_text_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "option_item_offset_y:", 21)) {
+                    t->option_item_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "option_text_offset_y:", 21)) {
+                    t->option_text_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "help_text_offset_y:", 19)) {
+                    t->help_text_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "status_text_offset_y:", 21)) {
+                    t->status_text_offset_y = clamp_int(atoi(val), -8, 8);
+                } else if (!strncmp(p, "image_swap_rb:", 14)) {
+                    bool b = false;
+                    if (parse_bool(val, &b)) t->image_swap_rb = b;
+                } else if (!strncmp(p, "image_channel_order:", 20)) {
+                    copy_str(t->image_channel_order, sizeof(t->image_channel_order), val);
                 } else {
                     u32 c;
                     if (parse_color_value(val, &c)) {
@@ -219,10 +344,6 @@ bool load_theme(Theme* t, const char* name) {
         if (!end) break;
         p = end + 1;
     }
-    if (t->top_image[0]) load_theme_image(folder, t->top_image, &t->top_tex, &t->top_w, &t->top_h, &t->top_loaded);
-    if (t->bottom_image[0]) load_theme_image(folder, t->bottom_image, &t->bottom_tex, &t->bottom_w, &t->bottom_h, &t->bottom_loaded);
-    if (t->status_strip[0]) load_theme_image(folder, t->status_strip, &t->status_tex, &t->status_w, &t->status_h_img, &t->status_loaded);
-    if (t->sprite_icon[0]) load_theme_image(folder, t->sprite_icon, &t->sprite_tex, &t->sprite_w, &t->sprite_h, &t->sprite_loaded);
     free(text);
     return true;
 }

@@ -1,0 +1,41 @@
+name: Mint
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0x071B18
+bottom_bg: 0x0A2420
+panel_left: 0x12352F
+panel_right: 0x102E2A
+preview_bg: 0x1A4740
+
+text_primary: 0xE9FFF8
+text_secondary: 0xC4F2E4
+text_muted: 0x87C9B5
+
+tab_bg: 0x14403A
+tab_sel: 0x3DE5B0
+tab_text: 0xE9FFF8
+
+list_bg: 0x12352F
+list_sel: 0x2BB890
+list_text: 0xE9FFF8
+
+option_bg: 0x14403A
+option_sel: 0x238C6F
+option_text: 0xE9FFF8
+option_header: 0xF2FFFA
+
+overlay_bg: 0xCC071B18
+help_bg: 0x0D2B26
+help_line: 0x2F8C78
+help_text: 0xDFFCF4
+
+status_bg: 0x0D2B26
+status_text: 0xDFFCF4
+status_icon: 0xCFF7EA
+status_dim: 0x2F8C78
+status_bolt: 0xFFD36A
+
+toast_bg: 0xCC0A2420
+toast_text: 0xF2FFFA

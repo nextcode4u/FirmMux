@@ -132,6 +132,9 @@ void ensure_dirs(void) {
     mkdir(CACHE_3DS_DIR, 0777);
     mkdir(LAUNCH_DIR, 0777);
     mkdir(DEBUG_DIR, 0777);
+    mkdir(BACKGROUNDS_DIR, 0777);
+    mkdir(BACKGROUNDS_TOP_DIR, 0777);
+    mkdir(BACKGROUNDS_BOTTOM_DIR, 0777);
 }
 
 void clear_dir_recursive(const char* path, bool keep_root) {

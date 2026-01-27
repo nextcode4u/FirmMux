@@ -1,0 +1,41 @@
+name: Paper Light
+list_item_h: 20
+line_spacing: 26
+status_bar_h: 16
+
+top_bg: 0xF5F6F8
+bottom_bg: 0xECEFF3
+panel_left: 0xFFFFFF
+panel_right: 0xF3F6FB
+preview_bg: 0xFFFFFF
+
+text_primary: 0x1F2937
+text_secondary: 0x374151
+text_muted: 0x6B7280
+
+tab_bg: 0xE5E7EB
+tab_sel: 0x2563EB
+tab_text: 0x111827
+
+list_bg: 0xFFFFFF
+list_sel: 0x93C5FD
+list_text: 0x111827
+
+option_bg: 0xE5E7EB
+option_sel: 0x60A5FA
+option_text: 0x111827
+option_header: 0x0F172A
+
+overlay_bg: 0xCCF5F6F8
+help_bg: 0xE5E7EB
+help_line: 0x94A3B8
+help_text: 0x0F172A
+
+status_bg: 0xE5E7EB
+status_text: 0x0F172A
+status_icon: 0x0F172A
+status_dim: 0x64748B
+status_bolt: 0xF59E0B
+
+toast_bg: 0xCC0F172A
+toast_text: 0xFFFFFF
