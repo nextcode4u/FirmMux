@@ -280,6 +280,8 @@ static bool load_background_tex(const char* dir, const char* name, IconTexture* 
         icon_free(icon);
         return false;
     }
+    int pixels = w * h;
+    for (int i = 0; i < pixels; i++) data[i * 4 + 3] = 255;
     bool ok = icon_from_rgba(icon, data, w, h);
     stbi_image_free(data);
     return ok;
@@ -1701,7 +1703,7 @@ int main(int argc, char** argv) {
     }
 
     if (state->background_visibility < 0 || state->background_visibility > 100) {
-        state->background_visibility = 25;
+        state->background_visibility = 50;
     }
 
     apply_theme_from_state_or_config(cfg, state);

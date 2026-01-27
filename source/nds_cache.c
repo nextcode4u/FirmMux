@@ -44,6 +44,21 @@ void icon_free(IconTexture* icon) {
     }
 }
 
+static void rgba_to_abgr_inplace(u8* buf, size_t pixels) {
+    if (!buf) return;
+    for (size_t i = 0; i < pixels; i++) {
+        u8* px = buf + i * 4;
+        u8 r = px[0];
+        u8 g = px[1];
+        u8 b = px[2];
+        u8 a = px[3];
+        px[0] = a;
+        px[1] = b;
+        px[2] = g;
+        px[3] = r;
+    }
+}
+
 bool icon_from_rgba(IconTexture* icon, const u8* data, int w, int h) {
     icon_free(icon);
     if (!data) return false;
@@ -61,14 +76,16 @@ bool icon_from_rgba(IconTexture* icon, const u8* data, int w, int h) {
     for (int y = 0; y < h; y++) {
         memcpy(buf + (size_t)y * (size_t)tw * 4, data + (size_t)y * (size_t)w * 4, (size_t)w * 4);
     }
-    GSPGPU_FlushDataCache(buf, buf_size);
     if (w > 64 || h > 64) {
+        rgba_to_abgr_inplace(buf, (size_t)tw * (size_t)th);
+        GSPGPU_FlushDataCache(buf, buf_size);
         GSPGPU_FlushDataCache(icon->tex.data, icon->tex.size);
         C3D_SyncDisplayTransfer((u32*)buf, GX_BUFFER_DIM(tw, th), (u32*)icon->tex.data, GX_BUFFER_DIM(tw, th),
             GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
             GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
             GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
     } else {
+        GSPGPU_FlushDataCache(buf, buf_size);
         C3D_TexUpload(&icon->tex, buf);
     }
     linearFree(buf);

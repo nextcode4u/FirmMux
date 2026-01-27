@@ -29,7 +29,7 @@ static bool json_find_int(const char* text, const char* key, int* out) {
 
 bool parse_state(const char* text, State* state) {
     memset(state, 0, sizeof(*state));
-    state->background_visibility = 25;
+    state->background_visibility = 50;
     if (!json_find_string(text, "last_target", state->last_target, sizeof(state->last_target))) {
         state->last_target[0] = 0;
     }
@@ -84,7 +84,7 @@ bool load_state(State* state) {
     }
     if (!file_exists(STATE_PATH)) {
         memset(state, 0, sizeof(*state));
-        state->background_visibility = 25;
+        state->background_visibility = 50;
         return true;
     }
     FILE* f = fopen(STATE_PATH, "r");
@@ -103,7 +103,7 @@ bool load_state(State* state) {
     rename(STATE_PATH, STATE_BAK_PATH);
     if (file_exists(STATE_PATH_OLD)) rename(STATE_PATH_OLD, STATE_BAK_PATH_OLD);
     memset(state, 0, sizeof(*state));
-    state->background_visibility = 25;
+    state->background_visibility = 50;
     return true;
 }
 

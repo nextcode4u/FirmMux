@@ -42,6 +42,7 @@ Background images are independent from themes and can be picked at runtime.
   - `sd:/3ds/FirmMux/backgrounds/top/`
   - `sd:/3ds/FirmMux/backgrounds/bottom/`
 - Backgrounds are stretched to fit.
+- Use standard RGB PNGs; alpha is ignored.
 - Recommended sizes:
   - top: `400x240`
   - bottom: `320x240`
@@ -49,6 +50,7 @@ Background images are independent from themes and can be picked at runtime.
 In FirmMux:
 - Options → Top background / Bottom background opens a picker.
 - Options → Background visibility controls how strongly UI panels overlay the background (higher means more background showing).
+- Default background visibility is 80%.
 
 ## NDS launching via FirmMuxBootstrapLauncher
 
