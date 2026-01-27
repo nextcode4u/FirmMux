@@ -33,5 +33,5 @@ Notes
   - /3ds/FirmMux/backgrounds/bottom/
   Recommended sizes: top 400x240, bottom 320x240. Images are stretched to fit. Use standard RGB PNGs; alpha is ignored.
 - Background visibility can be adjusted in Options → Background visibility.
-  Default background visibility is 80%.
+  Default background visibility is 50%.
 - Sample themes: default, amber, cobalt, dark_material, ember, glacier, graphite, midnight, mint, neon_cyber, paper_light, sage, sandstone, sunset, synthwave_hass.

@@ -50,7 +50,7 @@ Background images are independent from themes and can be picked at runtime.
 In FirmMux:
 - Options → Top background / Bottom background opens a picker.
 - Options → Background visibility controls how strongly UI panels overlay the background (higher means more background showing).
-- Default background visibility is 80%.
+- Default background visibility is 50%.
 
 ## NDS launching via FirmMuxBootstrapLauncher
 
@@ -79,8 +79,7 @@ In FirmMux:
 
 - Set `theme: <name>` at the top of `sdmc:/3ds/FirmMux/config.yaml`.
 - Or use Options → Themes... to pick from installed themes (saved in `state.json`).
-- Themes control UI colors and optional UI asset strips. Top/bottom backgrounds are configured separately via the Background options.
-- Image assets are optional PNG/JPEG files and can be referenced with relative filenames (e.g. `top.png`) inside the theme folder.
+- Themes control UI colors and layout sizing. Top/bottom backgrounds are configured separately via the Background options.
 - Theme files live at `sdmc:/3ds/FirmMux/themes/<name>/theme.yaml`.
 
 Theme schema (colors are hex RGB or ARGB, e.g. `0xRRGGBB` or `0xAARRGGBB`):
@@ -119,28 +118,11 @@ status_dim:
 status_bolt:
 toast_bg:
 toast_text:
-top_image:
-bottom_image:
-status_strip:
-sprite_icon:
-list_item_image:
-list_sel_image:
-tab_item_image:
-tab_sel_image:
-option_item_image:
-option_sel_image:
-preview_frame:
-help_strip:
-list_item_offset_y:
 list_text_offset_y:
-tab_item_offset_y:
 tab_text_offset_y:
-option_item_offset_y:
 option_text_offset_y:
 help_text_offset_y:
 status_text_offset_y:
-image_swap_rb:
-image_channel_order:
 ```
 
 Sample themes shipped in SD layout:
