@@ -78,6 +78,7 @@ Transitions
 - Options includes:
   - Top background picker
   - Bottom background picker
+  - Background visibility picker (controls how strong UI overlays are when a background is present)
   - Background visibility picker (controls panel opacity when a background is present)
 
 ## Caching
@@ -98,7 +99,7 @@ Transitions
     ```
     sd:/roms/nds/Game.nds
     ```
-  - Launcher is selected by product code (`FMUXBOOT`) or `loader_title_id` in config
+  - Launcher is selected by product code (`CTR-P-FMBP`) or `loader_title_id` in config
 
 ## Autoboot
 

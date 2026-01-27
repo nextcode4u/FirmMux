@@ -32,12 +32,5 @@ Notes
   - /3ds/FirmMux/backgrounds/top/
   - /3ds/FirmMux/backgrounds/bottom/
   Recommended sizes: top 400x240, bottom 320x240. Images are stretched to fit.
+- Background visibility can be adjusted in Options → Background visibility.
 - Sample themes: default, amber, cobalt, dark_material, ember, glacier, graphite, midnight, mint, neon_cyber, paper_light, sage, sandstone, sunset, synthwave_hass.
-- RetroArch rules + emulator settings live at /3ds/Emulators/.
-- RetroArch BIOS go in /retroarch/system/.
- - Use the RetroArch homebrew 3DSX package (not the CIA build).
-Common BIOS names:
-- Atari800: 5200.rom, ATARIXL.ROM, ATARIBAS.ROM, ATARIOSB.ROM
-- blueMSX: Databases/ and Machines/ folders
-- Beetle PCE Fast: syscard3.pce (optional syscard2.pce/syscard1.pce)
-- FreeIntv: exec.bin, grom.bin (optional ecs.bin)
