@@ -1,8 +1,8 @@
 {
   "version": 1,
   "mode": "pure-retroarch-3dsx",
-  "retroarch_entry": "sd:/3ds/RetroArch/retroarch.3dsx",
-  "handoff_path": "sd:/3ds/firmmux/launch.json",
+  "retroarch_entry": "sd:/3ds/FirmMux/emulators/retroarch.3dsx",
+  "handoff_path": "sd:/3ds/emulators/launch.json",
   "rules": [
     {"match":{"folder":"a26","ext":["a26"]},"core":"Stella 2014"},
     {"match":{"folder":"a52","ext":["a52"]},"core":"Atari800"},

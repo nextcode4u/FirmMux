@@ -39,6 +39,7 @@ static unsigned g_easter_w = 0, g_easter_h = 0;
 static bool g_easter_loaded = false;
 static bool g_select_last = false;
 static bool g_exit_requested = false;
+static bool g_exit_after_status = false;
 static u64 g_title_preview_tid = 0;
 static bool g_title_preview_valid = false;
 static u8 g_title_preview_rgba[48 * 48 * 4];
@@ -58,6 +59,8 @@ static TargetRuntime g_runtimes[MAX_TARGETS];
 static Config g_cfg;
 static State g_state;
 static Theme g_theme;
+static RetroRules g_retro;
+static EmuConfig g_emu;
 static int g_list_item_h = 20;
 static int g_line_spacing = 26;
 static int g_status_h = 16;
@@ -66,6 +69,13 @@ static char g_theme_names[MAX_THEMES][32];
 static int g_theme_name_count = 0;
 static OptionItem g_theme_options[MAX_THEMES + 1];
 static int g_theme_option_count = 0;
+static OptionItem g_emu_options[MAX_SYSTEMS + 1];
+static int g_emu_option_count = 0;
+static OptionItem g_emu_detail_options[4];
+static int g_emu_detail_count = 0;
+static int g_emu_detail_index = -1;
+static OptionItem g_retro_info_options[8];
+static int g_retro_info_count = 0;
 static OptionItem g_top_bg_options[MAX_BACKGROUNDS + 1];
 static OptionItem g_bottom_bg_options[MAX_BACKGROUNDS + 1];
 static int g_top_bg_option_count = 0;
@@ -80,8 +90,22 @@ static int g_top_bg_index = 0;
 static int g_bottom_bg_index = 0;
 static IconTexture g_top_bg_tex;
 static IconTexture g_bottom_bg_tex;
+static Target g_base_targets[MAX_TARGETS];
+static int g_base_target_count = 0;
+
+enum {
+    OPT_MODE_MAIN = 0,
+    OPT_MODE_THEME = 1,
+    OPT_MODE_TOP_BG = 2,
+    OPT_MODE_BOTTOM_BG = 3,
+    OPT_MODE_BG_VIS = 4,
+    OPT_MODE_EMULATORS = 5,
+    OPT_MODE_EMULATOR_DETAIL = 6,
+    OPT_MODE_RETRO_INFO = 7
+};
 
 static int clamp_pct(int v);
+static void refresh_options_menu(const Config* cfg);
 
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
@@ -1417,6 +1441,364 @@ static void preload_nds_page(const TargetState* ts, const DirCache* cache, int v
     }
 }
 
+static bool is_emulator_target(const Target* target) {
+    return target && !strcmp(target->type, "retroarch_system");
+}
+
+static void sd_path_to_internal_root(const char* sd_path, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = 0;
+    if (!sd_path || !sd_path[0]) return;
+    char tmp[512];
+    copy_str(tmp, sizeof(tmp), sd_path);
+    normalize_path_sd(tmp, sizeof(tmp));
+    const char* p = tmp;
+    if (!strncasecmp(tmp, "sd:/", 4)) p = tmp + 4;
+    else if (!strncasecmp(tmp, "sdmc:/", 6)) p = tmp + 6;
+    while (*p == '/') p++;
+    if (*p) snprintf(out, out_size, "/%s", p);
+    else snprintf(out, out_size, "/");
+    normalize_path(out);
+}
+
+static bool target_root_exists(const Target* target) {
+    if (!target || !target->root[0]) return true;
+    char sdmc[512];
+    make_sd_path(target->root, sdmc, sizeof(sdmc));
+    return is_dir_path(sdmc);
+}
+
+static void capture_base_targets(const Config* cfg) {
+    g_base_target_count = 0;
+    if (!cfg) return;
+    for (int i = 0; i < cfg->target_count && g_base_target_count < MAX_TARGETS; i++) {
+        const Target* t = &cfg->targets[i];
+        if (is_emulator_target(t)) continue;
+        g_base_targets[g_base_target_count++] = *t;
+    }
+}
+
+static bool is_nds_base_target(const Target* t) {
+    if (!t) return false;
+    if (strcmp(t->type, "rom_browser") != 0) return false;
+    if (!strcasecmp(t->id, "nds")) return true;
+    return strstr(t->root, "/roms/nds") != NULL;
+}
+
+static void reorder_base_targets(Config* cfg) {
+    if (!cfg || cfg->target_count <= 1) return;
+    Target reordered[MAX_TARGETS];
+    bool used[MAX_TARGETS];
+    memset(used, 0, sizeof(used));
+    int count = 0;
+
+    for (int pass = 0; pass < 4; pass++) {
+        for (int i = 0; i < cfg->target_count && count < MAX_TARGETS; i++) {
+            if (used[i]) continue;
+            const Target* t = &cfg->targets[i];
+            bool take = false;
+            if (pass == 0 && !strcmp(t->type, "system_menu")) take = true;
+            else if (pass == 1 && !strcmp(t->type, "installed_titles")) take = true;
+            else if (pass == 2 && is_nds_base_target(t)) take = true;
+            else if (pass == 3 && !strcmp(t->type, "homebrew_browser")) take = true;
+            if (!take) continue;
+            reordered[count++] = *t;
+            used[i] = true;
+            break;
+        }
+    }
+
+    for (int i = 0; i < cfg->target_count && count < MAX_TARGETS; i++) {
+        if (used[i]) continue;
+        reordered[count++] = cfg->targets[i];
+        used[i] = true;
+    }
+
+    cfg->target_count = count;
+    for (int i = 0; i < count; i++) cfg->targets[i] = reordered[i];
+}
+
+static void apply_emulator_targets(Config* cfg) {
+    if (!cfg) return;
+    if (g_base_target_count == 0) capture_base_targets(cfg);
+    cfg->target_count = g_base_target_count;
+    for (int i = 0; i < g_base_target_count; i++) cfg->targets[i] = g_base_targets[i];
+    reorder_base_targets(cfg);
+
+    for (int i = 0; i < g_emu.count && cfg->target_count < MAX_TARGETS; i++) {
+        const EmuSystem* sys = &g_emu.systems[i];
+        if (!sys->enabled) continue;
+        Target* t = &cfg->targets[cfg->target_count];
+        memset(t, 0, sizeof(*t));
+        copy_str(t->id, sizeof(t->id), sys->key);
+        copy_str(t->type, sizeof(t->type), "retroarch_system");
+
+        char internal_root[256];
+        sd_path_to_internal_root(sys->rom_folder, internal_root, sizeof(internal_root));
+        if (!internal_root[0]) snprintf(internal_root, sizeof(internal_root), "/roms/%s", sys->key);
+        copy_str(t->root, sizeof(t->root), internal_root);
+
+        bool missing = !target_root_exists(t);
+        if (missing) snprintf(t->label, sizeof(t->label), "%s (Missing folder)", sys->display_name);
+        else copy_str(t->label, sizeof(t->label), sys->display_name);
+
+        char exts[MAX_EXTENSIONS][16];
+        int ext_count = retro_extensions_for_system(&g_retro, sys->key, exts);
+        t->ext_count = 0;
+        for (int e = 0; e < ext_count && t->ext_count < MAX_EXTENSIONS; e++) {
+            if (!exts[e][0]) continue;
+            snprintf(t->extensions[t->ext_count], sizeof(t->extensions[t->ext_count]), ".%s", exts[e]);
+            t->ext_count++;
+        }
+
+        cfg->target_count++;
+    }
+}
+
+static TargetState* state_find(State* state, const char* id) {
+    if (!state || !id) return NULL;
+    for (int i = 0; i < state->count; i++) {
+        if (!strcmp(state->entries[i].id, id)) return &state->entries[i];
+    }
+    return NULL;
+}
+
+static void prune_state_targets(State* state, const Config* cfg) {
+    if (!state || !cfg) return;
+    TargetState next[MAX_TARGETS];
+    int next_count = 0;
+    for (int i = 0; i < cfg->target_count && next_count < MAX_TARGETS; i++) {
+        const Target* t = &cfg->targets[i];
+        TargetState* existing = state_find(state, t->id);
+        if (existing) {
+            next[next_count++] = *existing;
+        } else {
+            TargetState fresh;
+            memset(&fresh, 0, sizeof(fresh));
+            copy_str(fresh.id, sizeof(fresh.id), t->id);
+            if (t->root[0]) copy_str(fresh.path, sizeof(fresh.path), t->root);
+            next[next_count++] = fresh;
+        }
+    }
+    memcpy(state->entries, next, sizeof(next));
+    state->count = next_count;
+}
+
+static TargetState* ensure_target_state(State* state, const Config* cfg, const Target* target) {
+    if (!state || !cfg || !target) return NULL;
+    TargetState* ts = get_target_state(state, target->id);
+    if (ts) return ts;
+    prune_state_targets(state, cfg);
+    return get_target_state(state, target->id);
+}
+
+static bool emulator_folder_exists(const EmuSystem* sys) {
+    if (!sys || !sys->rom_folder[0]) return false;
+    char internal[256];
+    sd_path_to_internal_root(sys->rom_folder, internal, sizeof(internal));
+    if (!internal[0]) return false;
+    char sdmc[512];
+    make_sd_path(internal, sdmc, sizeof(sdmc));
+    return is_dir_path(sdmc);
+}
+
+static void build_emulator_options(void) {
+    g_emu_option_count = 0;
+    OptionItem* o = &g_emu_options[g_emu_option_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = OPTION_ACTION_NONE;
+    for (int i = 0; i < g_emu.count && g_emu_option_count < MAX_SYSTEMS + 1; i++) {
+        const EmuSystem* sys = &g_emu.systems[i];
+        o = &g_emu_options[g_emu_option_count++];
+        snprintf(o->label, sizeof(o->label), "%s: %s", sys->display_name, sys->enabled ? "On" : "Off");
+        o->action = OPTION_ACTION_NONE;
+    }
+}
+
+static void build_emulator_detail_options(int index) {
+    g_emu_detail_index = index;
+    g_emu_detail_count = 0;
+    OptionItem* o = &g_emu_detail_options[g_emu_detail_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = OPTION_ACTION_NONE;
+    if (index < 0 || index >= g_emu.count) return;
+    EmuSystem* sys = &g_emu.systems[index];
+    o = &g_emu_detail_options[g_emu_detail_count++];
+    snprintf(o->label, sizeof(o->label), "Enabled: %s", sys->enabled ? "On" : "Off");
+    o->action = OPTION_ACTION_NONE;
+    o = &g_emu_detail_options[g_emu_detail_count++];
+    bool missing = !emulator_folder_exists(sys);
+    if (missing) snprintf(o->label, sizeof(o->label), "ROM folder: %s (Missing)", sys->rom_folder);
+    else snprintf(o->label, sizeof(o->label), "ROM folder: %s", sys->rom_folder);
+    o->action = OPTION_ACTION_NONE;
+}
+
+static void emu_cycle_rom_folder(EmuSystem* sys) {
+    if (!sys) return;
+    const char* keys[MAX_SYSTEMS];
+    int key_count = emu_known_system_keys(keys, MAX_SYSTEMS);
+    if (key_count <= 0) return;
+    int cur = -1;
+    char norm[512];
+    copy_str(norm, sizeof(norm), sys->rom_folder);
+    normalize_path_sd(norm, sizeof(norm));
+    for (int i = 0; i < key_count; i++) {
+        char want[64];
+        snprintf(want, sizeof(want), "sd:/roms/%s", keys[i]);
+        if (!strcasecmp(norm, want)) { cur = i; break; }
+    }
+    int next = (cur + 1 + key_count) % key_count;
+    snprintf(sys->rom_folder, sizeof(sys->rom_folder), "sd:/roms/%s", keys[next]);
+}
+
+static void build_retro_info_options(void) {
+    g_retro_info_count = 0;
+    OptionItem* o = &g_retro_info_options[g_retro_info_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = OPTION_ACTION_NONE;
+    const char* lines[] = {
+        "Expected: sd:/3ds/FirmMux/emulators/retroarch.3dsx",
+        "Cores/system: sd:/retroarch/",
+        "Required BIOS: Atari800 BIOS ROMs",
+        "Required BIOS: blueMSX Databases+Machines",
+        "Required BIOS: PCE CD syscard*.pce",
+        "Recommended: gba_bios.bin (GBA)",
+        "Recommended: real BIOS (PS1)"
+    };
+    const int line_count = (int)(sizeof(lines) / sizeof(lines[0]));
+    for (int i = 0; i < line_count && g_retro_info_count < (int)(sizeof(g_retro_info_options) / sizeof(g_retro_info_options[0])); i++) {
+        o = &g_retro_info_options[g_retro_info_count++];
+        copy_str(o->label, sizeof(o->label), lines[i]);
+        o->action = OPTION_ACTION_NONE;
+    }
+}
+
+static void file_ext_lower(const char* name, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = 0;
+    if (!name) return;
+    const char* dot = strrchr(name, '.');
+    if (!dot || !dot[1]) return;
+    dot++;
+    size_t n = strlen(dot);
+    if (n >= out_size) n = out_size - 1;
+    for (size_t i = 0; i < n; i++) out[i] = (char)tolower((unsigned char)dot[i]);
+    out[n] = 0;
+}
+
+static bool retro_launch_selected(const Target* target, TargetState* ts, const FileEntry* fe, const char* joined, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty) {
+    if (!target || !ts || !fe || fe->is_dir || !joined) return false;
+    char sdmc_path[512];
+    make_sd_path(joined, sdmc_path, sizeof(sdmc_path));
+    char rom_sd[512];
+    copy_str(rom_sd, sizeof(rom_sd), sdmc_path);
+    normalize_path_sd(rom_sd, sizeof(rom_sd));
+
+    char system_key[16];
+    if (!emu_resolve_system(&g_emu, rom_sd, target->id, system_key, sizeof(system_key))) {
+        copy_str(system_key, sizeof(system_key), target->id);
+    }
+
+    char ext_lower[16];
+    file_ext_lower(fe->name, ext_lower, sizeof(ext_lower));
+    bool matched_rule = false;
+    const char* core = retro_resolve_core(&g_retro, system_key, ext_lower, &matched_rule);
+
+    retro_log_line("rom=%s", rom_sd);
+    retro_log_line("system=%s ext=%s core=%s matched=%d", system_key, ext_lower, core ? core : "(none)", matched_rule ? 1 : 0);
+
+    if (!retro_retroarch_exists(&g_retro)) {
+        snprintf(status_message, status_size, "RetroArch not found");
+        retro_log_line("retroarch missing: %s", g_retro.retroarch_entry);
+        if (status_timer) *status_timer = 120;
+        return false;
+    }
+
+    bool known = false;
+    bool available = false;
+    retro_core_available(core, &known, &available);
+    if (known && !available) {
+        snprintf(status_message, status_size, "Required RetroArch core not available");
+        retro_log_line("core missing: %s", core);
+        if (status_timer) *status_timer = 120;
+        return false;
+    }
+    if (!known) {
+        retro_log_line("core availability unknown: %s", core);
+        if (status_message && status_size > 0 && status_message[0] == 0) {
+            snprintf(status_message, status_size, "Core availability unknown");
+            if (status_timer) *status_timer = 90;
+        }
+    }
+
+    if (!retro_write_launch(&g_retro, rom_sd, core, status_message, status_size)) {
+        retro_log_line("launch.json write failed");
+        if (status_timer) *status_timer = 120;
+        return false;
+    }
+    retro_log_line("launch.json written");
+
+    bool can_chainload = state && state->retro_chainload_enabled && retro_chainload_available();
+    if (state && !state->retro_chainload_enabled) retro_log_line("chainload disabled");
+    if (can_chainload) {
+        if (retro_chainload(g_retro.retroarch_entry, status_message, status_size)) {
+            retro_log_line("launch mode: chainload");
+            save_emulators(&g_emu);
+            save_state(state);
+            if (state_dirty) *state_dirty = false;
+            if (status_message && status_size > 0) snprintf(status_message, status_size, "Launching RetroArch...");
+            if (status_timer) *status_timer = 60;
+            g_exit_requested = true;
+            return true;
+        }
+        retro_log_line("chainload failed");
+        if (status_message[0] == 0) snprintf(status_message, status_size, "RetroArch launch failed");
+        if (status_timer) *status_timer = 120;
+        return false;
+    }
+
+    retro_log_line("launch mode: hbmenu");
+    save_emulators(&g_emu);
+    save_state(state);
+    if (state_dirty) *state_dirty = false;
+    g_exit_after_status = true;
+    if (!known) snprintf(status_message, status_size, "Core unknown. Launch RetroArch from hbmenu");
+    else snprintf(status_message, status_size, "Launch RetroArch from hbmenu to start the game");
+    if (status_timer) *status_timer = 180;
+    return true;
+}
+
+static void rebuild_targets_from_backend(Config* cfg, State* state, int* current_target, bool* state_dirty, char* status_message, size_t status_size, int* status_timer) {
+    bool regen_rules = false;
+    bool regen_emu = false;
+    load_or_create_retro_rules(&g_retro, &regen_rules);
+    load_or_create_emulators(&g_emu, &regen_emu);
+    if (regen_rules) retro_log_line("retroarch_rules.json regenerated");
+    if (regen_emu) retro_log_line("emulators.json regenerated");
+    capture_base_targets(cfg);
+    apply_emulator_targets(cfg);
+    prune_state_targets(state, cfg);
+    refresh_options_menu(cfg);
+    if (regen_rules || regen_emu) {
+        snprintf(status_message, status_size, "Retro defaults regenerated");
+        if (status_timer) *status_timer = 120;
+    }
+    if (current_target) {
+        int idx = find_target_index(cfg, state->last_target);
+        if (idx < 0) {
+            idx = 0;
+            if (cfg->target_count > 0) copy_str(state->last_target, sizeof(state->last_target), cfg->targets[0].id);
+        }
+        *current_target = idx;
+        if (cfg->target_count > 0 && idx >= 0 && idx < cfg->target_count) {
+            Target* cur = &cfg->targets[idx];
+            TargetState* ts = ensure_target_state(state, cfg, cur);
+            if (ts) g_nds_banners = ts->nds_banner_mode != 0;
+        }
+    }
+    if (state_dirty) *state_dirty = true;
+}
+
 static void refresh_options_menu(const Config* cfg) {
     scan_backgrounds(&g_state);
     g_option_count = 0;
@@ -1464,6 +1846,22 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_BG_VISIBILITY;
 
     o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "RetroArch log: %s", g_state.retro_log_enabled ? "On" : "Off");
+    o->action = OPTION_ACTION_RETRO_LOG_TOGGLE;
+
+    o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "RetroArch chainload: %s", g_state.retro_chainload_enabled ? "On" : "Off");
+    o->action = OPTION_ACTION_RETRO_CHAINLOAD_TOGGLE;
+
+    o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "RetroArch backend requirements");
+    o->action = OPTION_ACTION_RETRO_INFO;
+
+    o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Emulators...");
+    o->action = OPTION_ACTION_EMULATORS_MENU;
+
+    o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Select NTR launcher");
     o->action = OPTION_ACTION_SELECT_CARD_LAUNCHER;
 
@@ -1493,17 +1891,9 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         Config newcfg;
         if (load_or_create_config(&newcfg)) {
             *cfg = newcfg;
-            load_theme(&g_theme, cfg->theme[0] ? cfg->theme : "default");
-            g_list_item_h = g_theme.list_item_h > 0 ? g_theme.list_item_h : 20;
-            g_line_spacing = g_theme.line_spacing > 0 ? g_theme.line_spacing : 26;
-            g_status_h = g_theme.status_h > 0 ? g_theme.status_h : 16;
-            refresh_options_menu(cfg);
-            int idx_target = find_target_index(cfg, state->last_target);
-            if (idx_target < 0) {
-                idx_target = 0;
-                snprintf(state->last_target, sizeof(state->last_target), "%s", cfg->targets[0].id);
-            }
-            *current_target = idx_target;
+            g_base_target_count = 0;
+            rebuild_targets_from_backend(cfg, state, current_target, state_dirty, status_message, status_size, status_timer);
+            apply_theme_from_state_or_config(cfg, state);
             if (state_dirty) *state_dirty = true;
             snprintf(status_message, status_size, "Config reloaded");
         } else {
@@ -1583,22 +1973,43 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         scan_themes();
         const char* cur = state->theme[0] ? state->theme : (cfg->theme[0] ? cfg->theme : "default");
         build_theme_options(cur);
-        if (options_mode) *options_mode = 1;
+        if (options_mode) *options_mode = OPT_MODE_THEME;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
     } else if (action == OPTION_ACTION_TOP_BACKGROUND) {
         build_background_options(true, state);
-        if (options_mode) *options_mode = 2;
+        if (options_mode) *options_mode = OPT_MODE_TOP_BG;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
     } else if (action == OPTION_ACTION_BOTTOM_BACKGROUND) {
         build_background_options(false, state);
-        if (options_mode) *options_mode = 3;
+        if (options_mode) *options_mode = OPT_MODE_BOTTOM_BG;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
     } else if (action == OPTION_ACTION_BG_VISIBILITY) {
         build_bg_visibility_options(state->background_visibility);
-        if (options_mode) *options_mode = 4;
+        if (options_mode) *options_mode = OPT_MODE_BG_VIS;
+        if (options_selection) *options_selection = 0;
+        if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_RETRO_LOG_TOGGLE) {
+        state->retro_log_enabled = !state->retro_log_enabled;
+        retro_log_set_enabled(state->retro_log_enabled);
+        refresh_options_menu(cfg);
+        snprintf(status_message, status_size, "RetroArch log %s", state->retro_log_enabled ? "On" : "Off");
+        if (state_dirty) *state_dirty = true;
+    } else if (action == OPTION_ACTION_RETRO_CHAINLOAD_TOGGLE) {
+        state->retro_chainload_enabled = !state->retro_chainload_enabled;
+        refresh_options_menu(cfg);
+        snprintf(status_message, status_size, "RetroArch chainload %s", state->retro_chainload_enabled ? "On" : "Off");
+        if (state_dirty) *state_dirty = true;
+    } else if (action == OPTION_ACTION_RETRO_INFO) {
+        build_retro_info_options();
+        if (options_mode) *options_mode = OPT_MODE_RETRO_INFO;
+        if (options_selection) *options_selection = 0;
+        if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_EMULATORS_MENU) {
+        build_emulator_options();
+        if (options_mode) *options_mode = OPT_MODE_EMULATORS;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
     } else if (action == OPTION_ACTION_AUTOBOOT_STATUS) {
@@ -1691,6 +2102,8 @@ int main(int argc, char** argv) {
         char saved_top_bg[64];
         char saved_bottom_bg[64];
         int saved_vis = state->background_visibility;
+        bool saved_retro_log = state->retro_log_enabled;
+        bool saved_chainload = state->retro_chainload_enabled;
         copy_str(saved_theme, sizeof(saved_theme), state->theme);
         copy_str(saved_top_bg, sizeof(saved_top_bg), state->top_background);
         copy_str(saved_bottom_bg, sizeof(saved_bottom_bg), state->bottom_background);
@@ -1700,26 +2113,39 @@ int main(int argc, char** argv) {
         if (saved_top_bg[0]) copy_str(state->top_background, sizeof(state->top_background), saved_top_bg);
         if (saved_bottom_bg[0]) copy_str(state->bottom_background, sizeof(state->bottom_background), saved_bottom_bg);
         state->background_visibility = saved_vis;
+        state->retro_log_enabled = saved_retro_log;
+        state->retro_chainload_enabled = saved_chainload;
     }
 
     if (state->background_visibility < 0 || state->background_visibility > 100) {
         state->background_visibility = 50;
     }
 
+    retro_log_set_enabled(state->retro_log_enabled);
+
+    char status_message[64] = {0};
+    int status_timer = 0;
+    bool state_dirty = false;
+
+    int current_target = 0;
+    g_base_target_count = 0;
+    rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
+
     apply_theme_from_state_or_config(cfg, state);
 
     if (state->last_target[0] == 0) copy_str(state->last_target, sizeof(state->last_target), cfg->default_target);
-    int current_target = find_target_index(cfg, state->last_target);
+    current_target = find_target_index(cfg, state->last_target);
     if (current_target < 0) {
         current_target = 0;
-        copy_str(state->last_target, sizeof(state->last_target), cfg->targets[0].id);
+        if (cfg->target_count > 0) copy_str(state->last_target, sizeof(state->last_target), cfg->targets[0].id);
     }
 
     memset(g_runtimes, 0, sizeof(g_runtimes));
 
     for (int i = 0; i < cfg->target_count; i++) {
         Target* t = &cfg->targets[i];
-        TargetState* ts = get_target_state(state, t->id);
+        TargetState* ts = ensure_target_state(state, cfg, t);
+        if (!ts) continue;
         if (ts && ts->path[0]) normalize_path(ts->path);
         if (ts && ts->path[0] == 0 && t->root[0]) {
             snprintf(ts->path, sizeof(ts->path), "%s", t->root);
@@ -1736,6 +2162,14 @@ int main(int argc, char** argv) {
         if (ts && !strcmp(t->type, "homebrew_browser")) {
             if (ts->path[0] == 0 || !path_has_prefix(ts->path, t->root)) {
                 snprintf(ts->path, sizeof(ts->path), "%s", t->root[0] ? t->root : "/3ds/");
+                normalize_path(ts->path);
+                ts->selection = 0;
+                ts->scroll = 0;
+            }
+        }
+        if (ts && is_emulator_target(t)) {
+            if (ts->path[0] == 0 || !path_has_prefix(ts->path, t->root)) {
+                snprintf(ts->path, sizeof(ts->path), "%s", t->root[0] ? t->root : "/");
                 normalize_path(ts->path);
                 ts->selection = 0;
                 ts->scroll = 0;
@@ -1761,14 +2195,10 @@ int main(int argc, char** argv) {
     int hold_up = 0;
     int hold_down = 0;
     refresh_options_menu(cfg);
-
-    char status_message[64] = {0};
-    int status_timer = 0;
-    bool state_dirty = false;
     u64 last_save_ms = osGetTime();
     int move_cooldown = 0;
 
-    TargetState* cur_ts = get_target_state(state, cfg->targets[current_target].id);
+    TargetState* cur_ts = ensure_target_state(state, cfg, &cfg->targets[current_target]);
     if (cur_ts) g_nds_banners = cur_ts->nds_banner_mode != 0;
     auto_set_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
     auto_set_card_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
@@ -1786,20 +2216,39 @@ int main(int argc, char** argv) {
         if (kDown & KEY_START) {
             options_open = !options_open;
             if (options_open) {
-                g_options_mode = 0;
+                g_options_mode = OPT_MODE_MAIN;
                 refresh_options_menu(cfg);
             }
             audio_play(SOUND_TOGGLE);
         }
 
+        if (cfg->target_count <= 0) {
+            g_exit_requested = true;
+            break;
+        }
+        if (current_target < 0 || current_target >= cfg->target_count) current_target = 0;
+
         Target* target = &cfg->targets[current_target];
-        TargetState* ts = get_target_state(state, target->id);
+        TargetState* ts = ensure_target_state(state, cfg, target);
+        if (!ts) {
+            snprintf(status_message, sizeof(status_message), "State full");
+            status_timer = 120;
+            g_exit_requested = true;
+            break;
+        }
+        bool emu_root_exists = !is_emulator_target(target) || target_root_exists(target);
 
         if (!options_open) {
             if (kDown & KEY_L) {
                 current_target = (current_target - 1 + cfg->target_count) % cfg->target_count;
                 target = &cfg->targets[current_target];
-                ts = get_target_state(state, target->id);
+                ts = ensure_target_state(state, cfg, target);
+                if (!ts) {
+                    snprintf(status_message, sizeof(status_message), "State full");
+                    status_timer = 120;
+                    g_exit_requested = true;
+                    break;
+                }
                 snprintf(state->last_target, sizeof(state->last_target), "%s", target->id);
                 if (ts) g_nds_banners = ts->nds_banner_mode != 0;
                 state_dirty = true;
@@ -1807,7 +2256,13 @@ int main(int argc, char** argv) {
             } else if (kDown & KEY_R) {
                 current_target = (current_target + 1) % cfg->target_count;
                 target = &cfg->targets[current_target];
-                ts = get_target_state(state, target->id);
+                ts = ensure_target_state(state, cfg, target);
+                if (!ts) {
+                    snprintf(status_message, sizeof(status_message), "State full");
+                    status_timer = 120;
+                    g_exit_requested = true;
+                    break;
+                }
                 snprintf(state->last_target, sizeof(state->last_target), "%s", target->id);
                 if (ts) g_nds_banners = ts->nds_banner_mode != 0;
                 state_dirty = true;
@@ -1815,9 +2270,21 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
+        if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
             DirCache* cache = &g_runtimes[current_target].cache;
-            if (!cache_matches(cache, ts->path)) build_dir_cache(target, ts, cache);
+            if (is_emulator_target(target) && !emu_root_exists) {
+                cache->count = 0;
+                cache->valid = true;
+                copy_str(cache->path, sizeof(cache->path), ts->path);
+                g_runtimes[current_target].root_missing = true;
+            } else if (is_emulator_target(target)) {
+                if (g_runtimes[current_target].root_missing || !cache_matches(cache, ts->path)) {
+                    build_dir_cache(target, ts, cache);
+                }
+                g_runtimes[current_target].root_missing = false;
+            } else if (!cache_matches(cache, ts->path)) {
+                build_dir_cache(target, ts, cache);
+            }
         }
 
         update_card_status();
@@ -1825,10 +2292,13 @@ int main(int argc, char** argv) {
         if (options_open) {
             int visible = (BOTTOM_H - HELP_BAR_H - 10) / g_list_item_h;
             int active_count = g_option_count;
-            if (g_options_mode == 1) active_count = g_theme_option_count;
-            else if (g_options_mode == 2) active_count = g_top_bg_option_count;
-            else if (g_options_mode == 3) active_count = g_bottom_bg_option_count;
-            else if (g_options_mode == 4) active_count = g_bg_vis_option_count;
+            if (g_options_mode == OPT_MODE_THEME) active_count = g_theme_option_count;
+            else if (g_options_mode == OPT_MODE_TOP_BG) active_count = g_top_bg_option_count;
+            else if (g_options_mode == OPT_MODE_BOTTOM_BG) active_count = g_bottom_bg_option_count;
+            else if (g_options_mode == OPT_MODE_BG_VIS) active_count = g_bg_vis_option_count;
+            else if (g_options_mode == OPT_MODE_EMULATORS) active_count = g_emu_option_count;
+            else if (g_options_mode == OPT_MODE_EMULATOR_DETAIL) active_count = g_emu_detail_count;
+            else if (g_options_mode == OPT_MODE_RETRO_INFO) active_count = g_retro_info_count;
             if (active_count <= 0) active_count = 1;
             int prev = options_selection;
             if (rep_up) options_selection--;
@@ -1842,12 +2312,12 @@ int main(int argc, char** argv) {
             clamp_scroll_list(&options_scroll, options_selection, visible, active_count);
             if (options_selection != prev) audio_play(SOUND_MOVE);
             if (kDown & KEY_A) {
-                if (g_options_mode == 0) {
+                if (g_options_mode == OPT_MODE_MAIN) {
                     handle_option_action(options_selection, cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer, &g_options_mode, &options_selection, &options_scroll);
                     audio_play(SOUND_SELECT);
-                } else if (g_options_mode == 1) {
+                } else if (g_options_mode == OPT_MODE_THEME) {
                     if (options_selection == 0) {
-                        g_options_mode = 0;
+                        g_options_mode = OPT_MODE_MAIN;
                         options_selection = 0;
                         options_scroll = 0;
                         refresh_options_menu(cfg);
@@ -1872,10 +2342,10 @@ int main(int argc, char** argv) {
                         }
                         audio_play(SOUND_SELECT);
                     }
-                } else if (g_options_mode == 2 || g_options_mode == 3) {
-                    bool top = (g_options_mode == 2);
+                } else if (g_options_mode == OPT_MODE_TOP_BG || g_options_mode == OPT_MODE_BOTTOM_BG) {
+                    bool top = (g_options_mode == OPT_MODE_TOP_BG);
                     if (options_selection == 0) {
-                        g_options_mode = 0;
+                        g_options_mode = OPT_MODE_MAIN;
                         options_selection = 0;
                         options_scroll = 0;
                         refresh_options_menu(cfg);
@@ -1891,9 +2361,9 @@ int main(int argc, char** argv) {
                         status_timer = 90;
                         audio_play(SOUND_SELECT);
                     }
-                } else if (g_options_mode == 4) {
+                } else if (g_options_mode == OPT_MODE_BG_VIS) {
                     if (options_selection == 0) {
-                        g_options_mode = 0;
+                        g_options_mode = OPT_MODE_MAIN;
                         options_selection = 0;
                         options_scroll = 0;
                         refresh_options_menu(cfg);
@@ -1909,11 +2379,82 @@ int main(int argc, char** argv) {
                         status_timer = 90;
                         audio_play(SOUND_SELECT);
                     }
+                } else if (g_options_mode == OPT_MODE_EMULATORS) {
+                    if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_MAIN;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        refresh_options_menu(cfg);
+                        audio_play(SOUND_BACK);
+                    } else {
+                        int sys_idx = options_selection - 1;
+                        build_emulator_detail_options(sys_idx);
+                        g_options_mode = OPT_MODE_EMULATOR_DETAIL;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        audio_play(SOUND_SELECT);
+                    }
+                } else if (g_options_mode == OPT_MODE_EMULATOR_DETAIL) {
+                    if (g_emu_detail_index < 0 || g_emu_detail_index >= g_emu.count) {
+                        g_options_mode = OPT_MODE_EMULATORS;
+                        build_emulator_options();
+                        options_selection = 0;
+                        options_scroll = 0;
+                        audio_play(SOUND_BACK);
+                    } else if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_EMULATORS;
+                        build_emulator_options();
+                        options_selection = g_emu_detail_index + 1;
+                        options_scroll = 0;
+                        clamp_scroll_list(&options_scroll, options_selection, visible, g_emu_option_count);
+                        audio_play(SOUND_BACK);
+                    } else if (options_selection == 1) {
+                        EmuSystem* sys = &g_emu.systems[g_emu_detail_index];
+                        sys->enabled = !sys->enabled;
+                        save_emulators(&g_emu);
+                        rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
+                        build_emulator_options();
+                        build_emulator_detail_options(g_emu_detail_index);
+                        g_options_mode = OPT_MODE_EMULATOR_DETAIL;
+                        options_selection = 1;
+                        options_scroll = 0;
+                        snprintf(status_message, sizeof(status_message), "%s %s", sys->display_name, sys->enabled ? "enabled" : "disabled");
+                        status_timer = 90;
+                        audio_play(SOUND_TOGGLE);
+                    } else if (options_selection == 2) {
+                        EmuSystem* sys = &g_emu.systems[g_emu_detail_index];
+                        emu_cycle_rom_folder(sys);
+                        save_emulators(&g_emu);
+                        rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
+                        build_emulator_options();
+                        build_emulator_detail_options(g_emu_detail_index);
+                        g_options_mode = OPT_MODE_EMULATOR_DETAIL;
+                        options_selection = 2;
+                        options_scroll = 0;
+                        snprintf(status_message, sizeof(status_message), "ROM folder: %s", sys->rom_folder);
+                        status_timer = 90;
+                        audio_play(SOUND_SELECT);
+                    }
+                } else if (g_options_mode == OPT_MODE_RETRO_INFO) {
+                    if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_MAIN;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        refresh_options_menu(cfg);
+                        audio_play(SOUND_BACK);
+                    }
                 }
             }
             if (kDown & KEY_B) {
-                if (g_options_mode != 0) {
-                    g_options_mode = 0;
+                if (g_options_mode == OPT_MODE_EMULATOR_DETAIL) {
+                    g_options_mode = OPT_MODE_EMULATORS;
+                    build_emulator_options();
+                    options_selection = g_emu_detail_index + 1;
+                    options_scroll = 0;
+                    clamp_scroll_list(&options_scroll, options_selection, visible, g_emu_option_count);
+                    audio_play(SOUND_BACK);
+                } else if (g_options_mode != OPT_MODE_MAIN) {
+                    g_options_mode = OPT_MODE_MAIN;
                     options_selection = 0;
                     options_scroll = 0;
                     refresh_options_menu(cfg);
@@ -1977,12 +2518,15 @@ int main(int argc, char** argv) {
                         audio_play(SOUND_SELECT);
                     }
                 }
-            } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
+            } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
+            bool is_rom = !strcmp(target->type, "rom_browser");
+            bool is_hb = !strcmp(target->type, "homebrew_browser");
+            bool is_emu = is_emulator_target(target);
             DirCache* cache = &g_runtimes[current_target].cache;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
-            bool show_card = show_nds_card(target, ts);
-            int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
-            int total = cache->count + card_offset;
+            bool show_card = is_rom ? show_nds_card(target, ts) : false;
+            int card_offset = (is_rom && show_card) ? 1 : 0;
+            int total = (is_emu && !emu_root_exists) ? 0 : (cache->count + card_offset);
             int prev = ts->selection;
             bool moving = rep_up || rep_down;
             int step = 1;
@@ -1996,8 +2540,8 @@ int main(int argc, char** argv) {
                 clamp_scroll_list(&ts->scroll, ts->selection, visible, total);
                 if (rep_up || rep_down) state_dirty = true;
                 if (ts->selection != prev) audio_play(SOUND_MOVE);
-                if (!moving && move_cooldown == 0 && g_nds_banners) preload_nds_page(ts, cache, visible, NDS_PRELOAD_BUDGET, card_offset);
-                if (!moving && move_cooldown == 0 && g_nds_banners && cache->count > 0) {
+                if (is_rom && !moving && move_cooldown == 0 && g_nds_banners) preload_nds_page(ts, cache, visible, NDS_PRELOAD_BUDGET, card_offset);
+                if (is_rom && !moving && move_cooldown == 0 && g_nds_banners && cache->count > 0) {
                     int entry_idx = ts->selection - card_offset;
                     if (entry_idx >= 0 && entry_idx < cache->count && !cache->entries[entry_idx].is_dir) {
                     char joined[512];
@@ -2022,7 +2566,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 if (kDown & KEY_A && total > 0) {
-                    if (!strcmp(target->type, "rom_browser") && show_card && ts->selection == 0) {
+                    if (is_rom && show_card && ts->selection == 0) {
                         if (launch_card_launcher(target, status_message, sizeof(status_message))) {
                             snprintf(status_message, sizeof(status_message), "Launching...");
                         } else if (status_message[0] == 0) {
@@ -2046,11 +2590,11 @@ int main(int argc, char** argv) {
                             snprintf(status_message, sizeof(status_message), "Opening...");
                             audio_play(SOUND_OPEN);
                         } else {
-                            if (!strcmp(target->type, "rom_browser") && is_nds_name(fe->name)) {
+                            if (is_rom && is_nds_name(fe->name)) {
                                 char sdpath[512];
                                 make_sd_path(joined, sdpath, sizeof(sdpath));
                                 launch_nds_loader(target, sdpath, status_message, sizeof(status_message));
-                            } else if (!strcmp(target->type, "homebrew_browser") && is_3dsx_name(fe->name)) {
+                            } else if (is_hb && is_3dsx_name(fe->name)) {
                                 char sdpath[512];
                                 make_sd_path(joined, sdpath, sizeof(sdpath));
                                 if (homebrew_launch_3dsx(sdpath, status_message, sizeof(status_message))) {
@@ -2060,12 +2604,14 @@ int main(int argc, char** argv) {
                                 } else if (status_message[0] == 0) {
                                     snprintf(status_message, sizeof(status_message), "Launch failed");
                                 }
+                            } else if (is_emu) {
+                                retro_launch_selected(target, ts, fe, joined, state, status_message, sizeof(status_message), &status_timer, &state_dirty);
                             } else {
                                 snprintf(status_message, sizeof(status_message), "Unsupported");
                             }
                             audio_play(SOUND_SELECT);
                         }
-                        status_timer = 60;
+                        if (status_timer < 60) status_timer = 60;
                     }
                 }
             }
@@ -2073,7 +2619,10 @@ int main(int argc, char** argv) {
 
         if (g_exit_requested) break;
         if (status_timer > 0) status_timer--;
-        if (status_timer == 0) status_message[0] = 0;
+        if (status_timer == 0) {
+            status_message[0] = 0;
+            if (g_exit_after_status) break;
+        }
         if (g_easter_timer > 0) g_easter_timer--;
 
         if (state_dirty) {
@@ -2170,6 +2719,25 @@ int main(int argc, char** argv) {
                 }
             } else {
                 preview_title = "Empty";
+            }
+        } else if (is_emulator_target(target)) {
+            DirCache* cache = &g_runtimes[current_target].cache;
+            if (!emu_root_exists) {
+                preview_title = "Missing folder";
+            } else if (cache->count <= 0) {
+                preview_title = "No games found";
+            } else {
+                int entry_idx = ts->selection;
+                if (entry_idx < 0) entry_idx = 0;
+                if (entry_idx >= cache->count) entry_idx = cache->count - 1;
+                FileEntry* fe = &cache->entries[entry_idx];
+                if (fe->is_dir) {
+                    preview_title = fe->name;
+                } else {
+                    base_name_no_ext(fe->name, preview_buf, sizeof(preview_buf));
+                    if (preview_buf[0] == 0) copy_str(preview_buf, sizeof(preview_buf), fe->name);
+                    preview_title = preview_buf;
+                }
             }
         }
 
@@ -2349,22 +2917,37 @@ int main(int argc, char** argv) {
             OptionItem* list = g_options;
             int count = g_option_count;
             const char* header = "Options";
-            if (g_options_mode == 1) {
+            if (g_options_mode == OPT_MODE_THEME) {
                 list = g_theme_options;
                 count = g_theme_option_count;
                 header = "Themes";
-            } else if (g_options_mode == 2) {
+            } else if (g_options_mode == OPT_MODE_TOP_BG) {
                 list = g_top_bg_options;
                 count = g_top_bg_option_count;
                 header = "Top background";
-            } else if (g_options_mode == 3) {
+            } else if (g_options_mode == OPT_MODE_BOTTOM_BG) {
                 list = g_bottom_bg_options;
                 count = g_bottom_bg_option_count;
                 header = "Bottom background";
-            } else if (g_options_mode == 4) {
+            } else if (g_options_mode == OPT_MODE_BG_VIS) {
                 list = g_bg_vis_options;
                 count = g_bg_vis_option_count;
                 header = "Background visibility";
+            } else if (g_options_mode == OPT_MODE_EMULATORS) {
+                list = g_emu_options;
+                count = g_emu_option_count;
+                header = "Emulators";
+            } else if (g_options_mode == OPT_MODE_EMULATOR_DETAIL) {
+                list = g_emu_detail_options;
+                count = g_emu_detail_count;
+                header = "Emulator";
+                if (g_emu_detail_index >= 0 && g_emu_detail_index < g_emu.count) {
+                    header = g_emu.systems[g_emu_detail_index].display_name;
+                }
+            } else if (g_options_mode == OPT_MODE_RETRO_INFO) {
+                list = g_retro_info_options;
+                count = g_retro_info_count;
+                header = "RetroArch backend requirements";
             }
             draw_rect(0, 0, BOTTOM_W, BOTTOM_H, overlay_color(g_theme.overlay_bg, bottom_has_bg));
             draw_text(8, 6, 0.7f, g_theme.option_header, header);
@@ -2485,12 +3068,15 @@ int main(int argc, char** argv) {
                     draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, shortname, list_bias);
                 }
             }
-        } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
+        } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
+            bool is_rom = !strcmp(target->type, "rom_browser");
+            bool is_emu = is_emulator_target(target);
+            bool root_ok = !is_emu || emu_root_exists;
             DirCache* cache = &g_runtimes[current_target].cache;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
-            bool show_card = show_nds_card(target, ts);
-            int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
-            int total = cache->count + card_offset;
+            bool show_card = is_rom ? show_nds_card(target, ts) : false;
+            int card_offset = (is_rom && show_card) ? 1 : 0;
+            int total = root_ok ? (cache->count + card_offset) : 0;
             int list_x = 6;
             int list_y = 6;
             int list_w = BOTTOM_W - 12;
@@ -2500,6 +3086,11 @@ int main(int argc, char** argv) {
             draw_rect(list_x, list_y + list_h - 1, list_w, 1, border);
             draw_rect(list_x, list_y, 1, list_h, border);
             draw_rect(list_x + list_w - 1, list_y, 1, list_h, border);
+            if (!root_ok) {
+                draw_text(18, list_y + list_h * 0.5f - 8.0f, 0.7f, g_theme.text_secondary, "Missing folder");
+            } else if (total <= 0) {
+                draw_text(18, list_y + list_h * 0.5f - 8.0f, 0.7f, g_theme.text_secondary, "No games found");
+            } else {
             for (int i = 0; i < visible; i++) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
@@ -2535,6 +3126,7 @@ int main(int argc, char** argv) {
                 else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
                 draw_text_centered_bias(text_x, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, label_buf, list_bias);
             }
+            }
         } else {
             draw_text(8, 10, 0.7f, g_theme.text_primary, "System Menu");
             draw_text(8, 30, 0.6f, g_theme.text_muted, "Press A to exit");
@@ -2542,13 +3134,19 @@ int main(int argc, char** argv) {
 
         if (cfg->help_bar) {
             const char* help = "A Launch   B Back   X Sort   Y Search";
-            if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser")) {
+            if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
+                bool is_rom = !strcmp(target->type, "rom_browser");
+                bool is_emu = is_emulator_target(target);
+                bool root_ok = !is_emu || emu_root_exists;
                 DirCache* cache = &g_runtimes[current_target].cache;
-                bool show_card = show_nds_card(target, ts);
-                int card_offset = (!strcmp(target->type, "rom_browser") && show_card) ? 1 : 0;
-                int entry_idx = ts->selection - card_offset;
-                if (entry_idx >= 0 && entry_idx < cache->count && cache->entries[entry_idx].is_dir) {
-                    help = "A Open   B Back   X Sort   Y Search";
+                bool show_card = is_rom ? show_nds_card(target, ts) : false;
+                int card_offset = (is_rom && show_card) ? 1 : 0;
+                int total = root_ok ? (cache->count + card_offset) : 0;
+                if (total > 0) {
+                    int entry_idx = ts->selection - card_offset;
+                    if (entry_idx >= 0 && entry_idx < cache->count && cache->entries[entry_idx].is_dir) {
+                        help = "A Open   B Back   X Sort   Y Search";
+                    }
                 }
             }
             draw_help_bar(help);

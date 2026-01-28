@@ -26,15 +26,29 @@
 #define BACKGROUNDS_DIR "sdmc:/3ds/FirmMux/backgrounds"
 #define BACKGROUNDS_TOP_DIR BACKGROUNDS_DIR "/top"
 #define BACKGROUNDS_BOTTOM_DIR BACKGROUNDS_DIR "/bottom"
+#define EMU_EXT_DIR "sdmc:/3ds/emulators"
+#define RETRO_RULES_PATH EMU_EXT_DIR "/retroarch_rules.json"
+#define RETRO_EMULATORS_PATH EMU_EXT_DIR "/emulators.json"
+#define RETRO_LAUNCH_PATH EMU_EXT_DIR "/launch.json"
+#define RETRO_LAUNCH_TMP_PATH LAUNCH_DIR "/retroarch_launch.tmp"
+#define RETRO_LOG_PATH EMU_EXT_DIR "/log.txt"
+#define RETRO_RULES_BAK_PATH DEBUG_DIR "/retroarch_rules.bak.json"
+#define RETRO_EMULATORS_BAK_PATH DEBUG_DIR "/emulators.bak.json"
+#define RETRO_ENTRY_DEFAULT "sd:/3ds/FirmMux/emulators/retroarch.3dsx"
+#define RETRO_CORES_DIR "sdmc:/retroarch/cores"
+#define RETRO_COMPAT_HANDOFF_PATH "sd:/firmmux/launch.json"
+#define RETRO_COMPAT_HANDOFF_PATH_3DS "sd:/3ds/firmmux/launch.json"
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 
-#define MAX_TARGETS 16
+#define MAX_TARGETS 24
 #define MAX_EXTENSIONS 8
 #define MAX_ENTRIES 1024
 #define MAX_OPTIONS 32
 #define MAX_THEMES 32
 #define MAX_BACKGROUNDS 64
+#define MAX_SYSTEMS 20
+#define MAX_RETRO_RULES 40
 
 #define TOP_W 400
 #define TOP_H 240
@@ -103,6 +117,8 @@ typedef struct {
     char top_background[64];
     char bottom_background[64];
     int background_visibility;
+    bool retro_log_enabled;
+    bool retro_chainload_enabled;
     TargetState entries[MAX_TARGETS];
     int count;
 } State;
@@ -116,7 +132,37 @@ typedef struct {
 
 typedef struct {
     DirCache cache;
+    bool root_missing;
 } TargetRuntime;
+
+typedef struct {
+    char folder[16];
+    char extensions[MAX_EXTENSIONS][16];
+    int ext_count;
+    char core[64];
+} RetroRule;
+
+typedef struct {
+    int version;
+    char mode[64];
+    char retroarch_entry[256];
+    char handoff_path[256];
+    RetroRule rules[MAX_RETRO_RULES];
+    int rule_count;
+} RetroRules;
+
+typedef struct {
+    char key[16];
+    char display_name[48];
+    bool enabled;
+    char rom_folder[256];
+} EmuSystem;
+
+typedef struct {
+    int version;
+    EmuSystem systems[MAX_SYSTEMS];
+    int count;
+} EmuConfig;
 
 typedef enum {
     OPTION_ACTION_NONE = 0,
@@ -131,6 +177,10 @@ typedef enum {
     OPTION_ACTION_TOP_BACKGROUND,
     OPTION_ACTION_BOTTOM_BACKGROUND,
     OPTION_ACTION_BG_VISIBILITY,
+    OPTION_ACTION_RETRO_LOG_TOGGLE,
+    OPTION_ACTION_RETRO_CHAINLOAD_TOGGLE,
+    OPTION_ACTION_RETRO_INFO,
+    OPTION_ACTION_EMULATORS_MENU,
     OPTION_ACTION_AUTOBOOT_STATUS,
     OPTION_ACTION_ABOUT
 } OptionAction;
@@ -364,6 +414,27 @@ bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, siz
 bool decode_jpeg_rgba(const unsigned char* jpg, size_t jpg_size, unsigned char** out, unsigned* w, unsigned* h);
 bool homebrew_load_meta(const char* sd_path, char* title_out, size_t title_size, u16* icon_out, size_t icon_count);
 bool homebrew_launch_3dsx(const char* sd_path, char* status_message, size_t status_size);
+
+bool load_or_create_retro_rules(RetroRules* rules, bool* regenerated);
+const char* retro_resolve_core(const RetroRules* rules, const char* system_key, const char* ext_lower, bool* matched_rule);
+int retro_extensions_for_system(const RetroRules* rules, const char* system_key, char out_exts[MAX_EXTENSIONS][16]);
+bool retro_write_launch(const RetroRules* rules, const char* rom_sd_path, const char* core, char* status_message, size_t status_size);
+bool retro_retroarch_exists(const RetroRules* rules);
+bool retro_core_available(const char* core_label, bool* known, bool* available);
+bool retro_chainload_available(void);
+bool retro_chainload(const char* retroarch_sd_path, char* status_message, size_t status_size);
+void retro_log_set_enabled(bool on);
+bool retro_log_is_enabled(void);
+void retro_log_reset(void);
+void retro_log_line(const char* fmt, ...);
+
+bool load_or_create_emulators(EmuConfig* cfg, bool* regenerated);
+bool save_emulators(const EmuConfig* cfg);
+const EmuSystem* emu_find_by_key(const EmuConfig* cfg, const char* key);
+EmuSystem* emu_find_by_key_mut(EmuConfig* cfg, const char* key);
+const EmuSystem* emu_find_by_path(const EmuConfig* cfg, const char* rom_sd_path);
+bool emu_resolve_system(const EmuConfig* cfg, const char* rom_sd_path, const char* fallback_key, char* out_key, size_t out_size);
+int emu_known_system_keys(const char** out_keys, int max_keys);
 
 bool load_or_create_config(Config* cfg);
 void theme_default(Theme* t);

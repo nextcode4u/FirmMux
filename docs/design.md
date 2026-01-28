@@ -48,6 +48,13 @@ rom_browser
 - Files filtered by configured extensions
 - List shows filenames; preview shows banner icon/title when enabled
 
+retroarch_system
+- File browser rooted at the system's configured ROM folder
+- Missing folder shows a "Missing folder" state
+- Empty folder shows a "No games found" state
+- Launch writes a RetroArch handoff file and then chainloads RetroArch when possible
+- If chainload is unavailable, FirmMux exits to hbmenu with instructions
+
 ## State Machine
 
 States
@@ -70,6 +77,16 @@ Transitions
 - On malformed config, rename to .bak and regenerate
 - State stores last target, per-target directory path + selection + scroll, selected theme, selected backgrounds, and background visibility
 
+## RetroArch Backend Files
+
+FirmMux uses external RetroArch backend config under:
+- /3ds/emulators/retroarch_rules.json
+- /3ds/emulators/emulators.json
+- /3ds/emulators/launch.json
+- /3ds/emulators/log.txt
+
+Invalid or missing JSON is regenerated automatically.
+
 ## Backgrounds
 
 - Background images live under:
@@ -78,7 +95,6 @@ Transitions
 - Options includes:
   - Top background picker
   - Bottom background picker
-  - Background visibility picker (controls how strong UI overlays are when a background is present)
   - Background visibility picker (controls panel opacity when a background is present)
 
 ## Caching
@@ -100,6 +116,18 @@ Transitions
     sd:/roms/nds/Game.nds
     ```
   - Launcher is selected by product code (`CTR-P-FMBP`) or `loader_title_id` in config
+- retroarch_system:
+  - resolve system key from emulators.json romFolder prefix, else parent folder
+  - resolve core from retroarch_rules.json
+  - write handoff to `sd:/3ds/emulators/launch.json`
+- if RetroArch exists and chainload is available, chainload `sd:/3ds/FirmMux/emulators/retroarch.3dsx`
+  - otherwise exit to hbmenu with instructions to launch RetroArch
+
+## Custom RetroArch Build
+
+- Custom RetroArch 3DSX is built from source in `retroarch_src/RetroArch-master/`
+- Build script: `tools/build_retroarch_with_firmux.sh`
+- Output: `SD/3ds/FirmMux/emulators/retroarch.3dsx`
 
 ## Autoboot
 

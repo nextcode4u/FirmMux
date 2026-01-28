@@ -28,11 +28,58 @@ Copy `FirmMux.3dsx` to your SD card and launch from the Homebrew Launcher.
 
 Config is stored at `/3ds/FirmMux/config.yaml` and state at `/3ds/FirmMux/state.json`.
 
-## Alpha release
+## Pure RetroArch Backend (3DSX Only)
 
-Current alpha: v0.1.0-alpha2.
+FirmMux acts as the frontend. RetroArch (3DSX) is the backend.
 
-Note: emulator targets (NES/GBA/SNES/etc) are not implemented yet.
+- RetroArch entry: `sd:/3ds/FirmMux/emulators/retroarch.3dsx` (custom FirmMux RetroArch build)
+- RetroArch cores/system: `sd:/retroarch/` (cores in `sd:/retroarch/cores/`, BIOS/system in `sd:/retroarch/system/`)
+- No CIA titles for emulators
+- No standalone emulator binaries
+- No user-facing RetroArch menus; FirmMux drives content launch
+
+On ROM launch:
+1. FirmMux resolves the system key
+2. FirmMux resolves a RetroArch core
+3. FirmMux writes a handoff file
+4. FirmMux chainloads RetroArch if available, otherwise exits to hbmenu with instructions
+
+### External RetroArch Config Files
+
+These live under `sd:/3ds/emulators/` and are the only files FirmMux writes there:
+
+- `retroarch_rules.json`
+- `emulators.json`
+- `launch.json`
+- `log.txt` (only when RetroArch logging is enabled)
+
+FirmMux regenerates defaults automatically if JSON is missing or invalid.
+
+### Emulator Systems and ROM Folders
+
+FirmMux expects these systems under `sd:/roms/`:
+
+`a26 a52 a78 col cpc gb gen gg intv m5 nes ngp pkmni sg sms snes tg16 ws`
+
+`nds` and BIOS folders are intentionally excluded from RetroArch systems.
+
+### Emulator Tabs and Settings
+
+Tab order is always:
+
+1. System Menu
+2. 3DS Titles
+3. NDS Titles
+4. Homebrew
+5. Emulator tabs (enabled systems only)
+
+In Options:
+
+- `Emulators...` opens per-system settings.
+- Each system page includes an Enabled toggle.
+- Each system page includes a ROM folder assignment.
+- `RetroArch log: On/Off` toggles `sd:/3ds/emulators/log.txt`
+- `RetroArch backend requirements` shows required paths and BIOS notes
 
 ## Backgrounds
 
@@ -127,3 +174,74 @@ status_text_offset_y:
 
 Sample themes shipped in SD layout:
 `default`, `amber`, `cobalt`, `dark_material`, `ember`, `glacier`, `graphite`, `midnight`, `mint`, `neon_cyber`, `paper_light`, `sage`, `sandstone`, `sunset`, `synthwave_hass`.
+
+## Custom RetroArch (FirmMux Build)
+
+We ship a custom RetroArch 3DSX build (salmander-based) that reads `sd:/3ds/emulators/launch.json` and immediately boots the selected core + ROM.
+
+To build it:
+
+1. Place RetroArch source under:
+   `retroarch_src/RetroArch-master/`
+   Source: https://github.com/libretro/RetroArch/tree/master
+
+2. Run:
+```
+tools/build_retroarch_with_firmux.sh
+```
+
+This outputs:
+`SD/3ds/FirmMux/emulators/retroarch.3dsx`
+
+RetroArch dependency folders expected on SD:
+`sd:/retroarch/` (cores in `sd:/retroarch/cores/`, BIOS/system in `sd:/retroarch/system/`)
+
+RetroArch 3DSX data bundle required:
+Use the 3DSX release (not CIA) from:
+```
+https://buildbot.libretro.com/stable/
+```
+Copy the `retroarch/` folder from the 3DS 3DSX build to the SD root:
+`sd:/retroarch/` (must include `cores/`, `system/`, and supporting assets).
+
+## SD Folder Layout (Required)
+
+```
+sd:/
+  3ds/
+    FirmMux.3dsx
+    FirmMux.smdh
+    FirmMux/
+      backgrounds/
+        top/
+        bottom/
+      emulators/
+        retroarch.3dsx
+        retroarch.smdh
+      themes/
+        <theme-name>/theme.yaml
+      ui sounds/
+    emulators/
+      retroarch_rules.json
+      emulators.json
+      launch.json
+      log.txt
+  retroarch/
+    cores/
+      *_libretro.3dsx
+    system/
+```
+
+## On-Device Testing (hbmenu)
+
+1. Copy `FirmMux.3dsx` to `sd:/3ds/`.
+2. Ensure RetroArch exists at `sd:/3ds/FirmMux/emulators/retroarch.3dsx`.
+3. Ensure RetroArch dependency folders exist at `sd:/retroarch/` (cores/system).
+3. Place ROMs under the system folders in `sd:/roms/` (see list above).
+4. Launch FirmMux from hbmenu.
+5. In Options:
+6. Open `Emulators...` and confirm systems and folders.
+7. Optionally enable `RetroArch log: On`.
+8. Go to an emulator tab and select a ROM.
+9. If chainloading is supported, RetroArch should open.
+10. Otherwise FirmMux exits with a message telling you to launch RetroArch from hbmenu.

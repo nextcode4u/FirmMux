@@ -127,6 +127,7 @@ bool read_file(const char* path, u8** out, size_t* out_size) {
 void ensure_dirs(void) {
     mkdir("sdmc:/3ds", 0777);
     mkdir("sdmc:/3ds/FirmMux", 0777);
+    mkdir(EMU_EXT_DIR, 0777);
     mkdir(CACHE_DIR, 0777);
     mkdir(CACHE_NDS_DIR, 0777);
     mkdir(CACHE_3DS_DIR, 0777);

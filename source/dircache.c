@@ -30,6 +30,13 @@ static bool entry_allowed(const Target* target, const char* name, bool is_dir) {
         }
         return false;
     }
+    if (!strcmp(target->type, "retroarch_system")) {
+        if (target->ext_count == 0) return true;
+        for (int i = 0; i < target->ext_count; i++) {
+            if (has_extension(name, target->extensions[i])) return true;
+        }
+        return false;
+    }
     return true;
 }
 
