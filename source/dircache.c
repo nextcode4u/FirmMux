@@ -4,11 +4,32 @@
 #include <stdlib.h>
 #include <strings.h>
 
+static int g_sort_mode = 0;
+
+static int is_letter_char(unsigned char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
 static int entry_cmp(const void* a, const void* b) {
     const FileEntry* ea = (const FileEntry*)a;
     const FileEntry* eb = (const FileEntry*)b;
     if (ea->is_dir != eb->is_dir) return ea->is_dir ? -1 : 1;
-    return strcasecmp(ea->name, eb->name);
+    int a_letter = is_letter_char((unsigned char)ea->name[0]) ? 1 : 0;
+    int b_letter = is_letter_char((unsigned char)eb->name[0]) ? 1 : 0;
+    if (a_letter != b_letter) {
+        if (g_sort_mode == 0) return a_letter - b_letter;
+        return b_letter - a_letter;
+    }
+    int cmp = strcasecmp(ea->name, eb->name);
+    if (cmp == 0) return 0;
+    if (g_sort_mode == 1 && a_letter && b_letter) return -cmp;
+    return cmp;
+}
+
+void sort_dir_cache(DirCache* cache, int sort_mode) {
+    if (!cache || cache->count <= 1) return;
+    g_sort_mode = sort_mode;
+    qsort(cache->entries, cache->count, sizeof(FileEntry), entry_cmp);
 }
 
 static bool has_extension(const char* name, const char* ext) {
@@ -67,7 +88,7 @@ bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
         fe->is_dir = is_dir;
     }
     closedir(dir);
-    qsort(cache->entries, cache->count, sizeof(FileEntry), entry_cmp);
+    sort_dir_cache(cache, ts ? ts->sort_mode : 0);
     snprintf(cache->path, sizeof(cache->path), "%s", ts->path);
     cache->valid = true;
     return true;

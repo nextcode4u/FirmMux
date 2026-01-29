@@ -105,6 +105,7 @@ typedef struct {
     int selection;
     int scroll;
     int nds_banner_mode;
+    int sort_mode;
     char loader_title_id[32];
     char loader_media[16];
     char card_launcher_title_id[32];
@@ -452,6 +453,7 @@ void icon_free(IconTexture* icon);
 
 bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache);
 bool cache_matches(const DirCache* cache, const char* path);
+void sort_dir_cache(DirCache* cache, int sort_mode);
 
 void ensure_titles_loaded(const Config* cfg);
 void titles_mark_dirty(void);
@@ -463,5 +465,7 @@ int title_count_user(void);
 int title_count_system(void);
 TitleInfo3ds* title_user_at(int idx);
 TitleInfo3ds* title_system_at(int idx);
+TitleInfo3ds* title_user_at_sorted(int idx, int sort_mode);
+TitleInfo3ds* title_system_at_sorted(int idx, int sort_mode);
 
 #endif

@@ -350,6 +350,60 @@ static TitleInfo3ds* find_by_filter(bool system_only, int idx) {
     return NULL;
 }
 
+static int title_name_cmp(const void* a, const void* b) {
+    const TitleInfo3ds* ta = *(TitleInfo3ds* const*)a;
+    const TitleInfo3ds* tb = *(TitleInfo3ds* const*)b;
+    if (!ta || !tb) return 0;
+    const char* an = ta->name;
+    const char* bn = tb->name;
+    if (!an) an = "";
+    if (!bn) bn = "";
+    int a_letter = isalpha((unsigned char)an[0]) ? 1 : 0;
+    int b_letter = isalpha((unsigned char)bn[0]) ? 1 : 0;
+    if (a_letter != b_letter) {
+        return a_letter - b_letter;
+    }
+    return strcasecmp(an, bn);
+}
+
+static void sort_titles(TitleInfo3ds** arr, int count, int sort_mode) {
+    if (!arr || count <= 1) return;
+    qsort(arr, count, sizeof(TitleInfo3ds*), title_name_cmp);
+    if (sort_mode == 1) {
+        int i = 0;
+        int j = count - 1;
+        while (i < j) {
+            TitleInfo3ds* tmp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = tmp;
+            i++;
+            j--;
+        }
+    }
+}
+
+static void build_sorted_lists(int sort_mode, TitleInfo3ds*** out_user, int* out_user_count, TitleInfo3ds*** out_sys, int* out_sys_count) {
+    static TitleInfo3ds* user_list[MAX_3DS_TITLES];
+    static TitleInfo3ds* sys_list[MAX_3DS_TITLES];
+    int uc = 0;
+    int sc = 0;
+    for (int i = 0; i < g_title_catalog.count; i++) {
+        TitleInfo3ds* t = &g_title_catalog.entries[i];
+        if (!t->visible) continue;
+        if (t->is_system) {
+            sys_list[sc++] = t;
+        } else {
+            user_list[uc++] = t;
+        }
+    }
+    sort_titles(user_list, uc, sort_mode);
+    sort_titles(sys_list, sc, sort_mode);
+    *out_user = user_list;
+    *out_user_count = uc;
+    *out_sys = sys_list;
+    *out_sys_count = sc;
+}
+
 int title_count_user(void) {
     int c = 0;
     for (int i = 0; i < g_title_catalog.count; i++) {
@@ -394,3 +448,28 @@ TitleInfo3ds* title_user_at(int idx) {
     return NULL;
 }
 TitleInfo3ds* title_system_at(int idx) { return find_by_filter(true, idx); }
+
+TitleInfo3ds* title_user_at_sorted(int idx, int sort_mode) {
+    TitleInfo3ds* card = title_user_card();
+    if (card) {
+        if (idx == 0) return card;
+        idx--;
+    }
+    TitleInfo3ds** user_list = NULL;
+    TitleInfo3ds** sys_list = NULL;
+    int uc = 0;
+    int sc = 0;
+    build_sorted_lists(sort_mode, &user_list, &uc, &sys_list, &sc);
+    if (idx < 0 || idx >= uc) return NULL;
+    return user_list[idx];
+}
+
+TitleInfo3ds* title_system_at_sorted(int idx, int sort_mode) {
+    TitleInfo3ds** user_list = NULL;
+    TitleInfo3ds** sys_list = NULL;
+    int uc = 0;
+    int sc = 0;
+    build_sorted_lists(sort_mode, &user_list, &uc, &sys_list, &sc);
+    if (idx < 0 || idx >= sc) return NULL;
+    return sys_list[idx];
+}

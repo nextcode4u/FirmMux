@@ -71,6 +71,7 @@ bool parse_state(const char* text, State* state) {
             json_find_int(block, "selection", &ts->selection);
             json_find_int(block, "scroll", &ts->scroll);
             json_find_int(block, "nds_banner_mode", &ts->nds_banner_mode);
+            json_find_int(block, "sort_mode", &ts->sort_mode);
             json_find_string(block, "loader_title_id", ts->loader_title_id, sizeof(ts->loader_title_id));
             json_find_string(block, "loader_media", ts->loader_media, sizeof(ts->loader_media));
             json_find_string(block, "card_launcher_title_id", ts->card_launcher_title_id, sizeof(ts->card_launcher_title_id));
@@ -164,8 +165,8 @@ bool save_state(const State* state) {
         json_escape(ts->loader_media, loader_media_esc, sizeof(loader_media_esc));
         json_escape(ts->card_launcher_title_id, card_id_esc, sizeof(card_id_esc));
         json_escape(ts->card_launcher_media, card_media_esc, sizeof(card_media_esc));
-        fprintf(f, "    {\"id\":\"%s\",\"path\":\"%s\",\"selection\":%d,\"scroll\":%d,\"nds_banner_mode\":%d,\"loader_title_id\":\"%s\",\"loader_media\":\"%s\",\"card_launcher_title_id\":\"%s\",\"card_launcher_media\":\"%s\"}%s\n",
-            id_esc, path_esc, ts->selection, ts->scroll, ts->nds_banner_mode, loader_id_esc, loader_media_esc, card_id_esc, card_media_esc, (i + 1 == state->count) ? "" : ",");
+        fprintf(f, "    {\"id\":\"%s\",\"path\":\"%s\",\"selection\":%d,\"scroll\":%d,\"nds_banner_mode\":%d,\"sort_mode\":%d,\"loader_title_id\":\"%s\",\"loader_media\":\"%s\",\"card_launcher_title_id\":\"%s\",\"card_launcher_media\":\"%s\"}%s\n",
+            id_esc, path_esc, ts->selection, ts->scroll, ts->nds_banner_mode, ts->sort_mode, loader_id_esc, loader_media_esc, card_id_esc, card_media_esc, (i + 1 == state->count) ? "" : ",");
     }
     fprintf(f, "  ]\n");
     fprintf(f, "}\n");
@@ -182,5 +183,6 @@ TargetState* get_target_state(State* state, const char* id) {
     memset(ts, 0, sizeof(*ts));
     snprintf(ts->id, sizeof(ts->id), "%s", id);
     ts->nds_banner_mode = 0;
+    ts->sort_mode = 0;
     return ts;
 }

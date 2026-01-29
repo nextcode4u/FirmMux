@@ -2477,12 +2477,22 @@ int main(int argc, char** argv) {
                 clamp_scroll_list(&ts->scroll, ts->selection, visible, total);
                 if (rep_up || rep_down) state_dirty = true;
                 if (ts->selection != prev) audio_play(SOUND_MOVE);
+                if (kDown & KEY_X) {
+                    ts->sort_mode = (ts->sort_mode + 1) % 2;
+                    ts->selection = 0;
+                    ts->scroll = 0;
+                    state_dirty = true;
+                    if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
+                    else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
+                    status_timer = 60;
+                    audio_play(SOUND_SELECT);
+                }
                 if (kDown & KEY_A) {
                     if (ts->selection == 0) {
                         snprintf(status_message, sizeof(status_message), "Exiting...");
                         break;
                     } else {
-                        TitleInfo3ds* tinfo = title_system_at(ts->selection - 1);
+                        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
                         if (tinfo) {
                             if (launch_title_id(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
                                 snprintf(status_message, sizeof(status_message), "Launching...");
@@ -2506,8 +2516,18 @@ int main(int argc, char** argv) {
                 clamp_scroll_list(&ts->scroll, ts->selection, visible, total);
                 if (rep_up || rep_down) state_dirty = true;
                 if (ts->selection != prev) audio_play(SOUND_MOVE);
+                if (kDown & KEY_X) {
+                    ts->sort_mode = (ts->sort_mode + 1) % 2;
+                    ts->selection = 0;
+                    ts->scroll = 0;
+                    state_dirty = true;
+                    if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
+                    else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
+                    status_timer = 60;
+                    audio_play(SOUND_SELECT);
+                }
                 if (kDown & KEY_A) {
-                    TitleInfo3ds* tinfo = title_user_at(ts->selection);
+                    TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
                     if (tinfo) {
                         if (launch_title_id(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
                             snprintf(status_message, sizeof(status_message), "Launching...");
@@ -2550,6 +2570,17 @@ int main(int argc, char** argv) {
                     make_sd_path(joined, sdpath, sizeof(sdpath));
                     if (is_nds_name(cache->entries[entry_idx].name)) build_nds_entry(sdpath);
                     }
+                }
+                if (kDown & KEY_X) {
+                    ts->sort_mode = (ts->sort_mode + 1) % 2;
+                    sort_dir_cache(cache, ts->sort_mode);
+                    ts->selection = 0;
+                    ts->scroll = 0;
+                    state_dirty = true;
+                    if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
+                    else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
+                    status_timer = 60;
+                    audio_play(SOUND_SELECT);
                 }
                 if (kDown & KEY_B) {
                     char root[256];
@@ -2659,7 +2690,7 @@ int main(int argc, char** argv) {
                 preview_title = "Return to HOME";
                 show_system_info = true;
             } else {
-                TitleInfo3ds* tinfo = title_system_at(ts->selection - 1);
+                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
                 if (tinfo) {
                     preview_title = tinfo->name;
                     preview_tinfo = tinfo;
@@ -2668,7 +2699,7 @@ int main(int argc, char** argv) {
                 }
             }
         } else if (!strcmp(target->type, "installed_titles")) {
-            TitleInfo3ds* tinfo = title_user_at(ts->selection);
+            TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
             if (tinfo) {
                 preview_title = tinfo->name;
                 preview_tinfo = tinfo;
@@ -2826,7 +2857,7 @@ int main(int argc, char** argv) {
                 }
             }
         } else if (!show_system_info && !strcmp(target->type, "installed_titles")) {
-            TitleInfo3ds* tinfo = title_user_at(ts->selection);
+            TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
             if (update_title_preview_rgba(tinfo)) {
                 float scale = 2.0f;
                 float px = 8 + (96.0f - 48.0f * scale) * 0.5f;
@@ -2840,7 +2871,7 @@ int main(int argc, char** argv) {
             }
         } else if (!show_system_info && !strcmp(target->type, "system_menu")) {
             if (ts->selection > 0) {
-                TitleInfo3ds* tinfo = title_system_at(ts->selection - 1);
+                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
                 if (update_title_preview_rgba(tinfo)) {
                     float scale = 2.0f;
                     float px = 8 + (96.0f - 48.0f * scale) * 0.5f;
@@ -3013,7 +3044,7 @@ int main(int argc, char** argv) {
                     draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
                 }
                 char shortname[56];
-                TitleInfo3ds* t = title_user_at(idx);
+                TitleInfo3ds* t = title_user_at_sorted(idx, ts->sort_mode);
                 if (!t) continue;
                 copy_str(shortname, sizeof(shortname), t->name);
                 if (strlen(shortname) > 30) {
@@ -3052,7 +3083,7 @@ int main(int argc, char** argv) {
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
                     draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, "Return to HOME", list_bias);
                 } else {
-                    TitleInfo3ds* t = title_system_at(idx - 1);
+                    TitleInfo3ds* t = title_system_at_sorted(idx - 1, ts->sort_mode);
                     if (!t) continue;
                     char shortname[56];
                     copy_str(shortname, sizeof(shortname), t->name);
