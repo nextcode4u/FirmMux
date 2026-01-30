@@ -136,6 +136,11 @@ void ensure_dirs(void) {
     mkdir(BACKGROUNDS_DIR, 0777);
     mkdir(BACKGROUNDS_TOP_DIR, 0777);
     mkdir(BACKGROUNDS_BOTTOM_DIR, 0777);
+    mkdir("sdmc:/_nds", 0777);
+    mkdir("sdmc:/_nds/firmmux", 0777);
+    mkdir(NDS_OPTIONS_DIR, 0777);
+    mkdir(NDS_CHEATS_DIR, 0777);
+    mkdir(NDS_WIDESCREEN_DIR, 0777);
 }
 
 void clear_dir_recursive(const char* path, bool keep_root) {
@@ -368,6 +373,143 @@ bool write_nextrom_txt(const char* sd_path) {
 
 bool write_launch_txt_for_nds(const char* sd_path) {
     return write_nextrom_txt(sd_path);
+}
+
+static u32 fnv1a_32(const char* s) {
+    u32 h = 2166136261u;
+    while (s && *s) {
+        h ^= (u8)*s++;
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static void nds_options_path(const char* sd_path, char* out, size_t out_size) {
+    u32 h = fnv1a_32(sd_path ? sd_path : "");
+    snprintf(out, out_size, "%s/%08x.ini", NDS_OPTIONS_DIR, (unsigned)h);
+}
+
+static void nds_options_defaults(NdsRomOptions* opt) {
+    if (!opt) return;
+    memset(opt, 0, sizeof(*opt));
+}
+
+static int parse_bool_value(const char* v) {
+    if (!v) return 0;
+    if (!strcasecmp(v, "1") || !strcasecmp(v, "true") || !strcasecmp(v, "yes") || !strcasecmp(v, "on")) return 1;
+    return 0;
+}
+
+bool load_nds_rom_options(const char* sd_path, NdsRomOptions* opt) {
+    if (!opt || !sd_path || !sd_path[0]) return false;
+    nds_options_defaults(opt);
+    ensure_dirs();
+    char path[512];
+    nds_options_path(sd_path, path, sizeof(path));
+    FILE* f = fopen(path, "r");
+    if (!f) return false;
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        char* eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq++ = 0;
+        trim(line);
+        trim(eq);
+        char* key = line;
+        char* val = eq;
+        if (!key[0] || !val[0]) continue;
+        if (!strcasecmp(key, "widescreen")) opt->widescreen = parse_bool_value(val);
+        else if (!strcasecmp(key, "cheats")) opt->cheats = parse_bool_value(val);
+        else if (!strcasecmp(key, "ap_patch")) opt->ap_patch = parse_bool_value(val);
+        else if (!strcasecmp(key, "cpu_boost")) opt->cpu_boost = parse_bool_value(val);
+        else if (!strcasecmp(key, "vram_boost")) opt->vram_boost = parse_bool_value(val);
+        else if (!strcasecmp(key, "async_read")) opt->async_read = parse_bool_value(val);
+        else if (!strcasecmp(key, "card_read_dma")) opt->card_read_dma = parse_bool_value(val);
+        else if (!strcasecmp(key, "dsi_mode")) opt->dsi_mode = parse_bool_value(val);
+    }
+    fclose(f);
+    return true;
+}
+
+bool save_nds_rom_options(const char* sd_path, const NdsRomOptions* opt) {
+    if (!opt || !sd_path || !sd_path[0]) return false;
+    ensure_dirs();
+    char path[512];
+    nds_options_path(sd_path, path, sizeof(path));
+    FILE* f = fopen(path, "w");
+    if (!f) return false;
+    fprintf(f, "widescreen=%d\n", opt->widescreen ? 1 : 0);
+    fprintf(f, "cheats=%d\n", opt->cheats ? 1 : 0);
+    fprintf(f, "ap_patch=%d\n", opt->ap_patch ? 1 : 0);
+    fprintf(f, "cpu_boost=%d\n", opt->cpu_boost ? 1 : 0);
+    fprintf(f, "vram_boost=%d\n", opt->vram_boost ? 1 : 0);
+    fprintf(f, "async_read=%d\n", opt->async_read ? 1 : 0);
+    fprintf(f, "card_read_dma=%d\n", opt->card_read_dma ? 1 : 0);
+    fprintf(f, "dsi_mode=%d\n", opt->dsi_mode ? 1 : 0);
+    fclose(f);
+    return true;
+}
+
+bool write_nds_bootstrap_ini(const char* sd_path, const NdsRomOptions* opt) {
+    if (!sd_path || !sd_path[0] || !opt) return false;
+    ensure_dirs();
+    FILE* f = fopen("sdmc:/_nds/nds-bootstrap.ini", "w");
+    if (!f) return false;
+    fprintf(f, "NDS_PATH=%s\n", sd_path);
+    fprintf(f, "DSI_MODE=%d\n", opt->dsi_mode ? 1 : 0);
+    fprintf(f, "BOOST_CPU=%d\n", opt->cpu_boost ? 1 : 0);
+    fprintf(f, "BOOST_VRAM=%d\n", opt->vram_boost ? 1 : 0);
+    fprintf(f, "ASYNC_CARD_READ=%d\n", opt->async_read ? 1 : 0);
+    fprintf(f, "CARD_READ_DMA=%d\n", opt->card_read_dma ? 1 : 0);
+    fprintf(f, "WIDESCREEN=%d\n", opt->widescreen ? 1 : 0);
+    fprintf(f, "CHEATS=%d\n", opt->cheats ? 1 : 0);
+    fprintf(f, "AP_PATCH=%d\n", opt->ap_patch ? 1 : 0);
+    fclose(f);
+    return true;
+}
+
+bool copy_file_simple(const char* from, const char* to) {
+    if (!from || !to) return false;
+    u8* data = NULL;
+    size_t size = 0;
+    if (!read_file(from, &data, &size)) return false;
+    FILE* f = fopen(to, "wb");
+    if (!f) { free(data); return false; }
+    fwrite(data, 1, size, f);
+    fclose(f);
+    free(data);
+    return true;
+}
+
+static bool nds_header_gamecode_crc16(const char* sd_path, char gamecode[5], u16* crc16_out) {
+    if (!sd_path || !gamecode || !crc16_out) return false;
+    FILE* f = fopen(sd_path, "rb");
+    if (!f) return false;
+    u8 header[0x200];
+    size_t r = fread(header, 1, sizeof(header), f);
+    fclose(f);
+    if (r < sizeof(header)) return false;
+    memcpy(gamecode, header + 0x0C, 4);
+    gamecode[4] = 0;
+    u16 crc16 = (u16)header[0x15E] | ((u16)header[0x15F] << 8);
+    *crc16_out = crc16;
+    return true;
+}
+
+bool find_nds_widescreen_bin(const char* sd_path, char* out, size_t out_size) {
+    if (!sd_path || !sd_path[0] || !out || out_size == 0) return false;
+    char base[256];
+    base_name_no_ext(sd_path, base, sizeof(base));
+    if (base[0]) {
+        snprintf(out, out_size, "%s/%s.bin", NDS_WIDESCREEN_DIR, base);
+        if (file_exists(out)) return true;
+    }
+    char gamecode[5];
+    u16 crc16 = 0;
+    if (!nds_header_gamecode_crc16(sd_path, gamecode, &crc16)) return false;
+    snprintf(out, out_size, "%s/%s-%X.bin", NDS_WIDESCREEN_DIR, gamecode, (unsigned)crc16);
+    if (file_exists(out)) return true;
+    return false;
 }
 
 bool decode_jpeg_rgba(const unsigned char* jpg, size_t jpg_size, unsigned char** out, unsigned* w, unsigned* h) {

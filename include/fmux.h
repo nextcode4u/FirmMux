@@ -26,6 +26,9 @@
 #define BACKGROUNDS_DIR "sdmc:/3ds/FirmMux/backgrounds"
 #define BACKGROUNDS_TOP_DIR BACKGROUNDS_DIR "/top"
 #define BACKGROUNDS_BOTTOM_DIR BACKGROUNDS_DIR "/bottom"
+#define NDS_OPTIONS_DIR "sdmc:/_nds/firmmux/nds_options"
+#define NDS_CHEATS_DIR "sdmc:/_nds/firmmux/nds_cheats"
+#define NDS_WIDESCREEN_DIR "sdmc:/_nds/firmmux/nds_widescreen"
 #define EMU_EXT_DIR "sdmc:/3ds/emulators"
 #define RETRO_RULES_PATH EMU_EXT_DIR "/retroarch_rules.json"
 #define RETRO_EMULATORS_PATH EMU_EXT_DIR "/emulators.json"
@@ -123,6 +126,17 @@ typedef struct {
     TargetState entries[MAX_TARGETS];
     int count;
 } State;
+
+typedef struct {
+    int widescreen;
+    int cheats;
+    int ap_patch;
+    int cpu_boost;
+    int vram_boost;
+    int async_read;
+    int card_read_dma;
+    int dsi_mode;
+} NdsRomOptions;
 
 typedef struct {
     char path[256];
@@ -411,6 +425,11 @@ void make_sprite(u8* rgba, u32 color1, u32 color2);
 bool write_nextrom_txt(const char* sd_path);
 bool write_nextrom_yaml(const char* sd_path);
 bool write_launch_txt_for_nds(const char* sd_path);
+bool load_nds_rom_options(const char* sd_path, NdsRomOptions* opt);
+bool save_nds_rom_options(const char* sd_path, const NdsRomOptions* opt);
+bool write_nds_bootstrap_ini(const char* sd_path, const NdsRomOptions* opt);
+bool copy_file_simple(const char* from, const char* to);
+bool find_nds_widescreen_bin(const char* sd_path, char* out, size_t out_size);
 bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
 bool decode_jpeg_rgba(const unsigned char* jpg, size_t jpg_size, unsigned char** out, unsigned* w, unsigned* h);
 bool homebrew_load_meta(const char* sd_path, char* title_out, size_t title_size, u16* icon_out, size_t icon_count);
