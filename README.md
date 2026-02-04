@@ -29,3 +29,7 @@ See the `docs/` folder for setup and backend details:
 
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
+
+## Known Issue
+
+- NDS cheats are currently work in progress. Cheat selection UI and usrcheat flag writes are implemented, but in-game cheat activation is not yet reliable across all titles.

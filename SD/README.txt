@@ -12,6 +12,7 @@ Quick paths:
 - External RetroArch configs: /3ds/emulators/
 - NDS options: /_nds/firmmux/nds_options/
 - NDS cheats: /_nds/ntr-forwarder/usrcheat.dat
+- Note: NDS cheats are currently WIP; selection/flag writes are implemented, but in-game effect is not fully reliable yet.
 - NDS widescreen bins: /_nds/firmmux/nds_widescreen/
 - NDS launcher 3DSX (default): /3ds/FirmMux/firmux-bootstrap-prep.3dsx
 - NDS launcher CIA: FirmMuxBootstrapLauncher (TitleID CTR-P-FMBP)

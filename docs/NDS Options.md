@@ -51,6 +51,8 @@ For NTR forwarder / 3DSX launcher usage, move and rename it to:
 
 ## Cheats
 
+Current status: cheats integration is still a work in progress. Cheat selection UI and flag writing are implemented, but in-game cheat activation is not yet reliable across titles.
+
 Cheats use `usrcheat.dat` placed at:
 
 - `sd:/_nds/ntr-forwarder/usrcheat.dat`
