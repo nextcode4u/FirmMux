@@ -58,4 +58,3 @@ tools/build_retroarch_with_firmux.sh
 
 Output:
 - `SD/3ds/FirmMux/emulators/retroarch.3dsx`
-

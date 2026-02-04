@@ -110,12 +110,21 @@ Invalid or missing JSON is regenerated automatically.
 - system_menu: exit to HOME
 - installed_titles: launch selected title by TitleID (AM/NS path)
 - homebrew_browser: chainload selected .3dsx via hbloader
-- rom_browser: write handoff to `sd:/_nds/firmux/launch.txt` then jump to FirmMuxBootstrapLauncher CIA
+- rom_browser: write handoff to `sd:/_nds/firmux/launch.txt` then launch FirmMuxBootstrapLauncher (CIA or 3DSX prep)
   - Handoff format (text):
     ```
-    sd:/roms/nds/Game.nds
+    rom=sd:/roms/nds/Game.nds
+    cheats=0/1
+    widescreen=0/1
+    ap_patch=0/1
+    cpu_boost=0/1
+    vram_boost=0/1
+    async_read=0/1
+    card_read_dma=0/1
+    dsi_mode=0/1
     ```
-  - Launcher is selected by product code (`CTR-P-FMBP`) or `loader_title_id` in config
+  - CIA launcher is selected by product code (`CTR-P-FMBP`) or `loader_title_id` in config
+  - 3DSX launcher lives at `sd:/3ds/FirmMux/firmux-bootstrap-prep.3dsx`
 - retroarch_system:
   - resolve system key from emulators.json romFolder prefix, else parent folder
   - resolve core from retroarch_rules.json

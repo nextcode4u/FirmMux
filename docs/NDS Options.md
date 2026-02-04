@@ -4,6 +4,13 @@ Per‑ROM settings are stored under:
 
 - `sd:/_nds/firmmux/nds_options/`
 
+Launcher:
+- 3DSX launcher (default): `sd:/3ds/FirmMux/firmux-bootstrap-prep.3dsx`
+- CIA launcher (optional): FirmMuxBootstrapLauncher (TitleID `CTR-P-FMBP`)
+In Settings:
+- “Check NDS launcher” checks for the CIA.
+- “NDS launcher mode” chooses Auto / CIA / 3DSX.
+
 ## Widescreen
 
 Widescreen uses per‑game `.bin` files from:
@@ -38,7 +45,7 @@ TWPatch generates:
 
 - `sd:/luma/sysmodules/TwlBg.cxi`
 
-For NTR forwarder / nds-bootstrap usage, move and rename it to:
+For NTR forwarder / 3DSX launcher usage, move and rename it to:
 
 - `sd:/_nds/ntr-forwarder/Widescreen.cxi`
 
@@ -46,11 +53,13 @@ For NTR forwarder / nds-bootstrap usage, move and rename it to:
 
 Cheats use `usrcheat.dat` placed at:
 
-- `sd:/_nds/firmmux/nds_cheats/usrcheat.dat`
+- `sd:/_nds/ntr-forwarder/usrcheat.dat`
 
 Cheat selection is per‑ROM and saved under:
 
 - `sd:/_nds/firmmux/nds_cheats/<hash>.sel`
 
-On launch, FirmMux writes:
-- `sd:/_nds/nds-bootstrap/cheatData.bin`
+FirmMux updates the cheat flags directly inside:
+- `sd:/_nds/ntr-forwarder/usrcheat.dat`
+
+Cheats are grouped by categories (folder names from `usrcheat.dat`).

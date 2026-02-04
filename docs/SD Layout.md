@@ -14,6 +14,7 @@ sd:/
         top/
         bottom/
       themes/
+      firmux-bootstrap-prep.3dsx
     emulators/
       retroarch_rules.json
       emulators.json
@@ -27,14 +28,11 @@ sd:/
   _nds/
     nds-bootstrap.nds
     nds-bootstrap.ini
-    nds-bootstrap/
-      cheatData.bin
-      wideCheatData.bin
     firmmux/
       launch.txt
       nds_options/
-      nds_cheats/
-        usrcheat.dat
+    nds_cheats/
+      <hash>.sel
       nds_widescreen/
         *.bin
 ```
@@ -44,4 +42,5 @@ sd:/
 - `sd:/3ds/emulators/` is only used for RetroArch handoff/config/log files.
 - `sd:/retroarch/` must come from the RetroArch 3DSX release (not CIA). It provides cores and system files.
 - `sd:/_nds/firmmux/nds_widescreen/` stores per-game widescreen `.bin` files.
-- `sd:/_nds/firmmux/nds_cheats/usrcheat.dat` is the cheat database.
+- `sd:/_nds/ntr-forwarder/usrcheat.dat` is the cheat database.
+- For the 3DSX launcher, cheat flags are written directly into `sd:/_nds/ntr-forwarder/usrcheat.dat`.

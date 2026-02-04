@@ -27,7 +27,9 @@
 #define BACKGROUNDS_TOP_DIR BACKGROUNDS_DIR "/top"
 #define BACKGROUNDS_BOTTOM_DIR BACKGROUNDS_DIR "/bottom"
 #define NDS_OPTIONS_DIR "sdmc:/_nds/firmmux/nds_options"
+#define NDS_BOOTSTRAP_PREP_3DSX "sdmc:/3ds/FirmMux/firmux-bootstrap-prep.3dsx"
 #define NDS_CHEATS_DIR "sdmc:/_nds/firmmux/nds_cheats"
+#define NDS_CHEATS_DB_PATH "sdmc:/_nds/ntr-forwarder/usrcheat.dat"
 #define NDS_WIDESCREEN_DIR "sdmc:/_nds/firmmux/nds_widescreen"
 #define EMU_EXT_DIR "sdmc:/3ds/emulators"
 #define RETRO_RULES_PATH EMU_EXT_DIR "/retroarch_rules.json"
@@ -123,6 +125,7 @@ typedef struct {
     int background_visibility;
     bool retro_log_enabled;
     bool retro_chainload_enabled;
+    int nds_launcher_mode;
     TargetState entries[MAX_TARGETS];
     int count;
 } State;
@@ -187,6 +190,7 @@ typedef enum {
     OPTION_ACTION_TOGGLE_DEBUG,
     OPTION_ACTION_TOGGLE_NDS_BANNERS,
     OPTION_ACTION_SELECT_LAUNCHER,
+    OPTION_ACTION_NDS_LAUNCHER_MODE,
     OPTION_ACTION_SELECT_CARD_LAUNCHER,
     OPTION_ACTION_THEME_MENU,
     OPTION_ACTION_TOP_BACKGROUND,
@@ -429,6 +433,7 @@ bool load_nds_rom_options(const char* sd_path, NdsRomOptions* opt);
 bool save_nds_rom_options(const char* sd_path, const NdsRomOptions* opt);
 bool write_nds_bootstrap_ini(const char* sd_path, const NdsRomOptions* opt);
 bool copy_file_simple(const char* from, const char* to);
+bool copy_file_stream(const char* from, const char* to);
 bool find_nds_widescreen_bin(const char* sd_path, char* out, size_t out_size);
 bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
 bool decode_jpeg_rgba(const unsigned char* jpg, size_t jpg_size, unsigned char** out, unsigned* w, unsigned* h);

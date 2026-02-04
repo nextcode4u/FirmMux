@@ -13,5 +13,9 @@ build.log
 /FirmMux.3dsx
 /FirmMux.smdh
 FirmMux_SD*.zip
+
+# Source drop folders (keep parent dirs)
+ndsbs_src/nds-bootstrap-master/
+retroarch_src/RetroArch-master/
 log.txt
 retroarch_src/RetroArch-master/

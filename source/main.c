@@ -22,6 +22,14 @@
 #include "stb_image.h"
 #include "nds_cheats.h"
 
+#include "build_id.h"
+
+#ifndef FIRMUX_BUILD_ID
+#define FIRMUX_BUILD_ID "unknown"
+#endif
+
+static const char* g_build_id = FIRMUX_BUILD_ID;
+
 static OptionItem g_options[MAX_OPTIONS];
 static int g_option_count = 0;
 static bool g_nds_banners = false;
@@ -90,8 +98,35 @@ static char g_nds_opt_rom[512];
 static bool g_nds_opt_loaded = false;
 static OptionItem g_nds_cheat_options[256 + 1];
 static int g_nds_cheat_option_count = 0;
+static OptionItem g_nds_cheat_folder_options[128 + 1];
+static int g_nds_cheat_folder_count = 0;
+static int g_nds_cheat_map[256 + 1];
+static char g_nds_cheat_active_folder[64];
 static NdsCheatList g_nds_cheat_list;
 static bool g_nds_cheat_loaded = false;
+static bool g_nds_opt_has_cheats = false;
+static int g_nds_cheat_list_index = -1;
+static bool g_nds_opt_from_romlist = false;
+static const char* nds_launcher_mode_label(int mode) {
+    switch (mode) {
+        case 1: return "CIA";
+        case 2: return "3DSX";
+        default: return "Auto";
+    }
+}
+
+enum {
+    NDS_OPT_ACTION_BACK = 1,
+    NDS_OPT_ACTION_WIDESCREEN,
+    NDS_OPT_ACTION_CHEATS,
+    NDS_OPT_ACTION_CHEAT_LIST,
+    NDS_OPT_ACTION_AP_PATCH,
+    NDS_OPT_ACTION_CPU_BOOST,
+    NDS_OPT_ACTION_VRAM_BOOST,
+    NDS_OPT_ACTION_ASYNC_READ,
+    NDS_OPT_ACTION_CARD_READ_DMA,
+    NDS_OPT_ACTION_DSI_MODE
+};
 static char g_top_bg_names[MAX_BACKGROUNDS][64];
 static char g_bottom_bg_names[MAX_BACKGROUNDS][64];
 static int g_top_bg_count = 0;
@@ -113,7 +148,8 @@ enum {
     OPT_MODE_EMULATOR_DETAIL = 6,
     OPT_MODE_RETRO_INFO = 7,
     OPT_MODE_NDS_ROM = 8,
-    OPT_MODE_NDS_CHEATS = 9
+    OPT_MODE_NDS_CHEAT_FOLDERS = 9,
+    OPT_MODE_NDS_CHEATS = 10
 };
 
 static int clamp_pct(int v);
@@ -428,52 +464,80 @@ static void set_bg_visibility_from_index(int idx, State* state, char* status_mes
 }
 
 static void build_nds_rom_options(const char* sd_path) {
+    char path_copy[512];
+    path_copy[0] = 0;
+    if (sd_path && sd_path[0]) copy_str(path_copy, sizeof(path_copy), sd_path);
     g_nds_opt_option_count = 0;
     OptionItem* o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "Back");
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_BACK;
+    g_nds_cheat_list_index = -1;
     g_nds_opt_loaded = false;
+    g_nds_cheat_folder_count = 0;
+    g_nds_cheat_active_folder[0] = 0;
     g_nds_opt_rom[0] = 0;
-    if (!sd_path || !sd_path[0]) return;
-    copy_str(g_nds_opt_rom, sizeof(g_nds_opt_rom), sd_path);
-    load_nds_rom_options(sd_path, &g_nds_opt);
+    if (!path_copy[0]) return;
+    copy_str(g_nds_opt_rom, sizeof(g_nds_opt_rom), path_copy);
+    load_nds_rom_options(path_copy, &g_nds_opt);
     g_nds_opt_loaded = true;
+    g_nds_opt_has_cheats = nds_cheatdb_has_cheats(path_copy);
 
     const char* on = "On";
     const char* off = "Off";
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "Widescreen: %s", g_nds_opt.widescreen ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_WIDESCREEN;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "Cheats: %s", g_nds_opt.cheats ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_CHEATS;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
-    snprintf(o->label, sizeof(o->label), "Cheat list...");
-    o->action = OPTION_ACTION_NONE;
+    if (g_nds_opt_has_cheats) snprintf(o->label, sizeof(o->label), "Cheat categories...");
+    else snprintf(o->label, sizeof(o->label), "Cheat list: none");
+    o->action = NDS_OPT_ACTION_CHEAT_LIST;
+    g_nds_cheat_list_index = g_nds_opt_option_count - 1;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "AP Patch: %s", g_nds_opt.ap_patch ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_AP_PATCH;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "CPU Boost: %s", g_nds_opt.cpu_boost ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_CPU_BOOST;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "VRAM Boost: %s", g_nds_opt.vram_boost ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_VRAM_BOOST;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "Async Read: %s", g_nds_opt.async_read ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_ASYNC_READ;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "Card Read DMA: %s", g_nds_opt.card_read_dma ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_CARD_READ_DMA;
     o = &g_nds_opt_options[g_nds_opt_option_count++];
     snprintf(o->label, sizeof(o->label), "DSi Mode: %s", g_nds_opt.dsi_mode ? on : off);
-    o->action = OPTION_ACTION_NONE;
+    o->action = NDS_OPT_ACTION_DSI_MODE;
 }
 
-static void toggle_nds_option(int opt_index, char* status_message, size_t status_size, int* status_timer) {
+static int nds_cheat_list_index(void) {
+    return g_nds_cheat_list_index;
+}
+
+static int nds_opt_action_for_label(const char* label, int fallback) {
+    if (!label || !label[0]) return fallback;
+    if (!strncmp(label, "Cheat categories", 16)) return NDS_OPT_ACTION_CHEAT_LIST;
+    if (!strncmp(label, "Cheats:", 7)) return NDS_OPT_ACTION_CHEATS;
+    if (!strncmp(label, "Widescreen:", 11)) return NDS_OPT_ACTION_WIDESCREEN;
+    if (!strncmp(label, "AP Patch:", 9)) return NDS_OPT_ACTION_AP_PATCH;
+    if (!strncmp(label, "CPU Boost:", 10)) return NDS_OPT_ACTION_CPU_BOOST;
+    if (!strncmp(label, "VRAM Boost:", 11)) return NDS_OPT_ACTION_VRAM_BOOST;
+    if (!strncmp(label, "Async Read:", 11)) return NDS_OPT_ACTION_ASYNC_READ;
+    if (!strncmp(label, "Card Read DMA:", 14)) return NDS_OPT_ACTION_CARD_READ_DMA;
+    if (!strncmp(label, "DSi Mode:", 9)) return NDS_OPT_ACTION_DSI_MODE;
+    if (!strncmp(label, "Back", 4)) return NDS_OPT_ACTION_BACK;
+    return fallback;
+}
+
+static void toggle_nds_option_action(int action, char* status_message, size_t status_size, int* status_timer) {
     if (!g_nds_opt_loaded || !g_nds_opt_rom[0]) return;
-    switch (opt_index) {
-        case 1: {
+    switch (action) {
+        case NDS_OPT_ACTION_WIDESCREEN: {
             if (!g_nds_opt.widescreen) {
                 char wide_path[512];
                 if (!find_nds_widescreen_bin(g_nds_opt_rom, wide_path, sizeof(wide_path))) {
@@ -487,38 +551,84 @@ static void toggle_nds_option(int opt_index, char* status_message, size_t status
             g_nds_opt.widescreen = !g_nds_opt.widescreen;
             break;
         }
-        case 2: g_nds_opt.cheats = !g_nds_opt.cheats; break;
-        case 4: g_nds_opt.ap_patch = !g_nds_opt.ap_patch; break;
-        case 5: g_nds_opt.cpu_boost = !g_nds_opt.cpu_boost; break;
-        case 6: g_nds_opt.vram_boost = !g_nds_opt.vram_boost; break;
-        case 7: g_nds_opt.async_read = !g_nds_opt.async_read; break;
-        case 8: g_nds_opt.card_read_dma = !g_nds_opt.card_read_dma; break;
-        case 9: g_nds_opt.dsi_mode = !g_nds_opt.dsi_mode; break;
+        case NDS_OPT_ACTION_CHEATS: g_nds_opt.cheats = !g_nds_opt.cheats; break;
+        case NDS_OPT_ACTION_AP_PATCH: g_nds_opt.ap_patch = !g_nds_opt.ap_patch; break;
+        case NDS_OPT_ACTION_CPU_BOOST: g_nds_opt.cpu_boost = !g_nds_opt.cpu_boost; break;
+        case NDS_OPT_ACTION_VRAM_BOOST: g_nds_opt.vram_boost = !g_nds_opt.vram_boost; break;
+        case NDS_OPT_ACTION_ASYNC_READ: g_nds_opt.async_read = !g_nds_opt.async_read; break;
+        case NDS_OPT_ACTION_CARD_READ_DMA: g_nds_opt.card_read_dma = !g_nds_opt.card_read_dma; break;
+        case NDS_OPT_ACTION_DSI_MODE: g_nds_opt.dsi_mode = !g_nds_opt.dsi_mode; break;
         default: return;
     }
     save_nds_rom_options(g_nds_opt_rom, &g_nds_opt);
     build_nds_rom_options(g_nds_opt_rom);
 }
 
+static void build_nds_cheat_folder_options(const char* sd_path) {
+    g_nds_cheat_folder_count = 0;
+    OptionItem* o = &g_nds_cheat_folder_options[g_nds_cheat_folder_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = OPTION_ACTION_NONE;
+    if (!sd_path || !sd_path[0]) return;
+    if (!g_nds_cheat_loaded) {
+        if (!nds_cheatdb_load(sd_path, &g_nds_cheat_list)) {
+            o = &g_nds_cheat_folder_options[g_nds_cheat_folder_count++];
+            snprintf(o->label, sizeof(o->label), "No cheats found");
+            o->action = OPTION_ACTION_NONE;
+            return;
+        }
+        nds_cheatdb_load_selection(sd_path, &g_nds_cheat_list);
+        g_nds_cheat_loaded = true;
+    }
+    char folders[128][64];
+    int count = 0;
+    copy_str(folders[count++], sizeof(folders[0]), "All Cheats");
+    for (int i = 0; i < g_nds_cheat_list.count && count < 128; i++) {
+        const char* f = g_nds_cheat_list.items[i].folder;
+        if (!f || !f[0]) continue;
+        bool exists = false;
+        for (int j = 1; j < count; j++) {
+            if (!strcasecmp(folders[j], f)) { exists = true; break; }
+        }
+        if (!exists) copy_str(folders[count++], sizeof(folders[0]), f);
+    }
+    for (int i = 0; i < count && g_nds_cheat_folder_count < (int)(sizeof(g_nds_cheat_folder_options) / sizeof(g_nds_cheat_folder_options[0])); i++) {
+        o = &g_nds_cheat_folder_options[g_nds_cheat_folder_count++];
+        snprintf(o->label, sizeof(o->label), "%s", folders[i]);
+        o->action = OPTION_ACTION_NONE;
+    }
+}
+
 static void build_nds_cheat_options(const char* sd_path) {
-    nds_cheatdb_free(&g_nds_cheat_list);
-    g_nds_cheat_loaded = false;
+    for (int i = 0; i < (int)(sizeof(g_nds_cheat_map) / sizeof(g_nds_cheat_map[0])); i++) g_nds_cheat_map[i] = -1;
     g_nds_cheat_option_count = 0;
     OptionItem* o = &g_nds_cheat_options[g_nds_cheat_option_count++];
     snprintf(o->label, sizeof(o->label), "Back");
     o->action = OPTION_ACTION_NONE;
+    o = &g_nds_cheat_options[g_nds_cheat_option_count++];
+    snprintf(o->label, sizeof(o->label), "Reset cheats");
+    o->action = OPTION_ACTION_NONE;
+    o = &g_nds_cheat_options[g_nds_cheat_option_count++];
+    snprintf(o->label, sizeof(o->label), "Save cheats");
+    o->action = OPTION_ACTION_NONE;
     if (!sd_path || !sd_path[0]) return;
 
-    if (!nds_cheatdb_load(sd_path, &g_nds_cheat_list)) {
-        o = &g_nds_cheat_options[g_nds_cheat_option_count++];
-        snprintf(o->label, sizeof(o->label), "No cheats found");
-        o->action = OPTION_ACTION_NONE;
-        return;
+    if (!g_nds_cheat_loaded) {
+        if (!nds_cheatdb_load(sd_path, &g_nds_cheat_list)) {
+            o = &g_nds_cheat_options[g_nds_cheat_option_count++];
+            snprintf(o->label, sizeof(o->label), "No cheats found");
+            o->action = OPTION_ACTION_NONE;
+            return;
+        }
+        nds_cheatdb_load_selection(sd_path, &g_nds_cheat_list);
+        g_nds_cheat_loaded = true;
     }
-    nds_cheatdb_load_selection(sd_path, &g_nds_cheat_list);
-    g_nds_cheat_loaded = true;
 
     for (int i = 0; i < g_nds_cheat_list.count && g_nds_cheat_option_count < (int)(sizeof(g_nds_cheat_options) / sizeof(g_nds_cheat_options[0])); i++) {
+        const char* f = g_nds_cheat_list.items[i].folder;
+        if (g_nds_cheat_active_folder[0] && strcasecmp(g_nds_cheat_active_folder, "All Cheats")) {
+            if (!f || strcasecmp(f, g_nds_cheat_active_folder) != 0) continue;
+        }
         o = &g_nds_cheat_options[g_nds_cheat_option_count++];
         const char* mark = g_nds_cheat_list.items[i].selected ? "[x] " : "[ ] ";
         char namebuf[92];
@@ -531,14 +641,24 @@ static void build_nds_cheat_options(const char* sd_path) {
         }
         snprintf(o->label, sizeof(o->label), "%s%s", mark, namebuf);
         o->action = OPTION_ACTION_NONE;
+        g_nds_cheat_map[g_nds_cheat_option_count - 1] = i;
     }
 }
 
 static void toggle_nds_cheat(int idx) {
     if (!g_nds_cheat_loaded) return;
-    int cheat_idx = idx - 1;
+    int cheat_idx = g_nds_cheat_map[idx];
     if (cheat_idx < 0 || cheat_idx >= g_nds_cheat_list.count) return;
     g_nds_cheat_list.items[cheat_idx].selected = !g_nds_cheat_list.items[cheat_idx].selected;
+    nds_cheatdb_save_selection(g_nds_opt_rom, &g_nds_cheat_list);
+    build_nds_cheat_options(g_nds_opt_rom);
+}
+
+static void reset_nds_cheats(void) {
+    if (!g_nds_cheat_loaded) return;
+    for (int i = 0; i < g_nds_cheat_list.count; i++) {
+        g_nds_cheat_list.items[i].selected = false;
+    }
     nds_cheatdb_save_selection(g_nds_opt_rom, &g_nds_cheat_list);
     build_nds_cheat_options(g_nds_opt_rom);
 }
@@ -767,16 +887,15 @@ static int find_target_index(const Config* cfg, const char* id) {
 static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size) {
     u64 tid = 0;
     FS_MediaType media = MEDIATYPE_SD;
+    int mode = g_state.nds_launcher_mode;
+    bool have_3dsx = file_exists(NDS_BOOTSTRAP_PREP_3DSX);
     if (target && target->loader_title_id[0]) parse_title_id(target->loader_title_id, &tid);
     if (target && target->loader_media[0]) media = media_from_string(target->loader_media);
     if (!tid && g_launcher_ready) {
         tid = g_launcher_tid;
         media = g_launcher_media;
     }
-    if (!tid) {
-        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launcher not set");
-        return false;
-    }
+    if (mode == 2 && !have_3dsx) mode = 0;
     char norm[512];
     snprintf(norm, sizeof(norm), "%s", sd_path ? sd_path : "");
     normalize_path_to_sd_colon(norm, sizeof(norm));
@@ -797,6 +916,7 @@ static bool launch_nds_loader(const Target* target, const char* sd_path, char* s
             }
         }
     }
+    bool will_use_3dsx = (mode == 2) || (mode == 0 && have_3dsx && !tid);
     if (!write_nds_bootstrap_ini(norm, &opt)) {
         snprintf(status_message, status_size, "nds-bootstrap.ini failed");
         return false;
@@ -805,18 +925,55 @@ static bool launch_nds_loader(const Target* target, const char* sd_path, char* s
         NdsCheatList list;
         if (nds_cheatdb_load(norm, &list)) {
             nds_cheatdb_load_selection(norm, &list);
-            nds_cheatdb_write_cheat_data(norm, &list, true);
+            if (debug_log_enabled()) {
+                int sel = 0;
+                for (int i = 0; i < list.count; i++) if (list.items[i].selected) sel++;
+                debug_log("cheats: launch enabled selected=%d", sel);
+            }
+            int sel = 0;
+            for (int i = 0; i < list.count; i++) if (list.items[i].selected) sel++;
+            (void)sel;
+            nds_cheatdb_apply_usrcheat(norm, &list, true);
             nds_cheatdb_free(&list);
         } else {
-            nds_cheatdb_write_cheat_data(norm, NULL, false);
+            if (debug_log_enabled()) debug_log("cheats: launch enabled but load failed");
         }
     } else {
-        nds_cheatdb_write_cheat_data(norm, NULL, false);
+        if (debug_log_enabled()) debug_log("cheats: launch disabled");
+        NdsCheatList list;
+        if (nds_cheatdb_load(norm, &list)) {
+            nds_cheatdb_load_selection(norm, &list);
+            nds_cheatdb_apply_usrcheat(norm, &list, false);
+            nds_cheatdb_free(&list);
+        }
     }
-    if (launch_title_id(tid, media, status_message, status_size)) return true;
-    FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
-    if (launch_title_id(tid, alt, status_message, status_size)) return true;
-    if (status_message && status_size > 0) snprintf(status_message, status_size, "Install FirmMuxBootstrapLauncher (ID %016llX)", (unsigned long long)tid);
+    bool try_cia = (mode == 0 || mode == 1);
+    bool try_3dsx = (mode == 0 || mode == 2);
+    if (try_cia) {
+        if (!tid) {
+            if (mode == 1) {
+                if (status_message && status_size > 0) snprintf(status_message, status_size, "Launcher not set");
+                return false;
+            }
+        } else {
+            if (launch_title_id(tid, media, status_message, status_size)) return true;
+            FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
+            if (launch_title_id(tid, alt, status_message, status_size)) return true;
+        }
+    }
+    if (try_3dsx && have_3dsx) {
+        if (homebrew_launch_3dsx(NDS_BOOTSTRAP_PREP_3DSX, status_message, status_size)) {
+            if (status_message && status_size > 0) snprintf(status_message, status_size, "Launching...");
+            save_state(&g_state);
+            g_exit_requested = true;
+            return true;
+        }
+        if (mode == 2) return false;
+    }
+    if (status_message && status_size > 0) {
+        if (mode == 2) snprintf(status_message, status_size, "3DSX missing");
+        else snprintf(status_message, status_size, "Install FirmMuxBootstrapLauncher (ID %016llX)", (unsigned long long)tid);
+    }
     return false;
 }
 
@@ -1980,8 +2137,19 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_TOGGLE_NDS_BANNERS;
 
     o = &g_options[g_option_count++];
-    snprintf(o->label, sizeof(o->label), "Select NDS launcher");
+    snprintf(o->label, sizeof(o->label), "Check NDS launcher");
     o->action = OPTION_ACTION_SELECT_LAUNCHER;
+
+    o = &g_options[g_option_count++];
+    {
+        const char* mode = nds_launcher_mode_label(g_state.nds_launcher_mode);
+        if (g_state.nds_launcher_mode == 2 && !file_exists(NDS_BOOTSTRAP_PREP_3DSX)) {
+            snprintf(o->label, sizeof(o->label), "NDS launcher mode: %s (missing)", mode);
+        } else {
+            snprintf(o->label, sizeof(o->label), "NDS launcher mode: %s", mode);
+        }
+    }
+    o->action = OPTION_ACTION_NDS_LAUNCHER_MODE;
 
     o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Themes...");
@@ -2019,7 +2187,7 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_EMULATORS_MENU;
 
     o = &g_options[g_option_count++];
-    snprintf(o->label, sizeof(o->label), "Select NTR launcher");
+    snprintf(o->label, sizeof(o->label), "Check NTR launcher");
     o->action = OPTION_ACTION_SELECT_CARD_LAUNCHER;
 
     o = &g_options[g_option_count++];
@@ -2072,7 +2240,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         LauncherCandidate cands[8];
         int found = find_launcher_candidates(cands, 8);
         if (found <= 0) {
-            snprintf(status_message, status_size, "Launcher not found (CTR-P-FMBP)");
+            snprintf(status_message, status_size, "CIA not found");
         } else {
             int nds_target = *current_target;
             for (int i = 0; i < cfg->target_count; i++) {
@@ -2095,13 +2263,41 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
             g_launcher_ready = true;
             g_launcher_tid = c->tid;
             g_launcher_media = c->media;
-            snprintf(status_message, status_size, "Launcher set");
+            snprintf(status_message, status_size, "CIA found");
         }
+    } else if (action == OPTION_ACTION_NDS_LAUNCHER_MODE) {
+        g_state.nds_launcher_mode = (g_state.nds_launcher_mode + 1) % 3;
+        if (g_state.nds_launcher_mode == 2) {
+            if (!file_exists(NDS_BOOTSTRAP_PREP_3DSX)) {
+                snprintf(status_message, status_size, "3DSX missing");
+                g_state.nds_launcher_mode = 0;
+            } else {
+                snprintf(status_message, status_size, "3DSX found");
+            }
+        } else if (g_state.nds_launcher_mode == 1) {
+            bool have_cia = false;
+            if (g_launcher_ready) have_cia = true;
+            else {
+                LauncherCandidate cands[2];
+                have_cia = find_launcher_candidates(cands, 2) > 0;
+            }
+            if (!have_cia) {
+                snprintf(status_message, status_size, "CIA not found");
+                g_state.nds_launcher_mode = 0;
+            } else {
+                snprintf(status_message, status_size, "CIA found");
+            }
+        } else {
+            snprintf(status_message, status_size, "NDS launcher: Auto");
+        }
+        refresh_options_menu(cfg);
+        if (state_dirty) *state_dirty = true;
+        if (status_timer) *status_timer = 60;
     } else if (action == OPTION_ACTION_SELECT_CARD_LAUNCHER) {
         LauncherCandidate cands[8];
         int found = find_card_launcher_candidates(cands, 8);
         if (found <= 0) {
-            snprintf(status_message, status_size, "NTR Launcher not found");
+            snprintf(status_message, status_size, "NTR launcher not found");
         } else {
             int nds_target = *current_target;
             for (int i = 0; i < cfg->target_count; i++) {
@@ -2124,7 +2320,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
             g_card_launcher_ready = true;
             g_card_launcher_tid = c->tid;
             g_card_launcher_media = c->media;
-            snprintf(status_message, status_size, "NTR launcher set");
+            snprintf(status_message, status_size, "NTR launcher found");
         }
     } else if (action == OPTION_ACTION_THEME_MENU) {
         scan_themes();
@@ -2172,7 +2368,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
     } else if (action == OPTION_ACTION_AUTOBOOT_STATUS) {
         snprintf(status_message, status_size, "Autoboot enabled");
     } else if (action == OPTION_ACTION_ABOUT) {
-        snprintf(status_message, status_size, "FirmMux Phase 2");
+        snprintf(status_message, status_size, "Build %s", g_build_id);
     }
     if (status_timer && status_message && status_message[0]) *status_timer = 90;
 }
@@ -2457,6 +2653,7 @@ int main(int argc, char** argv) {
             else if (g_options_mode == OPT_MODE_EMULATOR_DETAIL) active_count = g_emu_detail_count;
             else if (g_options_mode == OPT_MODE_RETRO_INFO) active_count = g_retro_info_count;
             else if (g_options_mode == OPT_MODE_NDS_ROM) active_count = g_nds_opt_option_count;
+            else if (g_options_mode == OPT_MODE_NDS_CHEAT_FOLDERS) active_count = g_nds_cheat_folder_count;
             else if (g_options_mode == OPT_MODE_NDS_CHEATS) active_count = g_nds_cheat_option_count;
             if (active_count <= 0) active_count = 1;
             int prev = options_selection;
@@ -2603,22 +2800,39 @@ int main(int argc, char** argv) {
                         audio_play(SOUND_BACK);
                     }
                 } else if (g_options_mode == OPT_MODE_NDS_ROM) {
-                    if (options_selection == 0) {
+                    int action = (options_selection >= 0 && options_selection < g_nds_opt_option_count) ? g_nds_opt_options[options_selection].action : 0;
+                    if (options_selection >= 0 && options_selection < g_nds_opt_option_count) {
+                        action = nds_opt_action_for_label(g_nds_opt_options[options_selection].label, action);
+                    }
+                    if (action == NDS_OPT_ACTION_BACK) {
                         g_options_mode = OPT_MODE_MAIN;
                         options_selection = 0;
                         options_scroll = 0;
                         options_open = true;
                         audio_play(SOUND_BACK);
-                    } else if (options_selection == 3 && g_nds_opt_option_count > 3 &&
-                               strncmp(g_nds_opt_options[3].label, "Cheat list", 10) == 0) {
-                        build_nds_cheat_options(g_nds_opt_rom);
-                        g_options_mode = OPT_MODE_NDS_CHEATS;
-                        options_selection = 0;
-                        options_scroll = 0;
-                        options_open = true;
-                        audio_play(SOUND_SELECT);
+                    } else if (action == NDS_OPT_ACTION_CHEAT_LIST) {
+                        if (g_nds_opt_has_cheats && !strstr(g_nds_opt_options[options_selection].label, "none")) {
+                            build_nds_cheat_folder_options(g_nds_opt_rom);
+                            if (g_nds_cheat_folder_count > 1) {
+                                g_options_mode = OPT_MODE_NDS_CHEAT_FOLDERS;
+                                options_selection = 0;
+                                options_scroll = 0;
+                                options_open = true;
+                                audio_play(SOUND_SELECT);
+                            } else {
+                                g_options_mode = OPT_MODE_NDS_ROM;
+                                options_open = true;
+                                snprintf(status_message, sizeof(status_message), "No cheats found");
+                                status_timer = 90;
+                                audio_play(SOUND_BACK);
+                            }
+                        } else {
+                            snprintf(status_message, sizeof(status_message), "No cheats found");
+                            status_timer = 90;
+                            audio_play(SOUND_BACK);
+                        }
                     } else {
-                        toggle_nds_option(options_selection, status_message, sizeof(status_message), &status_timer);
+                        toggle_nds_option_action(action, status_message, sizeof(status_message), &status_timer);
                         g_options_mode = OPT_MODE_NDS_ROM;
                         options_open = true;
                         status_timer = 60;
@@ -2626,16 +2840,44 @@ int main(int argc, char** argv) {
                     }
                 } else if (g_options_mode == OPT_MODE_NDS_CHEATS) {
                     if (options_selection == 0) {
-                        g_options_mode = OPT_MODE_NDS_ROM;
-                        build_nds_rom_options(g_nds_opt_rom);
+                        g_options_mode = OPT_MODE_NDS_CHEAT_FOLDERS;
                         options_selection = 0;
                         options_scroll = 0;
                         options_open = true;
                         audio_play(SOUND_BACK);
+                    } else if (options_selection == 1) {
+                        reset_nds_cheats();
+                        snprintf(status_message, sizeof(status_message), "Cheats reset");
+                        status_timer = 60;
+                        audio_play(SOUND_TOGGLE);
+                    } else if (options_selection == 2) {
+                        nds_cheatdb_save_selection(g_nds_opt_rom, &g_nds_cheat_list);
+                        build_nds_cheat_options(g_nds_opt_rom);
+                        snprintf(status_message, sizeof(status_message), "Cheats saved");
+                        status_timer = 60;
+                        audio_play(SOUND_SELECT);
                     } else {
                         toggle_nds_cheat(options_selection);
                         status_timer = 60;
                         audio_play(SOUND_TOGGLE);
+                    }
+                } else if (g_options_mode == OPT_MODE_NDS_CHEAT_FOLDERS) {
+                    if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_NDS_ROM;
+                        build_nds_rom_options(g_nds_opt_rom);
+                        options_selection = nds_cheat_list_index();
+                        if (options_selection < 0) options_selection = 0;
+                        clamp_scroll_list(&options_scroll, options_selection, visible, g_nds_opt_option_count);
+                        options_open = true;
+                        audio_play(SOUND_BACK);
+                    } else {
+                        copy_str(g_nds_cheat_active_folder, sizeof(g_nds_cheat_active_folder), g_nds_cheat_folder_options[options_selection].label);
+                        build_nds_cheat_options(g_nds_opt_rom);
+                        g_options_mode = OPT_MODE_NDS_CHEATS;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        options_open = true;
+                        audio_play(SOUND_SELECT);
                     }
                 }
             }
@@ -2648,17 +2890,32 @@ int main(int argc, char** argv) {
                     clamp_scroll_list(&options_scroll, options_selection, visible, g_emu_option_count);
                     audio_play(SOUND_BACK);
                 } else if (g_options_mode == OPT_MODE_NDS_CHEATS) {
+                    g_options_mode = OPT_MODE_NDS_CHEAT_FOLDERS;
+                    options_selection = 0;
+                    options_scroll = 0;
+                    audio_play(SOUND_BACK);
+                } else if (g_options_mode == OPT_MODE_NDS_CHEAT_FOLDERS) {
                     g_options_mode = OPT_MODE_NDS_ROM;
                     build_nds_rom_options(g_nds_opt_rom);
-                    options_selection = 0;
-                    options_scroll = 0;
+                    options_selection = nds_cheat_list_index();
+                    if (options_selection < 0) options_selection = 0;
+                    clamp_scroll_list(&options_scroll, options_selection, visible, g_nds_opt_option_count);
                     audio_play(SOUND_BACK);
                 } else if (g_options_mode == OPT_MODE_NDS_ROM) {
-                    options_open = false;
-                    g_options_mode = OPT_MODE_MAIN;
-                    options_selection = 0;
-                    options_scroll = 0;
-                    audio_play(SOUND_BACK);
+                    if (g_nds_opt_from_romlist) {
+                        options_open = false;
+                        g_options_mode = OPT_MODE_MAIN;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        g_nds_opt_from_romlist = false;
+                        audio_play(SOUND_BACK);
+                    } else {
+                        g_options_mode = OPT_MODE_MAIN;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        refresh_options_menu(cfg);
+                        audio_play(SOUND_BACK);
+                    }
                 } else if (g_options_mode != OPT_MODE_MAIN) {
                     g_options_mode = OPT_MODE_MAIN;
                     options_selection = 0;
@@ -2806,6 +3063,7 @@ int main(int argc, char** argv) {
                                 g_options_mode = OPT_MODE_NDS_ROM;
                                 options_selection = 0;
                                 options_scroll = 0;
+                                g_nds_opt_from_romlist = true;
                                 audio_play(SOUND_SELECT);
                             }
                         }
@@ -3212,6 +3470,10 @@ int main(int argc, char** argv) {
                 list = g_nds_opt_options;
                 count = g_nds_opt_option_count;
                 header = "NDS game options";
+            } else if (g_options_mode == OPT_MODE_NDS_CHEAT_FOLDERS) {
+                list = g_nds_cheat_folder_options;
+                count = g_nds_cheat_folder_count;
+                header = "Cheat categories";
             } else if (g_options_mode == OPT_MODE_NDS_CHEATS) {
                 list = g_nds_cheat_options;
                 count = g_nds_cheat_option_count;

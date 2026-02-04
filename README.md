@@ -27,3 +27,5 @@ See the `docs/` folder for setup and backend details:
 - `docs/RetroArch Emulators.md`
 - `docs/NDS Options.md`
 
+Widescreen notes and options:
+https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders

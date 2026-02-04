@@ -23,6 +23,9 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 			$(ARCH)
 
 CFLAGS	+=	-D__3DS__
+ifneq ($(strip $(BUILD_ID)),)
+CFLAGS	+=	-DFIRMUX_BUILD_ID=\"$(BUILD_ID)\"
+endif
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu11
 
@@ -89,10 +92,26 @@ DEPENDS	:=	$(OFILES:.o=.d)
 
 endif
 
-%.bin.o	%_bin.h :	%.bin
+%.bin.o : %.bin
 	@echo $(notdir $<)
 	@$(bin2o)
 
-%.bcfnt.o	%_bcfnt.h :	%.bcfnt
+%_bin.h : %.bin
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%.bcfnt.o : %.bcfnt
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%_bcfnt.h : %.bcfnt
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%.png.o : %.png
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%_png.h : %.png
 	@echo $(notdir $<)
 	@$(bin2o)

@@ -366,7 +366,18 @@ bool write_nextrom_txt(const char* sd_path) {
     }
     FILE* f = fopen("sdmc:/_nds/firmux/launch.txt", "w");
     if (!f) return false;
-    fprintf(f, "%s\n", norm);
+    fprintf(f, "rom=%s\n", norm);
+    NdsRomOptions opt;
+    memset(&opt, 0, sizeof(opt));
+    load_nds_rom_options(norm, &opt);
+    fprintf(f, "cheats=%d\n", opt.cheats ? 1 : 0);
+    fprintf(f, "widescreen=%d\n", opt.widescreen ? 1 : 0);
+    fprintf(f, "ap_patch=%d\n", opt.ap_patch ? 1 : 0);
+    fprintf(f, "cpu_boost=%d\n", opt.cpu_boost ? 1 : 0);
+    fprintf(f, "vram_boost=%d\n", opt.vram_boost ? 1 : 0);
+    fprintf(f, "async_read=%d\n", opt.async_read ? 1 : 0);
+    fprintf(f, "card_read_dma=%d\n", opt.card_read_dma ? 1 : 0);
+    fprintf(f, "dsi_mode=%d\n", opt.dsi_mode ? 1 : 0);
     fclose(f);
     return true;
 }
@@ -385,7 +396,13 @@ static u32 fnv1a_32(const char* s) {
 }
 
 static void nds_options_path(const char* sd_path, char* out, size_t out_size) {
-    u32 h = fnv1a_32(sd_path ? sd_path : "");
+    char norm[512];
+    norm[0] = 0;
+    if (sd_path && sd_path[0]) {
+        copy_str(norm, sizeof(norm), sd_path);
+        normalize_path_to_sd_colon(norm, sizeof(norm));
+    }
+    u32 h = fnv1a_32(norm[0] ? norm : "");
     snprintf(out, out_size, "%s/%08x.ini", NDS_OPTIONS_DIR, (unsigned)h);
 }
 
@@ -450,22 +467,88 @@ bool save_nds_rom_options(const char* sd_path, const NdsRomOptions* opt) {
     return true;
 }
 
+static void ini_set_line(char* text, size_t size, const char* key, const char* value) {
+    if (!text || !key || !value) return;
+    char needle[128];
+    snprintf(needle, sizeof(needle), "%s", key);
+    char* p = text;
+    while (*p) {
+        char* line = p;
+        char* nl = strchr(p, '\n');
+        if (!nl) nl = p + strlen(p);
+        char* eq = memchr(line, '=', (size_t)(nl - line));
+        if (eq) {
+            size_t key_len = (size_t)(eq - line);
+            while (key_len > 0 && (line[key_len - 1] == ' ' || line[key_len - 1] == '\t')) key_len--;
+            if (strlen(needle) == key_len && !strncasecmp(line, needle, key_len)) {
+                char new_line[256];
+                snprintf(new_line, sizeof(new_line), "%s = %s\n", key, value);
+                size_t tail_len = strlen(nl);
+                size_t head_len = (size_t)(line - text);
+                size_t new_len = head_len + strlen(new_line) + tail_len;
+                if (new_len < size) {
+                    memmove(line + strlen(new_line), nl, tail_len + 1);
+                    memcpy(line, new_line, strlen(new_line));
+                }
+                return;
+            }
+        }
+        p = (*nl) ? nl + 1 : nl;
+    }
+    size_t cur = strlen(text);
+    if (cur + strlen(key) + strlen(value) + 6 < size) {
+        snprintf(text + cur, size - cur, "%s = %s\n", key, value);
+    }
+}
+
+static bool write_nds_bootstrap_ini_path(const char* path, const char* rom_path, const NdsRomOptions* opt) {
+    char buf[2048];
+    buf[0] = 0;
+    u8* data = NULL;
+    size_t size = 0;
+    if (read_file(path, &data, &size) && data) {
+        size_t copy = size < sizeof(buf) - 1 ? size : sizeof(buf) - 1;
+        memcpy(buf, data, copy);
+        buf[copy] = 0;
+        free(data);
+    }
+    if (!strstr(buf, "[NDS-BOOTSTRAP]")) {
+        copy_str(buf, sizeof(buf), "[NDS-BOOTSTRAP]\n");
+    }
+    char sav[512];
+    copy_str(sav, sizeof(sav), rom_path);
+    char* dot = strrchr(sav, '.');
+    if (dot) copy_str(dot, sizeof(sav) - (dot - sav), ".sav");
+
+    ini_set_line(buf, sizeof(buf), "NDS_PATH", rom_path);
+    ini_set_line(buf, sizeof(buf), "SAV_PATH", sav);
+    ini_set_line(buf, sizeof(buf), "DSI_MODE", opt->dsi_mode ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "BOOST_CPU", opt->cpu_boost ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "BOOST_VRAM", opt->vram_boost ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "ASYNC_CARD_READ", opt->async_read ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "CARD_READ_DMA", opt->card_read_dma ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "WIDESCREEN", opt->widescreen ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "CHEATS", opt->cheats ? "1" : "0");
+    ini_set_line(buf, sizeof(buf), "AP_PATCH", opt->ap_patch ? "1" : "0");
+
+    FILE* f = fopen(path, "w");
+    if (!f) return false;
+    fputs(buf, f);
+    fclose(f);
+    return true;
+}
+
 bool write_nds_bootstrap_ini(const char* sd_path, const NdsRomOptions* opt) {
     if (!sd_path || !sd_path[0] || !opt) return false;
     ensure_dirs();
-    FILE* f = fopen("sdmc:/_nds/nds-bootstrap.ini", "w");
-    if (!f) return false;
-    fprintf(f, "NDS_PATH=%s\n", sd_path);
-    fprintf(f, "DSI_MODE=%d\n", opt->dsi_mode ? 1 : 0);
-    fprintf(f, "BOOST_CPU=%d\n", opt->cpu_boost ? 1 : 0);
-    fprintf(f, "BOOST_VRAM=%d\n", opt->vram_boost ? 1 : 0);
-    fprintf(f, "ASYNC_CARD_READ=%d\n", opt->async_read ? 1 : 0);
-    fprintf(f, "CARD_READ_DMA=%d\n", opt->card_read_dma ? 1 : 0);
-    fprintf(f, "WIDESCREEN=%d\n", opt->widescreen ? 1 : 0);
-    fprintf(f, "CHEATS=%d\n", opt->cheats ? 1 : 0);
-    fprintf(f, "AP_PATCH=%d\n", opt->ap_patch ? 1 : 0);
-    fclose(f);
-    return true;
+    char norm[512];
+    copy_str(norm, sizeof(norm), sd_path);
+    normalize_path_to_sd_colon(norm, sizeof(norm));
+    mkdir("sdmc:/_nds", 0777);
+    mkdir("sdmc:/_nds/nds-bootstrap", 0777);
+    bool ok_root = write_nds_bootstrap_ini_path("sdmc:/_nds/nds-bootstrap.ini", norm, opt);
+    bool ok_root_alt = write_nds_bootstrap_ini_path("/_nds/nds-bootstrap.ini", norm, opt);
+    return ok_root || ok_root_alt;
 }
 
 bool copy_file_simple(const char* from, const char* to) {
@@ -479,6 +562,23 @@ bool copy_file_simple(const char* from, const char* to) {
     fclose(f);
     free(data);
     return true;
+}
+
+bool copy_file_stream(const char* from, const char* to) {
+    if (!from || !to) return false;
+    FILE* in = fopen(from, "rb");
+    if (!in) return false;
+    FILE* out = fopen(to, "wb");
+    if (!out) { fclose(in); return false; }
+    u8 buf[4096];
+    size_t r = 0;
+    bool ok = true;
+    while ((r = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, r, out) != r) { ok = false; break; }
+    }
+    fclose(in);
+    fclose(out);
+    return ok;
 }
 
 static bool nds_header_gamecode_crc16(const char* sd_path, char gamecode[5], u16* crc16_out) {
