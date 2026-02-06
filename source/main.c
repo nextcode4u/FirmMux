@@ -107,6 +107,53 @@ static bool g_nds_cheat_loaded = false;
 static bool g_nds_opt_has_cheats = false;
 static int g_nds_cheat_list_index = -1;
 static bool g_nds_opt_from_romlist = false;
+static OptionItem g_retro_opt_options[26];
+static int g_retro_opt_option_count = 0;
+static OptionItem g_retro_core_options[40];
+static int g_retro_core_option_count = 0;
+static OptionItem g_retro_choice_options[12];
+static int g_retro_choice_option_count = 0;
+static int g_retro_choice_mode = 0;
+static char g_retro_core_rom[512];
+static RetroRomOptions g_retro_opt;
+static char g_retro_opt_rom[512];
+static char g_retro_opt_system[16];
+static bool g_retro_opt_loaded = false;
+static char g_retro_video_filters[32][192];
+static int g_retro_video_filter_count = 0;
+static char g_retro_audio_filters[32][192];
+static int g_retro_audio_filter_count = 0;
+static char g_retro_core_filtered[32][64];
+static int g_retro_core_filtered_count = 0;
+
+typedef struct {
+    const char* key;
+    const char* cores[8];
+    int count;
+} RetroSystemCoreList;
+
+static const RetroSystemCoreList g_retro_core_lists[] = {
+    { "a26", { "stella2014_libretro.3dsx" }, 1 },
+    { "a52", { "a5200_libretro.3dsx", "atari800_libretro.3dsx" }, 2 },
+    { "a78", { "prosystem_libretro.3dsx" }, 1 },
+    { "col", { "bluemsx_libretro.3dsx" }, 1 },
+    { "cpc", { "cap32_libretro.3dsx" }, 1 },
+    { "gb",  { "gambatte_libretro.3dsx", "gearboy_libretro.3dsx", "tgbdual_libretro.3dsx" }, 3 },
+    { "gen", { "picodrive_libretro.3dsx", "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx" }, 3 },
+    { "gg",  { "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx", "picodrive_libretro.3dsx", "smsplus_libretro.3dsx" }, 4 },
+    { "intv",{ "freeintv_libretro.3dsx" }, 1 },
+    { "m5",  { "bluemsx_libretro.3dsx", "fmsx_libretro.3dsx" }, 2 },
+    { "nes", { "fceumm_libretro.3dsx", "nestopia_libretro.3dsx", "quicknes_libretro.3dsx" }, 3 },
+    { "ngp", { "mednafen_ngp_libretro.3dsx" }, 1 },
+    { "pkmni", { "pokemini_libretro.3dsx" }, 1 },
+    { "sg",  { "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx" }, 2 },
+    { "sms", { "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx", "picodrive_libretro.3dsx", "smsplus_libretro.3dsx" }, 4 },
+    { "snes",{ "snes9x2002_libretro.3dsx", "snes9x2005_libretro.3dsx", "snes9x2005_plus_libretro.3dsx", "snes9x2010_libretro.3dsx" }, 4 },
+    { "tg16",{ "mednafen_pce_fast_libretro.3dsx", "mednafen_pce_libretro.3dsx", "geargrafx_libretro.3dsx" }, 3 },
+    { "ws",  { "mednafen_wswan_libretro.3dsx" }, 1 }
+};
+
+static const int g_retro_core_list_count = (int)(sizeof(g_retro_core_lists) / sizeof(g_retro_core_lists[0]));
 static const char* nds_launcher_mode_label(int mode) {
     switch (mode) {
         case 1: return "CIA";
@@ -126,6 +173,33 @@ enum {
     NDS_OPT_ACTION_ASYNC_READ,
     NDS_OPT_ACTION_CARD_READ_DMA,
     NDS_OPT_ACTION_DSI_MODE
+};
+
+enum {
+    RETRO_OPT_ACTION_BACK = 1,
+    RETRO_OPT_ACTION_CORE,
+    RETRO_OPT_ACTION_CPU_PROFILE,
+    RETRO_OPT_ACTION_FRAMESKIP,
+    RETRO_OPT_ACTION_VSYNC,
+    RETRO_OPT_ACTION_AUDIO_LATENCY,
+    RETRO_OPT_ACTION_THREADED_VIDEO,
+    RETRO_OPT_ACTION_HARD_GPU_SYNC,
+    RETRO_OPT_ACTION_INTEGER_SCALE,
+    RETRO_OPT_ACTION_ASPECT_RATIO,
+    RETRO_OPT_ACTION_ASPECT_CUSTOM,
+    RETRO_OPT_ACTION_BILINEAR,
+    RETRO_OPT_ACTION_VIDEO_FILTER,
+    RETRO_OPT_ACTION_AUDIO_FILTER,
+    RETRO_OPT_ACTION_RUNAHEAD,
+    RETRO_OPT_ACTION_REWIND,
+    RETRO_OPT_ACTION_SAVE,
+    RETRO_OPT_ACTION_RESET,
+    RETRO_OPT_ACTION_CORE_PICK,
+    RETRO_OPT_ACTION_CPU_PICK,
+    RETRO_OPT_ACTION_FRAMESKIP_PICK,
+    RETRO_OPT_ACTION_AUDIO_PICK,
+    RETRO_OPT_ACTION_ASPECT_PICK,
+    RETRO_OPT_ACTION_ASPECT_CUSTOM_PICK
 };
 static char g_top_bg_names[MAX_BACKGROUNDS][64];
 static char g_bottom_bg_names[MAX_BACKGROUNDS][64];
@@ -149,7 +223,10 @@ enum {
     OPT_MODE_RETRO_INFO = 7,
     OPT_MODE_NDS_ROM = 8,
     OPT_MODE_NDS_CHEAT_FOLDERS = 9,
-    OPT_MODE_NDS_CHEATS = 10
+    OPT_MODE_NDS_CHEATS = 10,
+    OPT_MODE_RETRO_ROM = 11,
+    OPT_MODE_RETRO_CORE = 12,
+    OPT_MODE_RETRO_CHOICE = 13
 };
 
 static int clamp_pct(int v);
@@ -661,6 +738,353 @@ static void reset_nds_cheats(void) {
     }
     nds_cheatdb_save_selection(g_nds_opt_rom, &g_nds_cheat_list);
     build_nds_cheat_options(g_nds_opt_rom);
+}
+
+static void file_ext_lower(const char* name, char* out, size_t out_size);
+static void build_retro_core_filtered(const char* rom_sd) {
+    g_retro_core_filtered_count = 0;
+    if (!rom_sd || !rom_sd[0]) return;
+
+    char system_key[16];
+    system_key[0] = 0;
+    if (g_retro_opt_system[0]) {
+        copy_str(system_key, sizeof(system_key), g_retro_opt_system);
+    } else if (!emu_resolve_system(&g_emu, rom_sd, NULL, system_key, sizeof(system_key))) {
+        system_key[0] = 0;
+    }
+
+    if (system_key[0]) {
+        for (int i = 0; i < g_retro_core_list_count; i++) {
+            if (!strcasecmp(g_retro_core_lists[i].key, system_key)) {
+                const RetroSystemCoreList* list = &g_retro_core_lists[i];
+                for (int c = 0; c < list->count && g_retro_core_filtered_count < (int)(sizeof(g_retro_core_filtered) / sizeof(g_retro_core_filtered[0])); c++) {
+                    copy_str(g_retro_core_filtered[g_retro_core_filtered_count], sizeof(g_retro_core_filtered[g_retro_core_filtered_count]), list->cores[c]);
+                    g_retro_core_filtered_count++;
+                }
+                return;
+            }
+        }
+    }
+}
+
+static const char* retro_cpu_profile_label(int v) {
+    return (v == 1) ? "Performance" : "Normal";
+}
+
+static const char* retro_onoff_label(int v) {
+    return (v != 0) ? "On" : "Off";
+}
+
+static const char* retro_aspect_label(int v) {
+    switch (v) {
+        case 1: return "4:3";
+        case 2: return "16:9";
+        case 3: return "Custom";
+        default: return "Core";
+    }
+}
+
+typedef struct {
+    const char* label;
+    float value;
+} CustomAspect;
+
+static const CustomAspect g_custom_aspects[] = {
+    { "1:1", 1.000f },
+    { "5:4", 1.250f },
+    { "5:3", 1.667f },
+    { "1.66:1", 1.660f },
+    { "2.0:1", 2.000f }
+};
+static const int g_custom_aspect_count = (int)(sizeof(g_custom_aspects) / sizeof(g_custom_aspects[0]));
+
+static int custom_aspect_index(float v) {
+    int best = 0;
+    float best_diff = 1000.0f;
+    for (int i = 0; i < g_custom_aspect_count; i++) {
+        float diff = g_custom_aspects[i].value - v;
+        if (diff < 0) diff = -diff;
+        if (diff < best_diff) {
+            best_diff = diff;
+            best = i;
+        }
+    }
+    return best;
+}
+
+static int retro_filter_list_load(const char* dir, char out_list[][192], int max_items) {
+    if (!dir || !out_list || max_items <= 0) return 0;
+    for (int i = 0; i < max_items; i++) out_list[i][0] = 0;
+    int count = 0;
+    DIR* d = opendir(dir);
+    if (!d) return 0;
+    struct dirent* ent;
+    while ((ent = readdir(d)) && count < max_items) {
+        if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) continue;
+        char full[512];
+        snprintf(full, sizeof(full), "%s/%s", dir, ent->d_name);
+        if (is_dir_path(full)) continue;
+        copy_str(out_list[count], sizeof(out_list[count]), full);
+        count++;
+    }
+    closedir(d);
+    return count;
+}
+
+static void build_retro_rom_options(const char* sd_path) {
+    g_retro_opt_option_count = 0;
+    OptionItem* o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = RETRO_OPT_ACTION_BACK;
+
+    const char* path = sd_path;
+    if ((!path || !path[0]) && g_retro_opt_rom[0]) path = g_retro_opt_rom;
+    if (!path || !path[0]) {
+        g_retro_opt_rom[0] = 0;
+        g_retro_opt_system[0] = 0;
+        retro_rom_options_default(&g_retro_opt);
+        return;
+    }
+
+    if (!g_retro_opt_loaded || strcmp(path, g_retro_opt_rom)) {
+        retro_rom_options_default(&g_retro_opt);
+        copy_str(g_retro_opt_rom, sizeof(g_retro_opt_rom), path);
+        if (!emu_resolve_system(&g_emu, g_retro_opt_rom, NULL, g_retro_opt_system, sizeof(g_retro_opt_system))) {
+            g_retro_opt_system[0] = 0;
+        }
+        retro_rom_options_load(g_retro_opt_rom, &g_retro_opt);
+    }
+    g_retro_opt_loaded = true;
+
+    g_retro_video_filter_count = retro_shader_favorites_load(g_retro_video_filters, (int)(sizeof(g_retro_video_filters) / sizeof(g_retro_video_filters[0])));
+    g_retro_audio_filter_count = retro_filter_list_load(RETRO_AUDIO_FILTERS_DIR, g_retro_audio_filters, (int)(sizeof(g_retro_audio_filters) / sizeof(g_retro_audio_filters[0])));
+
+    const char* core_label = g_retro_opt.core_override[0] ? g_retro_opt.core_override : "Default";
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Core override: %s", core_label);
+    o->action = RETRO_OPT_ACTION_CORE_PICK;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "CPU/GPU profile: %s", retro_cpu_profile_label(g_retro_opt.cpu_profile > 0 ? 1 : 0));
+    o->action = RETRO_OPT_ACTION_CPU_PICK;
+
+    int fs = g_retro_opt.frameskip;
+    if (fs < 0) fs = 0;
+    if (fs > 5) fs = 5;
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Frameskip: %d", fs);
+    o->action = RETRO_OPT_ACTION_FRAMESKIP_PICK;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "VSync: %s", retro_onoff_label(g_retro_opt.vsync != 0));
+    o->action = RETRO_OPT_ACTION_VSYNC;
+
+    int lat = g_retro_opt.audio_latency;
+    if (lat <= 0) lat = 64;
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Audio latency: %d ms", lat);
+    o->action = RETRO_OPT_ACTION_AUDIO_PICK;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Threaded video: %s", retro_onoff_label(g_retro_opt.threaded_video != 0));
+    o->action = RETRO_OPT_ACTION_THREADED_VIDEO;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Hard GPU sync: %s", retro_onoff_label(g_retro_opt.hard_gpu_sync != 0));
+    o->action = RETRO_OPT_ACTION_HARD_GPU_SYNC;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Integer scale: %s", retro_onoff_label(g_retro_opt.integer_scale != 0));
+    o->action = RETRO_OPT_ACTION_INTEGER_SCALE;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Aspect ratio: %s", retro_aspect_label(g_retro_opt.aspect_ratio));
+    o->action = RETRO_OPT_ACTION_ASPECT_PICK;
+
+    if (g_retro_opt.aspect_ratio == 3) {
+        int idx = custom_aspect_index(g_retro_opt.aspect_ratio_value > 0.1f ? g_retro_opt.aspect_ratio_value : g_custom_aspects[0].value);
+        o = &g_retro_opt_options[g_retro_opt_option_count++];
+        snprintf(o->label, sizeof(o->label), "Custom ratio: %s", g_custom_aspects[idx].label);
+        o->action = RETRO_OPT_ACTION_ASPECT_CUSTOM_PICK;
+    }
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Bilinear filter: %s", retro_onoff_label(g_retro_opt.bilinear != 0));
+    o->action = RETRO_OPT_ACTION_BILINEAR;
+
+    char video_label_buf[96];
+    const char* video_label = "Off";
+    if (g_retro_opt.video_filter[0]) {
+        base_name_no_ext(g_retro_opt.video_filter, video_label_buf, sizeof(video_label_buf));
+        if (video_label_buf[0]) video_label = video_label_buf;
+        else video_label = g_retro_opt.video_filter;
+    }
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Video filter: %s", video_label);
+    o->action = RETRO_OPT_ACTION_VIDEO_FILTER;
+
+    char audio_label_buf[96];
+    const char* audio_label = "Off";
+    if (g_retro_opt.audio_filter[0]) {
+        base_name_no_ext(g_retro_opt.audio_filter, audio_label_buf, sizeof(audio_label_buf));
+        if (audio_label_buf[0]) audio_label = audio_label_buf;
+        else audio_label = g_retro_opt.audio_filter;
+    }
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Audio filter: %s", audio_label);
+    o->action = RETRO_OPT_ACTION_AUDIO_FILTER;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Run-ahead: %s", retro_onoff_label(g_retro_opt.runahead != 0));
+    o->action = RETRO_OPT_ACTION_RUNAHEAD;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Rewind: %s", retro_onoff_label(g_retro_opt.rewind != 0));
+    o->action = RETRO_OPT_ACTION_REWIND;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Save settings");
+    o->action = RETRO_OPT_ACTION_SAVE;
+
+    o = &g_retro_opt_options[g_retro_opt_option_count++];
+    snprintf(o->label, sizeof(o->label), "Reset to defaults");
+    o->action = RETRO_OPT_ACTION_RESET;
+}
+
+static void build_retro_core_options(void) {
+    g_retro_core_option_count = 0;
+    OptionItem* o = &g_retro_core_options[g_retro_core_option_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = RETRO_OPT_ACTION_BACK;
+    o = &g_retro_core_options[g_retro_core_option_count++];
+    snprintf(o->label, sizeof(o->label), "Default");
+    o->action = RETRO_OPT_ACTION_CORE;
+
+    build_retro_core_filtered(g_retro_core_rom);
+    for (int i = 0; i < g_retro_core_filtered_count && g_retro_core_option_count < (int)(sizeof(g_retro_core_options) / sizeof(g_retro_core_options[0])); i++) {
+        o = &g_retro_core_options[g_retro_core_option_count++];
+        snprintf(o->label, sizeof(o->label), "%s", g_retro_core_filtered[i]);
+        o->action = RETRO_OPT_ACTION_CORE;
+    }
+}
+
+static void build_retro_choice_options(int mode) {
+    g_retro_choice_mode = mode;
+    g_retro_choice_option_count = 0;
+    OptionItem* o = &g_retro_choice_options[g_retro_choice_option_count++];
+    snprintf(o->label, sizeof(o->label), "Back");
+    o->action = RETRO_OPT_ACTION_BACK;
+
+    if (mode == RETRO_OPT_ACTION_CPU_PICK) {
+        o = &g_retro_choice_options[g_retro_choice_option_count++];
+        snprintf(o->label, sizeof(o->label), "Normal");
+        o->action = RETRO_OPT_ACTION_CPU_PROFILE;
+        o = &g_retro_choice_options[g_retro_choice_option_count++];
+        snprintf(o->label, sizeof(o->label), "Performance");
+        o->action = RETRO_OPT_ACTION_CPU_PROFILE;
+    } else if (mode == RETRO_OPT_ACTION_FRAMESKIP_PICK) {
+        for (int i = 0; i <= 5 && g_retro_choice_option_count < (int)(sizeof(g_retro_choice_options) / sizeof(g_retro_choice_options[0])); i++) {
+            o = &g_retro_choice_options[g_retro_choice_option_count++];
+            snprintf(o->label, sizeof(o->label), "%d", i);
+            o->action = RETRO_OPT_ACTION_FRAMESKIP;
+        }
+    } else if (mode == RETRO_OPT_ACTION_AUDIO_PICK) {
+        int vals[] = { 32, 64, 96, 128 };
+        for (int i = 0; i < 4 && g_retro_choice_option_count < (int)(sizeof(g_retro_choice_options) / sizeof(g_retro_choice_options[0])); i++) {
+            o = &g_retro_choice_options[g_retro_choice_option_count++];
+            snprintf(o->label, sizeof(o->label), "%d ms", vals[i]);
+            o->action = RETRO_OPT_ACTION_AUDIO_LATENCY;
+        }
+    } else if (mode == RETRO_OPT_ACTION_ASPECT_PICK) {
+        const char* labels[] = { "Core", "4:3", "16:9", "Custom" };
+        for (int i = 0; i < 4 && g_retro_choice_option_count < (int)(sizeof(g_retro_choice_options) / sizeof(g_retro_choice_options[0])); i++) {
+            o = &g_retro_choice_options[g_retro_choice_option_count++];
+            snprintf(o->label, sizeof(o->label), "%s", labels[i]);
+            o->action = RETRO_OPT_ACTION_ASPECT_RATIO;
+        }
+    } else if (mode == RETRO_OPT_ACTION_ASPECT_CUSTOM_PICK) {
+        for (int i = 0; i < g_custom_aspect_count && g_retro_choice_option_count < (int)(sizeof(g_retro_choice_options) / sizeof(g_retro_choice_options[0])); i++) {
+            o = &g_retro_choice_options[g_retro_choice_option_count++];
+            snprintf(o->label, sizeof(o->label), "%s", g_custom_aspects[i].label);
+            o->action = RETRO_OPT_ACTION_ASPECT_CUSTOM;
+        }
+    } else if (mode == RETRO_OPT_ACTION_VIDEO_FILTER) {
+        o = &g_retro_choice_options[g_retro_choice_option_count++];
+        snprintf(o->label, sizeof(o->label), "Off");
+        o->action = RETRO_OPT_ACTION_VIDEO_FILTER;
+        for (int i = 0; i < g_retro_video_filter_count && g_retro_choice_option_count < (int)(sizeof(g_retro_choice_options) / sizeof(g_retro_choice_options[0])); i++) {
+            o = &g_retro_choice_options[g_retro_choice_option_count++];
+            char base[96];
+            base_name_no_ext(g_retro_video_filters[i], base, sizeof(base));
+            snprintf(o->label, sizeof(o->label), "%s", base[0] ? base : g_retro_video_filters[i]);
+            o->action = RETRO_OPT_ACTION_VIDEO_FILTER;
+        }
+    } else if (mode == RETRO_OPT_ACTION_AUDIO_FILTER) {
+        o = &g_retro_choice_options[g_retro_choice_option_count++];
+        snprintf(o->label, sizeof(o->label), "Off");
+        o->action = RETRO_OPT_ACTION_AUDIO_FILTER;
+        for (int i = 0; i < g_retro_audio_filter_count && g_retro_choice_option_count < (int)(sizeof(g_retro_choice_options) / sizeof(g_retro_choice_options[0])); i++) {
+            o = &g_retro_choice_options[g_retro_choice_option_count++];
+            char base[96];
+            base_name_no_ext(g_retro_audio_filters[i], base, sizeof(base));
+            snprintf(o->label, sizeof(o->label), "%s", base[0] ? base : g_retro_audio_filters[i]);
+            o->action = RETRO_OPT_ACTION_AUDIO_FILTER;
+        }
+    }
+}
+
+static void toggle_retro_option_action(int action) {
+    if (!g_retro_opt_loaded || !g_retro_opt_rom[0]) return;
+    switch (action) {
+        case RETRO_OPT_ACTION_CPU_PROFILE:
+            break;
+        case RETRO_OPT_ACTION_FRAMESKIP:
+            break;
+        case RETRO_OPT_ACTION_VSYNC:
+            g_retro_opt.vsync = (g_retro_opt.vsync != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_AUDIO_LATENCY:
+            break;
+        case RETRO_OPT_ACTION_THREADED_VIDEO:
+            g_retro_opt.threaded_video = (g_retro_opt.threaded_video != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_HARD_GPU_SYNC:
+            g_retro_opt.hard_gpu_sync = (g_retro_opt.hard_gpu_sync != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_INTEGER_SCALE:
+            g_retro_opt.integer_scale = (g_retro_opt.integer_scale != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_ASPECT_RATIO: {
+            int v = g_retro_opt.aspect_ratio;
+            if (v < 0) v = 0;
+            v = (v + 1) % 4;
+            g_retro_opt.aspect_ratio = v;
+            break;
+        }
+        case RETRO_OPT_ACTION_ASPECT_CUSTOM: {
+            int idx = custom_aspect_index(g_retro_opt.aspect_ratio_value > 0.1f ? g_retro_opt.aspect_ratio_value : g_custom_aspects[0].value);
+            idx = (idx + 1) % g_custom_aspect_count;
+            g_retro_opt.aspect_ratio_value = g_custom_aspects[idx].value;
+            break;
+        }
+        case RETRO_OPT_ACTION_BILINEAR:
+            g_retro_opt.bilinear = (g_retro_opt.bilinear != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_VIDEO_FILTER:
+        case RETRO_OPT_ACTION_AUDIO_FILTER:
+            break;
+        case RETRO_OPT_ACTION_RUNAHEAD:
+            g_retro_opt.runahead = (g_retro_opt.runahead != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_REWIND:
+            g_retro_opt.rewind = (g_retro_opt.rewind != 0) ? 0 : 1;
+            break;
+        case RETRO_OPT_ACTION_RESET:
+            retro_rom_options_default(&g_retro_opt);
+            break;
+        default:
+            return;
+    }
 }
 
 static void draw_theme_image(const IconTexture* icon, float x, float y, float scale) {
@@ -1714,6 +2138,24 @@ static void draw_help_bar(const char* label) {
     draw_text(6, BOTTOM_H - HELP_BAR_H + 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
 }
 
+static void build_help_label_for_target(const Target* target, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = 0;
+    if (!target || !target->type[0]) {
+        copy_str(out, out_size, "A Launch   B Back   X Sort   Y Search");
+        return;
+    }
+    if (!strcmp(target->type, "rom_browser")) {
+        copy_str(out, out_size, "A Open   B Back   X Sort   Y NDS Options");
+        return;
+    }
+    if (!strcmp(target->type, "retroarch_system")) {
+        copy_str(out, out_size, "A Launch   B Back   X Sort   Y Retro Options");
+        return;
+    }
+    copy_str(out, out_size, "A Launch   B Back   X Sort   Y Search");
+}
+
 
 static void clamp_scroll_list(int* scroll, int selection, int visible, int count) {
     if (count <= 0) { *scroll = 0; return; }
@@ -2016,7 +2458,15 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
     char ext_lower[16];
     file_ext_lower(fe->name, ext_lower, sizeof(ext_lower));
     bool matched_rule = false;
-    const char* core = retro_resolve_core(&g_retro, system_key, ext_lower, &matched_rule);
+    RetroRomOptions opt;
+    retro_rom_options_default(&opt);
+    retro_rom_options_load(rom_sd, &opt);
+    const char* core = NULL;
+    if (opt.core_override[0]) {
+        core = opt.core_override;
+    } else {
+        core = retro_resolve_core(&g_retro, system_key, ext_lower, &matched_rule);
+    }
 
     retro_log_line("rom=%s", rom_sd);
     retro_log_line("system=%s ext=%s core=%s matched=%d", system_key, ext_lower, core ? core : "(none)", matched_rule ? 1 : 0);
@@ -2030,7 +2480,11 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
 
     bool known = false;
     bool available = false;
-    retro_core_available(core, &known, &available);
+    if (opt.core_override[0]) {
+        known = false;
+    } else {
+        retro_core_available(core, &known, &available);
+    }
     if (known && !available) {
         snprintf(status_message, status_size, "Required RetroArch core not available");
         retro_log_line("core missing: %s", core);
@@ -2655,6 +3109,9 @@ int main(int argc, char** argv) {
             else if (g_options_mode == OPT_MODE_NDS_ROM) active_count = g_nds_opt_option_count;
             else if (g_options_mode == OPT_MODE_NDS_CHEAT_FOLDERS) active_count = g_nds_cheat_folder_count;
             else if (g_options_mode == OPT_MODE_NDS_CHEATS) active_count = g_nds_cheat_option_count;
+            else if (g_options_mode == OPT_MODE_RETRO_ROM) active_count = g_retro_opt_option_count;
+            else if (g_options_mode == OPT_MODE_RETRO_CORE) active_count = g_retro_core_option_count;
+            else if (g_options_mode == OPT_MODE_RETRO_CHOICE) active_count = g_retro_choice_option_count;
             if (active_count <= 0) active_count = 1;
             int prev = options_selection;
             if (rep_up) options_selection--;
@@ -2879,6 +3336,136 @@ int main(int argc, char** argv) {
                         options_open = true;
                         audio_play(SOUND_SELECT);
                     }
+                } else if (g_options_mode == OPT_MODE_RETRO_ROM) {
+                    if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_MAIN;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        options_open = false;
+                        audio_play(SOUND_BACK);
+                    } else if (options_selection >= 0 && options_selection < g_retro_opt_option_count) {
+                        int action = g_retro_opt_options[options_selection].action;
+                        if (action == RETRO_OPT_ACTION_CORE_PICK) {
+                            copy_str(g_retro_core_rom, sizeof(g_retro_core_rom), g_retro_opt_rom);
+                            build_retro_core_options();
+                            g_options_mode = OPT_MODE_RETRO_CORE;
+                            options_selection = 0;
+                            options_scroll = 0;
+                            options_open = true;
+                            audio_play(SOUND_SELECT);
+                        } else if (action == RETRO_OPT_ACTION_CPU_PICK || action == RETRO_OPT_ACTION_FRAMESKIP_PICK || action == RETRO_OPT_ACTION_AUDIO_PICK || action == RETRO_OPT_ACTION_VIDEO_FILTER || action == RETRO_OPT_ACTION_AUDIO_FILTER || action == RETRO_OPT_ACTION_ASPECT_PICK || action == RETRO_OPT_ACTION_ASPECT_CUSTOM_PICK) {
+                            build_retro_choice_options(action);
+                            g_options_mode = OPT_MODE_RETRO_CHOICE;
+                            options_selection = 0;
+                            options_scroll = 0;
+                            options_open = true;
+                            audio_play(SOUND_SELECT);
+                        } else if (action == RETRO_OPT_ACTION_SAVE) {
+                            retro_rom_options_save(g_retro_opt_rom, &g_retro_opt);
+                            build_retro_rom_options(g_retro_opt_rom);
+                            snprintf(status_message, sizeof(status_message), "Settings saved");
+                            status_timer = 60;
+                            audio_play(SOUND_SELECT);
+                        } else if (action == RETRO_OPT_ACTION_RESET) {
+                            toggle_retro_option_action(action);
+                            build_retro_rom_options(g_retro_opt_rom);
+                            snprintf(status_message, sizeof(status_message), "Defaults restored");
+                            status_timer = 60;
+                            audio_play(SOUND_TOGGLE);
+                        } else {
+                            toggle_retro_option_action(action);
+                            build_retro_rom_options(g_retro_opt_rom);
+                            g_options_mode = OPT_MODE_RETRO_ROM;
+                            options_open = true;
+                            status_timer = 60;
+                            audio_play(SOUND_TOGGLE);
+                        }
+                    }
+                } else if (g_options_mode == OPT_MODE_RETRO_CORE) {
+                    if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_RETRO_ROM;
+                        build_retro_rom_options(g_retro_opt_rom);
+                        options_selection = 0;
+                        options_scroll = 0;
+                        options_open = true;
+                        audio_play(SOUND_BACK);
+                    } else {
+                        int idx = options_selection;
+                        if (idx == 1) {
+                            g_retro_opt.core_override[0] = 0;
+                        } else if (idx >= 2) {
+                            int core_idx = idx - 2;
+                            if (core_idx >= 0 && core_idx < g_retro_core_filtered_count) {
+                                char tmp[64];
+                                copy_str(tmp, sizeof(tmp), g_retro_core_filtered[core_idx]);
+                                base_name_no_ext(tmp, g_retro_opt.core_override, sizeof(g_retro_opt.core_override));
+                                if (!g_retro_opt.core_override[0]) copy_str(g_retro_opt.core_override, sizeof(g_retro_opt.core_override), g_retro_core_filtered[core_idx]);
+                            }
+                        }
+                        retro_rom_options_save(g_retro_opt_rom, &g_retro_opt);
+                        build_retro_rom_options(g_retro_opt_rom);
+                        g_options_mode = OPT_MODE_RETRO_ROM;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        options_open = true;
+                        status_timer = 60;
+                        audio_play(SOUND_SELECT);
+                    }
+                } else if (g_options_mode == OPT_MODE_RETRO_CHOICE) {
+                    if (options_selection == 0) {
+                        g_options_mode = OPT_MODE_RETRO_ROM;
+                        build_retro_rom_options(g_retro_opt_rom);
+                        options_selection = 0;
+                        options_scroll = 0;
+                        options_open = true;
+                        audio_play(SOUND_BACK);
+                    } else {
+                        int idx = options_selection - 1;
+                        if (g_retro_choice_mode == RETRO_OPT_ACTION_CPU_PICK) {
+                            g_retro_opt.cpu_profile = (idx == 1) ? 1 : 0;
+                        } else if (g_retro_choice_mode == RETRO_OPT_ACTION_FRAMESKIP_PICK) {
+                            g_retro_opt.frameskip = idx;
+                        } else if (g_retro_choice_mode == RETRO_OPT_ACTION_AUDIO_PICK) {
+                            int vals[] = { 32, 64, 96, 128 };
+                            if (idx >= 0 && idx < 4) g_retro_opt.audio_latency = vals[idx];
+                        } else if (g_retro_choice_mode == RETRO_OPT_ACTION_ASPECT_PICK) {
+                            if (idx >= 0 && idx < 4) g_retro_opt.aspect_ratio = idx;
+                            if (g_retro_opt.aspect_ratio == 3 && g_retro_opt.aspect_ratio_value <= 0.1f) {
+                                g_retro_opt.aspect_ratio_value = g_custom_aspects[0].value;
+                            }
+                        } else if (g_retro_choice_mode == RETRO_OPT_ACTION_ASPECT_CUSTOM_PICK) {
+                            if (idx >= 0 && idx < g_custom_aspect_count) {
+                                g_retro_opt.aspect_ratio = 3;
+                                g_retro_opt.aspect_ratio_value = g_custom_aspects[idx].value;
+                            }
+                        } else if (g_retro_choice_mode == RETRO_OPT_ACTION_VIDEO_FILTER) {
+                            if (idx == 0) {
+                                g_retro_opt.video_filter[0] = 0;
+                            } else {
+                                int sidx = idx - 1;
+                                if (sidx >= 0 && sidx < g_retro_video_filter_count) {
+                                    copy_str(g_retro_opt.video_filter, sizeof(g_retro_opt.video_filter), g_retro_video_filters[sidx]);
+                                }
+                            }
+                        } else if (g_retro_choice_mode == RETRO_OPT_ACTION_AUDIO_FILTER) {
+                            if (idx == 0) {
+                                g_retro_opt.audio_filter[0] = 0;
+                            } else {
+                                int sidx = idx - 1;
+                                if (sidx >= 0 && sidx < g_retro_audio_filter_count) {
+                                    copy_str(g_retro_opt.audio_filter, sizeof(g_retro_opt.audio_filter), g_retro_audio_filters[sidx]);
+                                }
+                            }
+                        }
+                        retro_rom_options_save(g_retro_opt_rom, &g_retro_opt);
+                        build_retro_rom_options(g_retro_opt_rom);
+                        g_options_mode = OPT_MODE_RETRO_ROM;
+                        options_selection = 0;
+                        options_scroll = 0;
+                        options_open = true;
+                        status_timer = 60;
+                        audio_play(SOUND_SELECT);
+                    }
                 }
             }
             if (kDown & KEY_B) {
@@ -2916,6 +3503,26 @@ int main(int argc, char** argv) {
                         refresh_options_menu(cfg);
                         audio_play(SOUND_BACK);
                     }
+                } else if (g_options_mode == OPT_MODE_RETRO_ROM) {
+                    options_open = false;
+                    g_options_mode = OPT_MODE_MAIN;
+                    options_selection = 0;
+                    options_scroll = 0;
+                    audio_play(SOUND_BACK);
+                } else if (g_options_mode == OPT_MODE_RETRO_CORE) {
+                    g_options_mode = OPT_MODE_RETRO_ROM;
+                    build_retro_rom_options(g_retro_opt_rom);
+                    options_selection = 0;
+                    options_scroll = 0;
+                    options_open = true;
+                    audio_play(SOUND_BACK);
+                } else if (g_options_mode == OPT_MODE_RETRO_CHOICE) {
+                    g_options_mode = OPT_MODE_RETRO_ROM;
+                    build_retro_rom_options(g_retro_opt_rom);
+                    options_selection = 0;
+                    options_scroll = 0;
+                    options_open = true;
+                    audio_play(SOUND_BACK);
                 } else if (g_options_mode != OPT_MODE_MAIN) {
                     g_options_mode = OPT_MODE_MAIN;
                     options_selection = 0;
@@ -3066,6 +3673,24 @@ int main(int argc, char** argv) {
                                 g_nds_opt_from_romlist = true;
                                 audio_play(SOUND_SELECT);
                             }
+                        }
+                    } else if (is_emu && total > 0) {
+                        int entry_idx = ts->selection - card_offset;
+                        if (entry_idx < 0) entry_idx = 0;
+                        if (entry_idx >= cache->count) entry_idx = cache->count - 1;
+                        FileEntry* fe = &cache->entries[entry_idx];
+                        if (!fe->is_dir) {
+                            char joined[512];
+                            path_join(ts->path, fe->name, joined, sizeof(joined));
+                            char sdpath[512];
+                            make_sd_path(joined, sdpath, sizeof(sdpath));
+                            g_retro_opt_loaded = false;
+                            build_retro_rom_options(sdpath);
+                            options_open = true;
+                            g_options_mode = OPT_MODE_RETRO_ROM;
+                            options_selection = 0;
+                            options_scroll = 0;
+                            audio_play(SOUND_SELECT);
                         }
                     }
                 }
@@ -3478,6 +4103,25 @@ int main(int argc, char** argv) {
                 list = g_nds_cheat_options;
                 count = g_nds_cheat_option_count;
                 header = "Cheat list";
+            } else if (g_options_mode == OPT_MODE_RETRO_ROM) {
+                list = g_retro_opt_options;
+                count = g_retro_opt_option_count;
+                header = "RetroArch ROM options";
+            } else if (g_options_mode == OPT_MODE_RETRO_CORE) {
+                list = g_retro_core_options;
+                count = g_retro_core_option_count;
+                header = "Core override";
+            } else if (g_options_mode == OPT_MODE_RETRO_CHOICE) {
+                list = g_retro_choice_options;
+                count = g_retro_choice_option_count;
+                if (g_retro_choice_mode == RETRO_OPT_ACTION_CPU_PICK) header = "CPU/GPU profile";
+                else if (g_retro_choice_mode == RETRO_OPT_ACTION_FRAMESKIP_PICK) header = "Frameskip";
+                else if (g_retro_choice_mode == RETRO_OPT_ACTION_AUDIO_PICK) header = "Audio latency";
+                else if (g_retro_choice_mode == RETRO_OPT_ACTION_VIDEO_FILTER) header = "Video filter";
+                else if (g_retro_choice_mode == RETRO_OPT_ACTION_AUDIO_FILTER) header = "Audio filter";
+                else if (g_retro_choice_mode == RETRO_OPT_ACTION_ASPECT_PICK) header = "Aspect ratio";
+                else if (g_retro_choice_mode == RETRO_OPT_ACTION_ASPECT_CUSTOM_PICK) header = "Custom ratio";
+                else header = "Options";
             }
             draw_rect(0, 0, BOTTOM_W, BOTTOM_H, overlay_color(g_theme.overlay_bg, bottom_has_bg));
             draw_text(8, 6, 0.7f, g_theme.option_header, header);
@@ -3663,7 +4307,8 @@ int main(int argc, char** argv) {
         }
 
         if (cfg->help_bar) {
-            const char* help = "A Launch   B Back   X Sort";
+            char help_buf[128];
+            build_help_label_for_target(target, help_buf, sizeof(help_buf));
             if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
                 bool is_rom = !strcmp(target->type, "rom_browser");
                 bool is_emu = is_emulator_target(target);
@@ -3675,13 +4320,15 @@ int main(int argc, char** argv) {
                 if (total > 0) {
                     int entry_idx = ts->selection - card_offset;
                     if (entry_idx >= 0 && entry_idx < cache->count && cache->entries[entry_idx].is_dir) {
-                        help = "A Open   B Back   X Sort";
+                        copy_str(help_buf, sizeof(help_buf), "A Open   B Back   X Sort");
                     } else if (is_rom && entry_idx >= 0 && entry_idx < cache->count && is_nds_name(cache->entries[entry_idx].name)) {
-                        help = "A Launch   B Back   X Sort   Y Options";
+                        copy_str(help_buf, sizeof(help_buf), "A Launch   B Back   X Sort   Y NDS Options");
+                    } else if (is_emu && entry_idx >= 0 && entry_idx < cache->count && !cache->entries[entry_idx].is_dir) {
+                        copy_str(help_buf, sizeof(help_buf), "A Launch   B Back   X Sort   Y Retro Options");
                     }
                 }
             }
-            draw_help_bar(help);
+            draw_help_bar(help_buf);
         }
 
         if (status_message[0]) {

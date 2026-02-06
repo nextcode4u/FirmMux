@@ -19,9 +19,14 @@ sd:/
       retroarch_rules.json
       emulators.json
       launch.json
+      rom_options.json
+      filter_favorites.txt
       log.txt
   retroarch/
     cores/
+    filters/
+      video/
+      audio/
     system/
   roms/
     a26/ a52/ a78/ col/ cpc/ gb/ gen/ gg/ intv/ m5/ nes/ ngp/ pkmni/ sg/ sms/ snes/ tg16/ ws/

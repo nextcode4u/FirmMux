@@ -79,6 +79,23 @@ char firmux_content_path[512];
 static char g_firmux_rom_sdmc[512];
 static char g_firmux_core_path[512];
 
+typedef struct {
+   char core_override[128];
+   int cpu_profile;
+   int frameskip;
+   int vsync;
+   int audio_latency;
+   int threaded_video;
+   int hard_gpu_sync;
+   int integer_scale;
+   int aspect_ratio;
+   float aspect_ratio_value;
+   int bilinear;
+   char shader[256];
+   int runahead;
+   int rewind;
+} firmux_rom_opts_t;
+
 static void firmux_log_line(const char *fmt, ...)
 {
    const char *path = "sdmc:/3ds/emulators/retroarch_boot.log";

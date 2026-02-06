@@ -12,6 +12,13 @@
 static bool g_retro_log_enabled = false;
 static bool g_retro_log_touched = false;
 
+static const char* g_retro_core_dirs[] = {
+    RETRO_CORES_DIR,
+    "sdmc:/3ds/RetroArch/cores",
+    "sdmc:/3ds/retroarch/cores"
+};
+static const int g_retro_core_dir_count = (int)(sizeof(g_retro_core_dirs) / sizeof(g_retro_core_dirs[0]));
+
 typedef struct {
     const char* folder;
     const char* core;
@@ -602,11 +609,24 @@ bool retro_write_launch(const RetroRules* rules, const char* rom_sd_path, const 
     return true;
 }
 
+static DIR* open_retro_core_dir(const char** out_path) {
+    if (out_path) *out_path = NULL;
+    for (int i = 0; i < g_retro_core_dir_count; i++) {
+        DIR* d = opendir(g_retro_core_dirs[i]);
+        if (d) {
+            if (out_path) *out_path = g_retro_core_dirs[i];
+            return d;
+        }
+    }
+    return NULL;
+}
+
 bool retro_core_available(const char* core_label, bool* known, bool* available) {
     if (known) *known = false;
     if (available) *available = false;
     if (!core_label || !core_label[0]) return false;
-    DIR* dir = opendir(RETRO_CORES_DIR);
+    const char* core_dir = NULL;
+    DIR* dir = open_retro_core_dir(&core_dir);
     if (!dir) return false;
     const CoreMap* map = NULL;
     for (int i = 0; i < g_core_map_count; i++) {
@@ -644,6 +664,9 @@ bool retro_core_available(const char* core_label, bool* known, bool* available) 
     }
     closedir(dir);
     if (available) *available = found;
+    if (core_dir && g_retro_log_enabled) {
+        retro_log_line("core scan dir: %s", core_dir);
+    }
     return found;
 }
 

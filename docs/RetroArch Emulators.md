@@ -43,6 +43,29 @@ FirmMux uses:
 
 These are regenerated if missing/invalid.
 
+## Per‑ROM Options
+
+Per‑ROM RetroArch options are stored in:
+
+- `sd:/3ds/emulators/rom_options.json`
+
+Set these from FirmMux (press **Y** on a ROM in an emulator tab).
+
+Supported options include:
+core override, CPU/GPU profile, frameskip, VSync, audio latency, threaded video,
+hard GPU sync, integer scale, aspect ratio, bilinear filter, video filter, audio filter,
+run‑ahead, rewind.
+
+Video filter favorites (optional) can be listed one per line in:
+
+- `sd:/3ds/emulators/filter_favorites.txt`
+
+If no favorites file is present or it is empty, FirmMux will list files from:
+- `sd:/retroarch/filters/video/`
+
+Audio filters are listed from:
+- `sd:/retroarch/filters/audio/`
+
 ## Custom RetroArch Build (FirmMux)
 
 Source:

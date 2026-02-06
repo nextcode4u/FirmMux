@@ -8,6 +8,7 @@ TOPDIR ?= $(CURDIR)
 APP_TITLE := FirmMux
 APP_DESCRIPTION := Unified CTR/TWL front-end
 APP_AUTHOR := FirmMux Team
+APP_ICON := assets/icon.png
 include $(DEVKITARM)/3ds_rules
 
 TARGET		:=	FirmMux

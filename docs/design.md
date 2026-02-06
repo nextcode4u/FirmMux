@@ -83,6 +83,8 @@ FirmMux uses external RetroArch backend config under:
 - /3ds/emulators/retroarch_rules.json
 - /3ds/emulators/emulators.json
 - /3ds/emulators/launch.json
+- /3ds/emulators/rom_options.json
+- /3ds/emulators/filter_favorites.txt (video filter favorites)
 - /3ds/emulators/log.txt
 
 Invalid or missing JSON is regenerated automatically.

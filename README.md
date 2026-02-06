@@ -22,6 +22,7 @@ Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.
 ## Documentation
 
 See the `docs/` folder for setup and backend details:
+https://github.com/nextcode4u/FirmMux/tree/main/docs
 
 - `docs/SD Layout.md`
 - `docs/RetroArch Emulators.md`
@@ -29,6 +30,8 @@ See the `docs/` folder for setup and backend details:
 
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
+
+Per‑ROM RetroArch options (press **Y** on a ROM in emulator tabs) are stored in `sd:/3ds/emulators/rom_options.json`.
 
 ## Known Issue
 

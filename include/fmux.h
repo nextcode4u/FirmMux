@@ -37,10 +37,16 @@
 #define RETRO_LAUNCH_PATH EMU_EXT_DIR "/launch.json"
 #define RETRO_LAUNCH_TMP_PATH LAUNCH_DIR "/retroarch_launch.tmp"
 #define RETRO_LOG_PATH EMU_EXT_DIR "/log.txt"
+#define RETRO_ROM_OPTIONS_PATH EMU_EXT_DIR "/rom_options.json"
+#define RETRO_ROM_OPTIONS_TMP_PATH EMU_EXT_DIR "/rom_options.tmp.json"
+#define RETRO_FILTER_FAV_PATH EMU_EXT_DIR "/filter_favorites.txt"
 #define RETRO_RULES_BAK_PATH DEBUG_DIR "/retroarch_rules.bak.json"
 #define RETRO_EMULATORS_BAK_PATH DEBUG_DIR "/emulators.bak.json"
 #define RETRO_ENTRY_DEFAULT "sd:/3ds/FirmMux/emulators/retroarch.3dsx"
 #define RETRO_CORES_DIR "sdmc:/retroarch/cores"
+#define RETRO_FILTERS_DIR "sdmc:/retroarch/filters"
+#define RETRO_VIDEO_FILTERS_DIR RETRO_FILTERS_DIR "/video"
+#define RETRO_AUDIO_FILTERS_DIR RETRO_FILTERS_DIR "/audio"
 #define RETRO_COMPAT_HANDOFF_PATH "sd:/firmmux/launch.json"
 #define RETRO_COMPAT_HANDOFF_PATH_3DS "sd:/3ds/firmmux/launch.json"
 #define NDS_CACHE_MAGIC 0x4e445343
@@ -181,6 +187,24 @@ typedef struct {
     EmuSystem systems[MAX_SYSTEMS];
     int count;
 } EmuConfig;
+
+typedef struct {
+    char core_override[64];
+    int cpu_profile;
+    int frameskip;
+    int vsync;
+    int audio_latency;
+    int threaded_video;
+    int hard_gpu_sync;
+    int integer_scale;
+    int aspect_ratio;
+    float aspect_ratio_value;
+    int bilinear;
+    char video_filter[192];
+    char audio_filter[192];
+    int runahead;
+    int rewind;
+} RetroRomOptions;
 
 typedef enum {
     OPTION_ACTION_NONE = 0,
@@ -452,6 +476,10 @@ void retro_log_set_enabled(bool on);
 bool retro_log_is_enabled(void);
 void retro_log_reset(void);
 void retro_log_line(const char* fmt, ...);
+void retro_rom_options_default(RetroRomOptions* opt);
+bool retro_rom_options_load(const char* rom_sd_path, RetroRomOptions* out);
+bool retro_rom_options_save(const char* rom_sd_path, const RetroRomOptions* opt);
+int retro_shader_favorites_load(char out_list[][192], int max_items);
 
 bool load_or_create_emulators(EmuConfig* cfg, bool* regenerated);
 bool save_emulators(const EmuConfig* cfg);
