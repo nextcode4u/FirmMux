@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <3ds/ndsp/channel.h>
+#include <3ds/os.h>
 
 typedef struct {
     ndspWaveBuf buf;
@@ -18,6 +19,9 @@ static bool g_audio_ready = false;
 static Sound g_bgm;
 static bool g_bgm_playing = false;
 static bool g_bgm_enabled = true;
+static int g_bgm_channel = 0;
+static bool g_bgm_pending_start = false;
+static u64 g_bgm_start_time = 0;
 static char g_ui_sounds_dir[192] = "sdmc:/3ds/FirmMux/ui sounds";
 static char g_bgm_path[192] = "sdmc:/3ds/FirmMux/bgm/bgm.wav";
 
@@ -61,6 +65,31 @@ static void build_sound_path(char* out, size_t out_size, const char* dir, const 
         return;
     }
     snprintf(out, out_size, "%s/%s", dir, name);
+}
+
+static void bgm_set_mix(int ch, float v) {
+    float mix[12] = {0};
+    mix[0] = v;
+    mix[1] = v;
+    ndspChnSetMix(ch, mix);
+}
+
+static void bgm_start_on_channel(int ch, Sound* s, float start_vol) {
+    if (!s || !s->loaded) return;
+    ndspChnReset(ch);
+    ndspChnSetInterp(ch, NDSP_INTERP_LINEAR);
+    ndspChnSetRate(ch, (float)s->rate);
+    ndspChnSetFormat(ch, s->format);
+    bgm_set_mix(ch, start_vol);
+    s->buf.looping = true;
+    s->buf.status = NDSP_WBUF_FREE;
+    ndspChnWaveBufAdd(ch, &s->buf);
+}
+
+static void bgm_stop_channel(int ch) {
+    bgm_set_mix(ch, 0.0f);
+    ndspChnWaveBufClear(ch);
+    ndspChnReset(ch);
 }
 
 static bool load_wav(const char* path, Sound* out) {
@@ -120,6 +149,24 @@ static bool load_wav(const char* path, Sound* out) {
     return true;
 }
 
+static void apply_fade_in_pcm16(Sound* s, int ms) {
+    if (!s || !s->loaded || !s->data || s->rate <= 0 || ms <= 0) return;
+    int channels = (s->format == NDSP_FORMAT_MONO_PCM16) ? 1 : 2;
+    int samples = (s->rate * ms) / 1000;
+    if (samples <= 0) return;
+    int total = (int)s->buf.nsamples;
+    if (samples > total) samples = total;
+    s16* pcm = (s16*)s->data;
+    for (int i = 0; i < samples; i++) {
+        float t = (float)i / (float)samples;
+        for (int c = 0; c < channels; c++) {
+            int idx = i * channels + c;
+            pcm[idx] = (s16)((float)pcm[idx] * t);
+        }
+    }
+    GSPGPU_FlushDataCache(s->data, s->data_size);
+}
+
 bool audio_init(void) {
     if (g_audio_ready) return true;
     if (ndspInit() != 0) return false;
@@ -162,19 +209,11 @@ bool audio_init(void) {
         }
     }
     if (g_bgm_path[0] && load_wav(g_bgm_path, &g_bgm)) {
-        ndspChnReset(0);
-        ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
-        ndspChnSetRate(0, (float)g_bgm.rate);
-        ndspChnSetFormat(0, g_bgm.format);
-        float mix[12] = {0};
-        mix[0] = 0.5f;
-        mix[1] = 0.5f;
-        ndspChnSetMix(0, mix);
-        g_bgm.buf.looping = true;
-        g_bgm.buf.status = NDSP_WBUF_FREE;
+        apply_fade_in_pcm16(&g_bgm, 15);
+        g_bgm_channel = 0;
         if (g_bgm_enabled) {
-            ndspChnWaveBufAdd(0, &g_bgm.buf);
-            g_bgm_playing = true;
+            g_bgm_pending_start = true;
+            g_bgm_start_time = osGetTime() + 200;
         }
     }
     g_audio_ready = true;
@@ -200,32 +239,32 @@ void audio_set_bgm_enabled(bool enabled) {
     g_bgm_enabled = enabled;
     if (!g_audio_ready || !g_bgm.loaded) return;
     if (!enabled) {
-        ndspChnWaveBufClear(0);
-        ndspChnReset(0);
+        ndspChnWaveBufClear(g_bgm_channel);
+        ndspChnReset(g_bgm_channel);
         g_bgm_playing = false;
         return;
     }
     if (!g_bgm_playing) {
-        ndspChnReset(0);
-        ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
-        ndspChnSetRate(0, (float)g_bgm.rate);
-        ndspChnSetFormat(0, g_bgm.format);
-        float mix[12] = {0};
-        mix[0] = 0.5f;
-        mix[1] = 0.5f;
-        ndspChnSetMix(0, mix);
-        g_bgm.buf.looping = true;
-        g_bgm.buf.status = NDSP_WBUF_FREE;
-        ndspChnWaveBufAdd(0, &g_bgm.buf);
-        g_bgm_playing = true;
+        g_bgm_pending_start = true;
+        g_bgm_start_time = osGetTime() + 200;
     }
 }
 
 void audio_set_theme_paths(const char* ui_sounds_dir, const char* bgm_path) {
-    if (ui_sounds_dir && ui_sounds_dir[0]) normalize_sdmc_path(g_ui_sounds_dir, sizeof(g_ui_sounds_dir), ui_sounds_dir);
-    else copy_str(g_ui_sounds_dir, sizeof(g_ui_sounds_dir), "sdmc:/3ds/FirmMux/ui sounds");
-    if (bgm_path && bgm_path[0]) normalize_sdmc_path(g_bgm_path, sizeof(g_bgm_path), bgm_path);
-    else copy_str(g_bgm_path, sizeof(g_bgm_path), "sdmc:/3ds/FirmMux/bgm/bgm.wav");
+    char next_ui_dir[192];
+    char next_bgm_path[192];
+    if (ui_sounds_dir && ui_sounds_dir[0]) normalize_sdmc_path(next_ui_dir, sizeof(next_ui_dir), ui_sounds_dir);
+    else copy_str(next_ui_dir, sizeof(next_ui_dir), "sdmc:/3ds/FirmMux/ui sounds");
+    if (bgm_path && bgm_path[0]) normalize_sdmc_path(next_bgm_path, sizeof(next_bgm_path), bgm_path);
+    else copy_str(next_bgm_path, sizeof(next_bgm_path), "sdmc:/3ds/FirmMux/bgm/bgm.wav");
+
+    bool keep_bgm = g_bgm.loaded && !strcasecmp(g_bgm_path, next_bgm_path);
+    Sound old_bgm = g_bgm;
+    bool old_bgm_loaded = g_bgm.loaded;
+    int old_ch = g_bgm_channel;
+
+    copy_str(g_ui_sounds_dir, sizeof(g_ui_sounds_dir), next_ui_dir);
+    copy_str(g_bgm_path, sizeof(g_bgm_path), next_bgm_path);
 
     if (!g_audio_ready) return;
 
@@ -240,8 +279,11 @@ void audio_set_theme_paths(const char* ui_sounds_dir, const char* bgm_path) {
     for (int i = 0; i < SOUND_MAX; i++) {
         sound_free(&g_sounds[i]);
     }
-    sound_free(&g_bgm);
-    g_bgm_playing = false;
+    if (!keep_bgm) {
+        bgm_stop_channel(old_ch);
+        g_bgm_playing = false;
+        g_bgm_pending_start = false;
+    }
 
     const char* names[SOUND_MAX] = {
         "tap_01.wav",
@@ -293,6 +335,10 @@ void audio_set_theme_paths(const char* ui_sounds_dir, const char* bgm_path) {
         }
         if (debug_log_enabled()) debug_log("audio: sound %s ok=%d", names[i], ok ? 1 : 0);
     }
+    for (int ch = 1; ch <= 7; ch++) {
+        ndspChnWaveBufClear(ch);
+        ndspChnReset(ch);
+    }
     if ((!g_bgm_path[0] || !file_exists(g_bgm_path)) && g_ui_sounds_dir[0]) {
         char tmp[256];
         build_sound_path(tmp, sizeof(tmp), g_ui_sounds_dir, "bgm.wav");
@@ -302,41 +348,38 @@ void audio_set_theme_paths(const char* ui_sounds_dir, const char* bgm_path) {
             if (file_exists(tmp)) copy_str(g_bgm_path, sizeof(g_bgm_path), tmp);
         }
     }
-    if (g_bgm_path[0] && load_wav(g_bgm_path, &g_bgm)) {
-        ndspChnReset(0);
-        ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
-        ndspChnSetRate(0, (float)g_bgm.rate);
-        ndspChnSetFormat(0, g_bgm.format);
-        float mix[12] = {0};
-        mix[0] = 0.5f;
-        mix[1] = 0.5f;
-        ndspChnSetMix(0, mix);
-        g_bgm.buf.looping = true;
-        g_bgm.buf.status = NDSP_WBUF_FREE;
+    if (!keep_bgm && g_bgm_path[0] && load_wav(g_bgm_path, &g_bgm)) {
+        apply_fade_in_pcm16(&g_bgm, 15);
+        g_bgm_channel = old_ch;
         if (g_bgm_enabled) {
-            ndspChnWaveBufAdd(0, &g_bgm.buf);
-            g_bgm_playing = true;
+            g_bgm_pending_start = true;
+            g_bgm_start_time = osGetTime() + 200;
         }
         if (debug_log_enabled()) debug_log("audio: bgm ok=1");
-    } else if (strcasecmp(g_bgm_path, "sdmc:/3ds/FirmMux/bgm/bgm.wav") != 0) {
+    } else if (!keep_bgm && strcasecmp(g_bgm_path, "sdmc:/3ds/FirmMux/bgm/bgm.wav") != 0) {
         if (load_wav("sdmc:/3ds/FirmMux/bgm/bgm.wav", &g_bgm)) {
-            ndspChnReset(0);
-            ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
-            ndspChnSetRate(0, (float)g_bgm.rate);
-            ndspChnSetFormat(0, g_bgm.format);
-            float mix[12] = {0};
-            mix[0] = 0.5f;
-            mix[1] = 0.5f;
-            ndspChnSetMix(0, mix);
-            g_bgm.buf.looping = true;
-            g_bgm.buf.status = NDSP_WBUF_FREE;
+            apply_fade_in_pcm16(&g_bgm, 15);
+            g_bgm_channel = old_ch;
             if (g_bgm_enabled) {
-                ndspChnWaveBufAdd(0, &g_bgm.buf);
-                g_bgm_playing = true;
+                g_bgm_pending_start = true;
+                g_bgm_start_time = osGetTime() + 200;
             }
             if (debug_log_enabled()) debug_log("audio: bgm ok=1 (fallback)");
         }
     } else if (debug_log_enabled()) {
         debug_log("audio: bgm ok=0");
     }
+
+    if (!keep_bgm && old_bgm_loaded) {
+        sound_free(&old_bgm);
+    }
+}
+
+void audio_update(void) {
+    if (!g_audio_ready || !g_bgm_enabled || !g_bgm.loaded) return;
+    if (!g_bgm_pending_start) return;
+    if (osGetTime() < g_bgm_start_time) return;
+    bgm_start_on_channel(g_bgm_channel, &g_bgm, 0.5f);
+    g_bgm_playing = true;
+    g_bgm_pending_start = false;
 }

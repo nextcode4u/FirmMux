@@ -3875,6 +3875,7 @@ int main(int argc, char** argv) {
             }
         }
 
+        audio_update();
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
         C2D_TargetClear(g_top, g_theme.top_bg);
         C2D_TargetClear(g_bottom, g_theme.bottom_bg);
