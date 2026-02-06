@@ -129,6 +129,7 @@ typedef struct {
     char top_background[64];
     char bottom_background[64];
     int background_visibility;
+    int bgm_enabled;
     bool retro_log_enabled;
     bool retro_chainload_enabled;
     int nds_launcher_mode;
@@ -220,6 +221,7 @@ typedef enum {
     OPTION_ACTION_TOP_BACKGROUND,
     OPTION_ACTION_BOTTOM_BACKGROUND,
     OPTION_ACTION_BG_VISIBILITY,
+    OPTION_ACTION_TOGGLE_BGM,
     OPTION_ACTION_RETRO_LOG_TOGGLE,
     OPTION_ACTION_RETRO_CHAINLOAD_TOGGLE,
     OPTION_ACTION_RETRO_INFO,
@@ -421,6 +423,7 @@ typedef enum {
 
 bool audio_init(void);
 void audio_play(int id);
+void audio_set_bgm_enabled(bool enabled);
 
 void trim(char* s);
 void copy_str(char* dst, size_t dst_size, const char* src);

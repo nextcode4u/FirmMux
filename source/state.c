@@ -33,6 +33,7 @@ bool parse_state(const char* text, State* state) {
     state->retro_log_enabled = false;
     state->retro_chainload_enabled = true;
     state->nds_launcher_mode = 0;
+    state->bgm_enabled = 1;
     if (!json_find_string(text, "last_target", state->last_target, sizeof(state->last_target))) {
         state->last_target[0] = 0;
     }
@@ -45,6 +46,8 @@ bool parse_state(const char* text, State* state) {
     if (!json_find_string(text, "bottom_background", state->bottom_background, sizeof(state->bottom_background))) {
         state->bottom_background[0] = 0;
     }
+    int bgm_on = 1;
+    if (json_find_int(text, "bgm_enabled", &bgm_on)) state->bgm_enabled = (bgm_on != 0);
     json_find_int(text, "background_visibility", &state->background_visibility);
     if (state->background_visibility < 0) state->background_visibility = 0;
     if (state->background_visibility > 100) state->background_visibility = 100;
@@ -98,6 +101,7 @@ bool load_state(State* state) {
         state->retro_log_enabled = false;
         state->retro_chainload_enabled = true;
         state->nds_launcher_mode = 0;
+        state->bgm_enabled = 1;
         return true;
     }
     FILE* f = fopen(STATE_PATH, "r");
@@ -120,6 +124,7 @@ bool load_state(State* state) {
     state->retro_log_enabled = false;
     state->retro_chainload_enabled = true;
     state->nds_launcher_mode = 0;
+    state->bgm_enabled = 1;
     return true;
 }
 
@@ -156,6 +161,7 @@ bool save_state(const State* state) {
     fprintf(f, "  \"retro_log_enabled\":%d,\n", state->retro_log_enabled ? 1 : 0);
     fprintf(f, "  \"retro_chainload_enabled\":%d,\n", state->retro_chainload_enabled ? 1 : 0);
     fprintf(f, "  \"nds_launcher_mode\":%d,\n", state->nds_launcher_mode);
+    fprintf(f, "  \"bgm_enabled\":%d,\n", state->bgm_enabled ? 1 : 0);
     fprintf(f, "  \"targets\":[\n");
     for (int i = 0; i < state->count; i++) {
         const TargetState* ts = &state->entries[i];

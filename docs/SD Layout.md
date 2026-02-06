@@ -13,6 +13,7 @@ sd:/
       backgrounds/
         top/
         bottom/
+      bgm/
       themes/
       firmux-bootstrap-prep.3dsx
     emulators/
@@ -49,3 +50,4 @@ sd:/
 - `sd:/_nds/firmmux/nds_widescreen/` stores per-game widescreen `.bin` files.
 - `sd:/_nds/ntr-forwarder/usrcheat.dat` is the cheat database.
 - For the 3DSX launcher, cheat flags are written directly into `sd:/_nds/ntr-forwarder/usrcheat.dat`.
+- Optional BGM: place `bgm.wav` at `sd:/3ds/FirmMux/bgm/bgm.wav` (loops).

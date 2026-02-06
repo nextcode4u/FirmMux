@@ -2625,6 +2625,10 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_BG_VISIBILITY;
 
     o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Background music: %s", g_state.bgm_enabled ? "On" : "Off");
+    o->action = OPTION_ACTION_TOGGLE_BGM;
+
+    o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "RetroArch log: %s", g_state.retro_log_enabled ? "On" : "Off");
     o->action = OPTION_ACTION_RETRO_LOG_TOGGLE;
 
@@ -2798,6 +2802,12 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         if (options_mode) *options_mode = OPT_MODE_BG_VIS;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_TOGGLE_BGM) {
+        state->bgm_enabled = !state->bgm_enabled;
+        audio_set_bgm_enabled(state->bgm_enabled);
+        refresh_options_menu(cfg);
+        snprintf(status_message, status_size, "Background music %s", state->bgm_enabled ? "On" : "Off");
+        if (state_dirty) *state_dirty = true;
     } else if (action == OPTION_ACTION_RETRO_LOG_TOGGLE) {
         state->retro_log_enabled = !state->retro_log_enabled;
         retro_log_set_enabled(state->retro_log_enabled);
@@ -2909,6 +2919,7 @@ int main(int argc, char** argv) {
         char saved_top_bg[64];
         char saved_bottom_bg[64];
         int saved_vis = state->background_visibility;
+        int saved_bgm = state->bgm_enabled;
         bool saved_retro_log = state->retro_log_enabled;
         bool saved_chainload = state->retro_chainload_enabled;
         copy_str(saved_theme, sizeof(saved_theme), state->theme);
@@ -2920,6 +2931,7 @@ int main(int argc, char** argv) {
         if (saved_top_bg[0]) copy_str(state->top_background, sizeof(state->top_background), saved_top_bg);
         if (saved_bottom_bg[0]) copy_str(state->bottom_background, sizeof(state->bottom_background), saved_bottom_bg);
         state->background_visibility = saved_vis;
+        state->bgm_enabled = saved_bgm;
         state->retro_log_enabled = saved_retro_log;
         state->retro_chainload_enabled = saved_chainload;
     }
@@ -2927,8 +2939,10 @@ int main(int argc, char** argv) {
     if (state->background_visibility < 0 || state->background_visibility > 100) {
         state->background_visibility = 50;
     }
+    if (state->bgm_enabled != 0 && state->bgm_enabled != 1) state->bgm_enabled = 1;
 
     retro_log_set_enabled(state->retro_log_enabled);
+    audio_set_bgm_enabled(state->bgm_enabled);
 
     char status_message[64] = {0};
     int status_timer = 0;

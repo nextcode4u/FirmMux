@@ -11,6 +11,7 @@ Quick paths:
 - RetroArch data/cores: /retroarch/
 - External RetroArch configs: /3ds/emulators/
 - RetroArch per‑ROM options: /3ds/emulators/rom_options.json (set via Y on a ROM)
+- Optional BGM (loops): /3ds/FirmMux/bgm/bgm.wav
 - NDS options: /_nds/firmmux/nds_options/
 - NDS cheats: /_nds/ntr-forwarder/usrcheat.dat
 - Note: NDS cheats are currently WIP; selection/flag writes are implemented, but in-game effect is not fully reliable yet.

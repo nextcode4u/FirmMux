@@ -15,6 +15,9 @@ typedef struct {
 static Sound g_sounds[SOUND_MAX];
 static int g_next_channel = 0;
 static bool g_audio_ready = false;
+static Sound g_bgm;
+static bool g_bgm_playing = false;
+static bool g_bgm_enabled = true;
 
 static bool load_wav(const char* path, Sound* out) {
     u8* file = NULL;
@@ -61,7 +64,8 @@ static bool load_wav(const char* path, Sound* out) {
     out->format = (channels == 1) ? NDSP_FORMAT_MONO_PCM16 : NDSP_FORMAT_STEREO_PCM16;
     out->rate = (int)sample_rate;
     out->buf.data_vaddr = pcm;
-    out->buf.nsamples = data_size / 2;
+    if (channels == 2) out->buf.nsamples = data_size / 4;
+    else out->buf.nsamples = data_size / 2;
     out->buf.looping = false;
     out->buf.status = NDSP_WBUF_FREE;
     out->loaded = true;
@@ -72,6 +76,7 @@ bool audio_init(void) {
     if (g_audio_ready) return true;
     if (ndspInit() != 0) return false;
     ndspSetOutputMode(NDSP_OUTPUT_STEREO);
+    ndspSetMasterVol(0.8f);
     const char* paths[SOUND_MAX] = {
         "sdmc:/3ds/FirmMux/ui sounds/tap_01.wav",
         "sdmc:/3ds/FirmMux/ui sounds/select.wav",
@@ -83,6 +88,22 @@ bool audio_init(void) {
     for (int i = 0; i < SOUND_MAX; i++) {
         load_wav(paths[i], &g_sounds[i]);
     }
+    if (load_wav("sdmc:/3ds/FirmMux/bgm/bgm.wav", &g_bgm)) {
+        ndspChnReset(0);
+        ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
+        ndspChnSetRate(0, (float)g_bgm.rate);
+        ndspChnSetFormat(0, g_bgm.format);
+        float mix[12] = {0};
+        mix[0] = 0.5f;
+        mix[1] = 0.5f;
+        ndspChnSetMix(0, mix);
+        g_bgm.buf.looping = true;
+        g_bgm.buf.status = NDSP_WBUF_FREE;
+        if (g_bgm_enabled) {
+            ndspChnWaveBufAdd(0, &g_bgm.buf);
+            g_bgm_playing = true;
+        }
+    }
     g_audio_ready = true;
     return true;
 }
@@ -92,7 +113,7 @@ void audio_play(int id) {
     if (id < 0 || id >= SOUND_MAX) return;
     Sound* s = &g_sounds[id];
     if (!s->loaded) return;
-    int ch = g_next_channel % 8;
+    int ch = 1 + (g_next_channel % 7);
     g_next_channel++;
     ndspChnReset(ch);
     ndspChnSetInterp(ch, NDSP_INTERP_LINEAR);
@@ -102,3 +123,27 @@ void audio_play(int id) {
     ndspChnWaveBufAdd(ch, &s->buf);
 }
 
+void audio_set_bgm_enabled(bool enabled) {
+    g_bgm_enabled = enabled;
+    if (!g_audio_ready || !g_bgm.loaded) return;
+    if (!enabled) {
+        ndspChnWaveBufClear(0);
+        ndspChnReset(0);
+        g_bgm_playing = false;
+        return;
+    }
+    if (!g_bgm_playing) {
+        ndspChnReset(0);
+        ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
+        ndspChnSetRate(0, (float)g_bgm.rate);
+        ndspChnSetFormat(0, g_bgm.format);
+        float mix[12] = {0};
+        mix[0] = 0.5f;
+        mix[1] = 0.5f;
+        ndspChnSetMix(0, mix);
+        g_bgm.buf.looping = true;
+        g_bgm.buf.status = NDSP_WBUF_FREE;
+        ndspChnWaveBufAdd(0, &g_bgm.buf);
+        g_bgm_playing = true;
+    }
+}

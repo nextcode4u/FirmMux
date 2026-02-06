@@ -36,3 +36,8 @@ Per‑ROM RetroArch options (press **Y** on a ROM in emulator tabs) are stored i
 ## Known Issue
 
 - NDS cheats are currently work in progress. Cheat selection UI and usrcheat flag writes are implemented, but in-game cheat activation is not yet reliable across all titles.
+
+## Background Music (Optional)
+
+- Place a looping WAV at `sd:/3ds/FirmMux/bgm/bgm.wav`.
+- BGM runs on a dedicated audio channel and does not replace UI sounds.
