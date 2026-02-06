@@ -19,6 +19,7 @@
 #include <3ds/services/mcuhwc.h>
 #include "dikbutt.h"
 #include "comfortaa_bold_bcfnt.h"
+#include <math.h>
 #include "stb_image.h"
 #include "nds_cheats.h"
 
@@ -73,6 +74,12 @@ static EmuConfig g_emu;
 static int g_list_item_h = 20;
 static int g_line_spacing = 26;
 static int g_status_h = 16;
+static float g_text_scale = 1.0f;
+static float g_text_scale_top = 1.0f;
+static float g_text_scale_bottom = 1.0f;
+static int g_row_padding = 1;
+static int g_tab_padding = 1;
+static int g_panel_alpha = 100;
 static int g_options_mode = 0;
 static char g_theme_names[MAX_THEMES][32];
 static int g_theme_name_count = 0;
@@ -282,6 +289,33 @@ static void apply_theme_from_state_or_config(const Config* cfg, const State* sta
     g_list_item_h = g_theme.list_item_h > 0 ? g_theme.list_item_h : 20;
     g_line_spacing = g_theme.line_spacing > 0 ? g_theme.line_spacing : 26;
     g_status_h = g_theme.status_h > 0 ? g_theme.status_h : 16;
+    g_text_scale_top = (g_theme.font_scale_top > 0.1f) ? g_theme.font_scale_top : 1.0f;
+    g_text_scale_bottom = (g_theme.font_scale_bottom > 0.1f) ? g_theme.font_scale_bottom : 1.0f;
+    g_row_padding = (g_theme.row_padding >= 0) ? g_theme.row_padding : 1;
+    g_tab_padding = (g_theme.tab_padding >= 0) ? g_theme.tab_padding : 1;
+    g_panel_alpha = (g_theme.panel_alpha >= 0 && g_theme.panel_alpha <= 100) ? g_theme.panel_alpha : 100;
+    if (g_theme.accent_set) {
+        g_theme.list_sel = g_theme.accent;
+        g_theme.tab_sel = g_theme.accent;
+        g_theme.option_sel = g_theme.accent;
+    }
+    char sounds_path[192] = {0};
+    char bgm_path[192] = {0};
+    if (g_theme.ui_sounds_dir[0]) {
+        if (!strncmp(g_theme.ui_sounds_dir, "sdmc:/", 6) || !strncmp(g_theme.ui_sounds_dir, "sd:/", 4) || g_theme.ui_sounds_dir[0] == '/') {
+            copy_str(sounds_path, sizeof(sounds_path), g_theme.ui_sounds_dir);
+        } else {
+            snprintf(sounds_path, sizeof(sounds_path), "sdmc:/3ds/FirmMux/themes/%s/%s", g_theme.name, g_theme.ui_sounds_dir);
+        }
+    }
+    if (g_theme.bgm_path[0]) {
+        if (!strncmp(g_theme.bgm_path, "sdmc:/", 6) || !strncmp(g_theme.bgm_path, "sd:/", 4) || g_theme.bgm_path[0] == '/') {
+            copy_str(bgm_path, sizeof(bgm_path), g_theme.bgm_path);
+        } else {
+            snprintf(bgm_path, sizeof(bgm_path), "sdmc:/3ds/FirmMux/themes/%s/%s", g_theme.name, g_theme.bgm_path);
+        }
+    }
+    audio_set_theme_paths(sounds_path, bgm_path);
 }
 
 static bool is_dir_path(const char* path) {
@@ -1115,7 +1149,11 @@ static int clamp_pct(int v) {
 
 static int overlay_pct(void) {
     int vis = clamp_pct(g_state.background_visibility);
-    return 100 - vis;
+    int pct = 100 - vis;
+    int pa = g_panel_alpha;
+    if (pa < 0) pa = 0;
+    if (pa > 100) pa = 100;
+    return (pct * pa) / 100;
 }
 
 static u32 overlay_color(u32 c, bool has_bg) {
@@ -1127,6 +1165,23 @@ static u8 overlay_alpha(bool has_bg) {
     if (!has_bg) return 255;
     int pct = overlay_pct();
     return (u8)((pct * 255) / 100);
+}
+
+static float theme_radius(float specific);
+
+static void preview_icon_layout(int iw, int ih, float banner_y, float* out_x, float* out_y, float* out_scale) {
+    float inset = theme_radius(g_theme.radius_preview);
+    if (inset < 4.0f) inset = 4.0f;
+    if (inset > 16.0f) inset = 16.0f;
+    float inner = 96.0f - inset * 2.0f;
+    float maxd = (iw > ih) ? (float)iw : (float)ih;
+    if (maxd <= 0.0f) maxd = 1.0f;
+    float scale = inner / maxd;
+    float px = 8.0f + inset + (inner - iw * scale) * 0.5f;
+    float py = banner_y + inset + (inner - ih * scale) * 0.5f;
+    if (out_x) *out_x = px;
+    if (out_y) *out_y = py;
+    if (out_scale) *out_scale = scale;
 }
 
 static void draw_theme_image_scaled_alpha(const IconTexture* icon, float x, float y, float w, float h, u8 alpha) {
@@ -1426,7 +1481,8 @@ static void draw_text(float x, float y, float scale, u32 color, const char* str)
     if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
     else C2D_TextParse(&text, g_textbuf, str);
     C2D_TextOptimize(&text);
-    C2D_DrawText(&text, C2D_WithColor, x, y, 0.0f, scale, scale, color);
+    float s = scale * g_text_scale;
+    C2D_DrawText(&text, C2D_WithColor, x, y, 0.0f, s, s, color);
 }
 
 static void draw_text_centered_bias(float x, float y, float scale, u32 color, float box_h, const char* str, float bias) {
@@ -1434,11 +1490,12 @@ static void draw_text_centered_bias(float x, float y, float scale, u32 color, fl
     if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
     else C2D_TextParse(&text, g_textbuf, str);
     C2D_TextOptimize(&text);
+    float s = scale * g_text_scale;
     float w = 0.0f;
     float h = 0.0f;
-    C2D_TextGetDimensions(&text, scale, scale, &w, &h);
+    C2D_TextGetDimensions(&text, s, s, &w, &h);
     float ty = y + (box_h - h) * 0.5f + bias;
-    C2D_DrawText(&text, C2D_WithColor, x, ty, 0.0f, scale, scale, color);
+    C2D_DrawText(&text, C2D_WithColor, x, ty, 0.0f, s, s, color);
 }
 
 static void draw_text_centered(float x, float y, float scale, u32 color, float box_h, const char* str) {
@@ -1805,6 +1862,33 @@ static void draw_rect(float x, float y, float w, float h, u32 color) {
     C2D_DrawRectSolid(x, y, 0.0f, w, h, color);
 }
 
+static float theme_radius(float specific) {
+    if (specific > 0.0f) return specific;
+    return g_theme.radius_global;
+}
+
+static void draw_round_rect(float x, float y, float w, float h, u32 color, float radius) {
+    if (radius <= 0.5f || w <= 1.0f || h <= 1.0f) {
+        draw_rect(x, y, w, h, color);
+        return;
+    }
+    float r = radius;
+    if (r * 2.0f > w) r = w * 0.5f;
+    if (r * 2.0f > h) r = h * 0.5f;
+    int ir = (int)ceilf(r);
+    for (int yy = 0; yy < ir; yy++) {
+        float dy = r - (float)yy - 0.5f;
+        float dx = r - sqrtf(fmaxf(0.0f, r * r - dy * dy));
+        int inset = (int)ceilf(dx);
+        float rw = w - inset * 2;
+        if (rw < 0.0f) rw = 0.0f;
+        draw_rect(x + inset, y + yy, rw, 1.0f, color);
+        draw_rect(x + inset, y + h - 1.0f - yy, rw, 1.0f, color);
+    }
+    float mid_h = h - ir * 2;
+    if (mid_h > 0.0f) draw_rect(x, y + ir, w, mid_h, color);
+}
+
 #define STATUS_H 16
 
 typedef struct {
@@ -2060,7 +2144,8 @@ static void draw_system_info(float x, float y) {
 static void draw_status_bar(void) {
     float y = TOP_H - g_status_h;
     u32 status_bg = overlay_color(g_theme.status_bg, g_top_bg_tex.loaded);
-    draw_rect(0, y, TOP_W, g_status_h, status_bg);
+    float r_status = theme_radius(g_theme.radius_status);
+    draw_round_rect(0, y, TOP_W, g_status_h, status_bg, r_status);
 
     char timebuf[16];
     time_t now = time(NULL);
@@ -2134,7 +2219,8 @@ static void draw_help_bar(const char* label) {
     u32 help_bg = overlay_color(g_theme.help_bg, g_bottom_bg_tex.loaded);
     draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, help_line);
     draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, help_line);
-    draw_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, help_bg);
+    float r_status2 = theme_radius(g_theme.radius_status);
+    draw_round_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, help_bg, r_status2);
     draw_text(6, BOTTOM_H - HELP_BAR_H + 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
 }
 
@@ -2843,7 +2929,6 @@ int main(int argc, char** argv) {
     C2D_Init(8192);
     C2D_Prepare();
     C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
-    audio_init();
     ptmuInit();
     acInit();
     cfguInit();
@@ -2942,7 +3027,6 @@ int main(int argc, char** argv) {
     if (state->bgm_enabled != 0 && state->bgm_enabled != 1) state->bgm_enabled = 1;
 
     retro_log_set_enabled(state->retro_log_enabled);
-    audio_set_bgm_enabled(state->bgm_enabled);
 
     char status_message[64] = {0};
     int status_timer = 0;
@@ -2953,6 +3037,8 @@ int main(int argc, char** argv) {
     rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
 
     apply_theme_from_state_or_config(cfg, state);
+    audio_init();
+    audio_set_bgm_enabled(state->bgm_enabled);
 
     if (state->last_target[0] == 0) copy_str(state->last_target, sizeof(state->last_target), cfg->default_target);
     current_target = find_target_index(cfg, state->last_target);
@@ -3154,11 +3240,9 @@ int main(int argc, char** argv) {
                         if (theme_idx >= 0 && theme_idx < g_theme_name_count) {
                             const char* name = g_theme_names[theme_idx];
                             if (load_theme(&g_theme, name)) {
-                                g_list_item_h = g_theme.list_item_h > 0 ? g_theme.list_item_h : 20;
-                                g_line_spacing = g_theme.line_spacing > 0 ? g_theme.line_spacing : 26;
-                                g_status_h = g_theme.status_h > 0 ? g_theme.status_h : 16;
                                 copy_str(cfg->theme, sizeof(cfg->theme), name);
                                 copy_str(state->theme, sizeof(state->theme), name);
+                                apply_theme_from_state_or_config(cfg, state);
                                 state_dirty = true;
                                 build_theme_options(name);
                                 snprintf(status_message, sizeof(status_message), "Theme: %s", name);
@@ -3796,6 +3880,7 @@ int main(int argc, char** argv) {
         C2D_TargetClear(g_bottom, g_theme.bottom_bg);
 
         C2D_SceneBegin(g_top);
+        g_text_scale = g_text_scale_top;
         C2D_TextBufClear(g_textbuf);
         if (g_top_bg_tex.loaded) {
             draw_theme_image_scaled(&g_top_bg_tex, 0.0f, 0.0f, TOP_W, TOP_H);
@@ -3804,8 +3889,9 @@ int main(int argc, char** argv) {
         bool top_has_bg = g_top_bg_tex.loaded;
         u32 panel_left = overlay_color(g_theme.panel_left, top_has_bg);
         u32 panel_right = overlay_color(g_theme.panel_right, top_has_bg);
-        draw_rect(0, 0, PREVIEW_W, TOP_H, panel_left);
-        draw_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, panel_right);
+        float r_panel = theme_radius(g_theme.radius_panels);
+        draw_round_rect(0, 0, PREVIEW_W, TOP_H, panel_left, r_panel);
+        draw_round_rect(PREVIEW_W, 0, TARGET_LIST_W, TOP_H, panel_right, r_panel);
 
         const char* preview_title = "";
         const TitleInfo3ds* preview_tinfo = NULL;
@@ -3909,7 +3995,8 @@ int main(int argc, char** argv) {
             draw_system_info(8, info_y);
         } else {
             u32 preview_bg = overlay_color(g_theme.preview_bg, top_has_bg);
-            draw_rect(8, banner_y, 96, 96, preview_bg);
+            float r_prev = theme_radius(g_theme.radius_preview);
+            draw_round_rect(8, banner_y, 96, 96, preview_bg, r_prev);
             if (preview_tinfo) {
                 char tidbuf[32];
                 snprintf(tidbuf, sizeof(tidbuf), "TID: %016llX", (unsigned long long)preview_tinfo->titleId);
@@ -3921,13 +4008,14 @@ int main(int argc, char** argv) {
             if (cache->count > 0) {
                 FileEntry* fe = &cache->entries[ts->selection];
                 if (!fe->is_dir && is_3dsx_name(fe->name) && g_hb_preview_valid) {
-                    float scale = 2.0f;
-                    float px = 8 + (96.0f - 48.0f * scale) * 0.5f;
-                    float py = banner_y + (96.0f - 48.0f * scale) * 0.5f;
+                    float scale = 1.0f;
+                    float px = 8.0f;
+                    float py = banner_y;
+                    preview_icon_layout(48, 48, banner_y, &px, &py, &scale);
                     if (g_hb_preview_icon.loaded) {
                         C2D_DrawImageAt(g_hb_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
                     } else {
-                        draw_rgba_icon(8, banner_y, 2.0f, g_hb_preview_rgba, 48, 48);
+                        draw_rgba_icon(px, py, scale, g_hb_preview_rgba, 48, 48);
                     }
                     drew_icon = true;
                 }
@@ -3938,10 +4026,14 @@ int main(int argc, char** argv) {
             if (cache->count > 0 || show_card) {
                 int card_offset = show_card ? 1 : 0;
                 if (show_card && ts->selection == 0) {
-                    if (g_card_twl_has_icon) {
-                        draw_rgba_icon(8, banner_y, 3.0f, g_card_twl_rgba, 32, 32);
-                        drew_icon = true;
-                    }
+                        if (g_card_twl_has_icon) {
+                            float scale = 1.0f;
+                            float px = 8.0f;
+                            float py = banner_y;
+                            preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                            draw_rgba_icon(px, py, scale, g_card_twl_rgba, 32, 32);
+                            drew_icon = true;
+                        }
                 } else {
                     int entry_idx = ts->selection - card_offset;
                     if (entry_idx < 0) entry_idx = 0;
@@ -3954,28 +4046,40 @@ int main(int argc, char** argv) {
                     bool is_nds = is_file && is_nds_name(cache->entries[entry_idx].name);
                     NdsCacheEntry* nds = is_nds ? nds_cache_entry(sdpath) : NULL;
                     if (g_nds_banners && nds && nds->has_rgba) {
-                        draw_rgba_icon(8, banner_y, 3.0f, nds->rgba, 32, 32);
+                        float scale = 1.0f;
+                        float px = 8.0f;
+                        float py = banner_y;
+                        preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                        draw_rgba_icon(px, py, scale, nds->rgba, 32, 32);
                         drew_icon = true;
                     } else if (!g_nds_banners) {
                         if (nds && nds->has_rgba) {
-                            draw_rgba_icon(8, banner_y, 3.0f, nds->rgba, 32, 32);
+                            float scale = 1.0f;
+                            float px = 8.0f;
+                            float py = banner_y;
+                            preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                            draw_rgba_icon(px, py, scale, nds->rgba, 32, 32);
                             drew_icon = true;
                         } else if (move_cooldown == 0 && is_nds) {
                             build_nds_entry(sdpath);
                         }
                         if (!drew_icon) {
                             if (g_theme.sprite_loaded && g_theme.sprite_w > 0 && g_theme.sprite_h > 0) {
-                                int maxd = g_theme.sprite_w > g_theme.sprite_h ? g_theme.sprite_w : g_theme.sprite_h;
-                                float scale = 96.0f / (float)maxd;
-                                float px = 8 + (96.0f - g_theme.sprite_w * scale) * 0.5f;
-                                float py = banner_y + (96.0f - g_theme.sprite_h * scale) * 0.5f;
+                                float scale = 1.0f;
+                                float px = 8.0f;
+                                float py = banner_y;
+                                preview_icon_layout(g_theme.sprite_w, g_theme.sprite_h, banner_y, &px, &py, &scale);
                                 draw_theme_image(&g_theme.sprite_tex, px, py, scale);
                             } else {
                                 u32 col1 = hash_color(cache->entries[entry_idx].name);
                                 u32 col2 = hash_color(cache->entries[entry_idx].name + 1);
                                 u8 tmp[32 * 32 * 4];
                                 make_sprite(tmp, col1, col2);
-                                draw_rgba_icon(8, banner_y, 3.0f, tmp, 32, 32);
+                                float scale = 1.0f;
+                                float px = 8.0f;
+                                float py = banner_y;
+                                preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                                draw_rgba_icon(px, py, scale, tmp, 32, 32);
                             }
                             drew_icon = true;
                         }
@@ -3985,13 +4089,14 @@ int main(int argc, char** argv) {
         } else if (!show_system_info && !strcmp(target->type, "installed_titles")) {
             TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
             if (update_title_preview_rgba(tinfo)) {
-                float scale = 2.0f;
-                float px = 8 + (96.0f - 48.0f * scale) * 0.5f;
-                float py = banner_y + (96.0f - 48.0f * scale) * 0.5f;
+                float scale = 1.0f;
+                float px = 8.0f;
+                float py = banner_y;
+                preview_icon_layout(48, 48, banner_y, &px, &py, &scale);
                 if (g_title_preview_icon.loaded) {
                     C2D_DrawImageAt(g_title_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
                 } else {
-                    draw_rgba_icon(8, banner_y, 2.0f, g_title_preview_rgba, 48, 48);
+                    draw_rgba_icon(px, py, scale, g_title_preview_rgba, 48, 48);
                 }
                 drew_icon = true;
             }
@@ -3999,13 +4104,14 @@ int main(int argc, char** argv) {
             if (ts->selection > 0) {
                 TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
                 if (update_title_preview_rgba(tinfo)) {
-                    float scale = 2.0f;
-                    float px = 8 + (96.0f - 48.0f * scale) * 0.5f;
-                    float py = banner_y + (96.0f - 48.0f * scale) * 0.5f;
+                    float scale = 1.0f;
+                    float px = 8.0f;
+                    float py = banner_y;
+                    preview_icon_layout(48, 48, banner_y, &px, &py, &scale);
                     if (g_title_preview_icon.loaded) {
                         C2D_DrawImageAt(g_title_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
                     } else {
-                        draw_rgba_icon(8, banner_y, 2.0f, g_title_preview_rgba, 48, 48);
+                        draw_rgba_icon(px, py, scale, g_title_preview_rgba, 48, 48);
                     }
                     drew_icon = true;
                 }
@@ -4041,8 +4147,10 @@ int main(int argc, char** argv) {
             int idx = target_scroll + i;
             if (idx >= cfg->target_count) break;
             int y = i * g_list_item_h + 2;
-            int row_y = y + 1;
-            int row_h = g_list_item_h - 2;
+            int pad = g_tab_padding;
+            int row_y = y + pad;
+            int row_h = g_list_item_h - pad * 2;
+            if (row_h < 1) row_h = 1;
             bool sel = (idx == current_target);
             if (sel && g_theme.tab_sel_loaded) {
                 float off = align_offset_from_center(g_theme.tab_sel_center_y, row_h);
@@ -4052,7 +4160,8 @@ int main(int argc, char** argv) {
                 draw_theme_image_scaled_alpha(&g_theme.tab_item_tex, PREVIEW_W + 2, row_y + g_theme.tab_item_offset_y + off, TARGET_LIST_W - 4, row_h, tab_alpha);
             } else {
                 u32 color = overlay_color(sel ? g_theme.tab_sel : g_theme.tab_bg, top_has_bg);
-                draw_rect(PREVIEW_W + 2, row_y, TARGET_LIST_W - 4, row_h, color);
+                float r_tab = theme_radius(g_theme.radius_tabs);
+                draw_round_rect(PREVIEW_W + 2, row_y, TARGET_LIST_W - 4, row_h, color, r_tab);
             }
             float tab_bias = -2.0f;
             if (sel && g_theme.tab_sel_loaded) tab_bias = align_offset_from_center(g_theme.tab_sel_center_y, row_h);
@@ -4063,6 +4172,7 @@ int main(int argc, char** argv) {
         draw_status_bar();
 
         C2D_SceneBegin(g_bottom);
+        g_text_scale = g_text_scale_bottom;
         C2D_TextBufClear(g_textbuf);
         if (g_bottom_bg_tex.loaded) {
             draw_theme_image_scaled(&g_bottom_bg_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H);
@@ -4144,21 +4254,26 @@ int main(int argc, char** argv) {
                 int idx = options_scroll + i;
                 if (idx >= count) break;
                 int y = 24 + i * g_list_item_h;
+                int pad = g_row_padding;
+                int row_y = y + pad;
+                int row_h = g_list_item_h - pad * 2;
+                if (row_h < 1) row_h = 1;
                 bool sel = (idx == options_selection);
                 if (sel && g_theme.option_sel_loaded) {
-                    float off = align_offset_from_center(g_theme.option_sel_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.option_sel_tex, 6, y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.option_sel_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.option_sel_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else if (!sel && g_theme.option_item_loaded) {
-                    float off = align_offset_from_center(g_theme.option_item_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.option_item_tex, 6, y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.option_item_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.option_item_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else {
                     u32 color = overlay_color(sel ? g_theme.option_sel : g_theme.option_bg, bottom_has_bg);
-                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                    float r_opt = theme_radius(g_theme.radius_options);
+                    draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_opt);
                 }
                 float opt_bias = -2.0f;
-                if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, g_list_item_h);
-                else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, g_list_item_h);
-                draw_text_centered_bias(10, y + g_theme.option_text_offset_y, 0.6f, g_theme.option_text, g_list_item_h, list[idx].label, opt_bias);
+                if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, row_h);
+                else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, row_h);
+                draw_text_centered_bias(10, row_y + g_theme.option_text_offset_y, 0.6f, g_theme.option_text, row_h, list[idx].label, opt_bias);
             }
             if (kDown & KEY_SELECT) {
                 if (!g_select_last) g_select_hits++;
@@ -4189,16 +4304,21 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * g_list_item_h;
+                int pad = g_row_padding;
+                int row_y = y + pad;
+                int row_h = g_list_item_h - pad * 2;
+                if (row_h < 1) row_h = 1;
                 bool sel = (idx == ts->selection);
                 if (sel && g_theme.list_sel_loaded) {
-                    float off = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, row_y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else if (!sel && g_theme.list_item_loaded) {
-                    float off = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, row_y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else {
                     u32 color = overlay_color(sel ? g_theme.list_sel : g_theme.list_bg, bottom_has_bg);
-                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                    float r_list = theme_radius(g_theme.radius_list);
+                    draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_list);
                 }
                 char shortname[56];
                 TitleInfo3ds* t = title_user_at_sorted(idx, ts->sort_mode);
@@ -4211,9 +4331,9 @@ int main(int argc, char** argv) {
                     shortname[30] = 0;
                 }
                 float list_bias = -2.0f;
-                if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, shortname, list_bias);
+                if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                draw_text_centered_bias(12, row_y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, row_h, shortname, list_bias);
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
@@ -4223,22 +4343,27 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * g_list_item_h;
+                int pad = g_row_padding;
+                int row_y = y + pad;
+                int row_h = g_list_item_h - pad * 2;
+                if (row_h < 1) row_h = 1;
                 bool sel = (idx == ts->selection);
                 if (sel && g_theme.list_sel_loaded) {
-                    float off = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, row_y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else if (!sel && g_theme.list_item_loaded) {
-                    float off = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, row_y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else {
                     u32 color = overlay_color(sel ? g_theme.list_sel : g_theme.list_bg, bottom_has_bg);
-                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                    float r_list = theme_radius(g_theme.radius_list);
+                    draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_list);
                 }
                 if (idx == 0) {
                     float list_bias = -2.0f;
-                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                    draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, "Return to HOME", list_bias);
+                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    draw_text_centered_bias(12, row_y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, row_h, "Return to HOME", list_bias);
                 } else {
                     TitleInfo3ds* t = title_system_at_sorted(idx - 1, ts->sort_mode);
                     if (!t) continue;
@@ -4251,9 +4376,9 @@ int main(int argc, char** argv) {
                         shortname[30] = 0;
                     }
                     float list_bias = -2.0f;
-                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                    draw_text_centered_bias(12, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, shortname, list_bias);
+                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    draw_text_centered_bias(12, row_y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, row_h, shortname, list_bias);
                 }
             }
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
@@ -4270,10 +4395,8 @@ int main(int argc, char** argv) {
             int list_w = BOTTOM_W - 12;
             int list_h = BOTTOM_H - HELP_BAR_H - 8;
             u32 border = overlay_color(g_theme.help_line, bottom_has_bg);
-            draw_rect(list_x, list_y, list_w, 1, border);
-            draw_rect(list_x, list_y + list_h - 1, list_w, 1, border);
-            draw_rect(list_x, list_y, 1, list_h, border);
-            draw_rect(list_x + list_w - 1, list_y, 1, list_h, border);
+            float r_pick = theme_radius(g_theme.radius_picker);
+            draw_round_rect(list_x, list_y, list_w, list_h, border, r_pick);
             if (!root_ok) {
                 draw_text(18, list_y + list_h * 0.5f - 8.0f, 0.7f, g_theme.text_secondary, "Missing folder");
             } else if (total <= 0) {
@@ -4283,16 +4406,21 @@ int main(int argc, char** argv) {
                 int idx = ts->scroll + i;
                 if (idx >= total) break;
                 int y = 6 + i * g_list_item_h;
+                int pad = g_row_padding;
+                int row_y = y + pad;
+                int row_h = g_list_item_h - pad * 2;
+                if (row_h < 1) row_h = 1;
                 bool sel = (idx == ts->selection);
                 if (sel && g_theme.list_sel_loaded) {
-                    float off = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_sel_tex, 6, row_y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else if (!sel && g_theme.list_item_loaded) {
-                    float off = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, g_list_item_h, bottom_alpha);
+                    float off = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.list_item_tex, 6, row_y + g_theme.list_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
                 } else {
                     u32 color = overlay_color(sel ? g_theme.list_sel : g_theme.list_bg, bottom_has_bg);
-                    draw_rect(6, y, BOTTOM_W - 12, g_list_item_h, color);
+                    float r_list = theme_radius(g_theme.radius_list);
+                    draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_list);
                 }
                 char label_buf[256];
                 if (card_offset && idx == 0) {
@@ -4310,9 +4438,9 @@ int main(int argc, char** argv) {
                 }
                 float text_x = 10.0f;
                 float list_bias = -2.0f;
-                if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, g_list_item_h);
-                else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, g_list_item_h);
-                draw_text_centered_bias(text_x, y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, g_list_item_h, label_buf, list_bias);
+                if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                draw_text_centered_bias(text_x, row_y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, row_h, label_buf, list_bias);
             }
             }
         } else {
@@ -4346,7 +4474,8 @@ int main(int argc, char** argv) {
         }
 
         if (status_message[0]) {
-            draw_rect(60, 90, 200, 40, g_theme.toast_bg);
+            float r_toast = theme_radius(g_theme.radius_options);
+            draw_round_rect(60, 90, 200, 40, g_theme.toast_bg, r_toast);
             draw_text(90, 104, 0.6f, g_theme.toast_text, status_message);
         }
 

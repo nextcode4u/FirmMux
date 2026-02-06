@@ -276,6 +276,23 @@ typedef struct {
     u32 status_bolt;
     u32 toast_bg;
     u32 toast_text;
+    u32 accent;
+    bool accent_set;
+    float font_scale_top;
+    float font_scale_bottom;
+    int panel_alpha;
+    int row_padding;
+    int tab_padding;
+    float radius_global;
+    float radius_tabs;
+    float radius_list;
+    float radius_options;
+    float radius_panels;
+    float radius_preview;
+    float radius_status;
+    float radius_picker;
+    char ui_sounds_dir[128];
+    char bgm_path[128];
     char top_image[64];
     char bottom_image[64];
     char status_strip[64];
@@ -424,6 +441,7 @@ typedef enum {
 bool audio_init(void);
 void audio_play(int id);
 void audio_set_bgm_enabled(bool enabled);
+void audio_set_theme_paths(const char* ui_sounds_dir, const char* bgm_path);
 
 void trim(char* s);
 void copy_str(char* dst, size_t dst_size, const char* src);

@@ -45,6 +45,21 @@ static int clamp_int(int v, int minv, int maxv) {
     return v;
 }
 
+static bool parse_float_value(const char* v, float* out) {
+    if (!v || !out) return false;
+    char buf[32];
+    size_t len = strlen(v);
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+    memcpy(buf, v, len);
+    buf[len] = 0;
+    strip_quotes(buf);
+    char* end = NULL;
+    float f = strtof(buf, &end);
+    if (!end || *end) return false;
+    *out = f;
+    return true;
+}
+
 static void theme_free_images(Theme* t) {
     if (!t) return;
     icon_free(&t->top_tex);
@@ -203,6 +218,23 @@ void theme_default(Theme* t) {
     t->status_bolt = C2D_Color32(255, 220, 80, 255);
     t->toast_bg = C2D_Color32(0, 0, 0, 200);
     t->toast_text = C2D_Color32(240, 240, 240, 255);
+    t->accent = 0;
+    t->accent_set = false;
+    t->font_scale_top = 1.0f;
+    t->font_scale_bottom = 1.0f;
+    t->panel_alpha = 100;
+    t->row_padding = 1;
+    t->tab_padding = 1;
+    t->radius_global = 0.0f;
+    t->radius_tabs = 0.0f;
+    t->radius_list = 0.0f;
+    t->radius_options = 0.0f;
+    t->radius_panels = 0.0f;
+    t->radius_preview = 0.0f;
+    t->radius_status = 0.0f;
+    t->radius_picker = 0.0f;
+    t->ui_sounds_dir[0] = 0;
+    t->bgm_path[0] = 0;
     t->list_item_offset_y = 0;
     t->list_text_offset_y = 0;
     t->tab_item_offset_y = 0;
@@ -260,6 +292,46 @@ bool load_theme(Theme* t, const char* name) {
                     t->line_spacing = clamp_int(atoi(val), 18, 34);
                 } else if (!strncmp(p, "status_bar_h:", 13)) {
                     t->status_h = clamp_int(atoi(val), 10, 24);
+                } else if (!strncmp(p, "font_scale_top:", 15)) {
+                    float f = 1.0f;
+                    if (parse_float_value(val, &f)) t->font_scale_top = f;
+                } else if (!strncmp(p, "font_scale_bottom:", 18)) {
+                    float f = 1.0f;
+                    if (parse_float_value(val, &f)) t->font_scale_bottom = f;
+                } else if (!strncmp(p, "panel_alpha:", 12)) {
+                    t->panel_alpha = clamp_int(atoi(val), 0, 100);
+                } else if (!strncmp(p, "row_padding:", 12)) {
+                    t->row_padding = clamp_int(atoi(val), 0, 6);
+                } else if (!strncmp(p, "tab_padding:", 12)) {
+                    t->tab_padding = clamp_int(atoi(val), 0, 6);
+                } else if (!strncmp(p, "radius_global:", 14)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_global = f;
+                } else if (!strncmp(p, "radius_tabs:", 12)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_tabs = f;
+                } else if (!strncmp(p, "radius_list:", 12)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_list = f;
+                } else if (!strncmp(p, "radius_options:", 15)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_options = f;
+                } else if (!strncmp(p, "radius_panels:", 14)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_panels = f;
+                } else if (!strncmp(p, "radius_preview:", 15)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_preview = f;
+                } else if (!strncmp(p, "radius_status:", 14)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_status = f;
+                } else if (!strncmp(p, "radius_picker:", 14)) {
+                    float f = 0.0f;
+                    if (parse_float_value(val, &f)) t->radius_picker = f;
+                } else if (!strncmp(p, "ui_sounds_dir:", 14)) {
+                    copy_str(t->ui_sounds_dir, sizeof(t->ui_sounds_dir), val);
+                } else if (!strncmp(p, "bgm_path:", 9)) {
+                    copy_str(t->bgm_path, sizeof(t->bgm_path), val);
                 } else if (!strncmp(p, "top_image:", 10)) {
                     copy_str(t->top_image, sizeof(t->top_image), val);
                 } else if (!strncmp(p, "bottom_image:", 13)) {
@@ -307,7 +379,12 @@ bool load_theme(Theme* t, const char* name) {
                     copy_str(t->image_channel_order, sizeof(t->image_channel_order), val);
                 } else {
                     u32 c;
-                    if (parse_color_value(val, &c)) {
+                    if (!strncmp(p, "accent:", 7)) {
+                        if (parse_color_value(val, &c)) {
+                            t->accent = c;
+                            t->accent_set = true;
+                        }
+                    } else if (parse_color_value(val, &c)) {
                         if (!strncmp(p, "top_bg:", 7)) t->top_bg = c;
                         else if (!strncmp(p, "bottom_bg:", 10)) t->bottom_bg = c;
                         else if (!strncmp(p, "panel_left:", 11)) t->panel_left = c;

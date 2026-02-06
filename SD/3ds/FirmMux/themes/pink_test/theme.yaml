@@ -1,0 +1,58 @@
+name: Pink Test
+list_item_h: 22
+line_spacing: 26
+status_bar_h: 16
+font_scale_top: 1.0
+font_scale_bottom: 0.95
+panel_alpha: 85
+row_padding: 1
+tab_padding: 1
+radius_global: 6
+radius_tabs: 12
+radius_list: 8
+radius_options: 8
+radius_panels: 10
+radius_preview: 10
+radius_status: 6
+radius_picker: 10
+accent: 0xFFFF66CC
+
+top_bg: 0xFF2A0D2E
+bottom_bg: 0xFF240B28
+panel_left: 0xFF3A0F3F
+panel_right: 0xFF2F0C33
+preview_bg: 0xFF4A1352
+
+text_primary: 0xFFFFFFFF
+text_secondary: 0xFFF5C4E6
+text_muted: 0xFFB48BB0
+
+tab_bg: 0xFF3A0F3F
+tab_sel: 0xFFFF66CC
+tab_text: 0xFFFFFFFF
+
+list_bg: 0xFF2F0C33
+list_sel: 0xFFFF66CC
+list_text: 0xFFFFFFFF
+
+option_bg: 0xFF2F0C33
+option_sel: 0xFFFF66CC
+option_text: 0xFFFFFFFF
+option_header: 0xFFFFFFFF
+
+overlay_bg: 0xE02A0D2E
+help_bg: 0xFF2A0D2E
+help_line: 0xFFFF66CC
+help_text: 0xFFFFFFFF
+
+status_bg: 0xFF2A0D2E
+status_text: 0xFFFFFFFF
+status_icon: 0xFFFFFFFF
+status_dim: 0xFFB48BB0
+status_bolt: 0xFFFFCC66
+
+toast_bg: 0xCC2A0D2E
+toast_text: 0xFFFFFFFF
+
+ui_sounds_dir: sd:/3ds/FirmMux/themes/pink_test/sounds
+bgm_path: sd:/3ds/FirmMux/themes/pink_test/sounds/bgm.wav
