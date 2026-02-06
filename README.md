@@ -27,6 +27,7 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 - `docs/SD Layout.md`
 - `docs/RetroArch Emulators.md`
 - `docs/NDS Options.md`
+- `docs/Themes.md`
 
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
