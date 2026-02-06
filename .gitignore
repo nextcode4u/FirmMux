@@ -15,6 +15,7 @@ build.log
 FirmMux_SD*.zip
 *_png.h
 *.Zone.Identifier
+debug.log
 
 # Source drop folders (keep parent dirs)
 ndsbs_src/nds-bootstrap-master/
