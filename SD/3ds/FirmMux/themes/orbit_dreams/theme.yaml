@@ -1,0 +1,57 @@
+name: Orbit Dreams
+list_item_h: 24
+line_spacing: 26
+status_bar_h: 12
+
+font_scale_top: 0.85
+font_scale_bottom: 0.90
+font_path: fonts/theme.bcfnt
+panel_alpha: 100
+row_padding: 2
+tab_padding: 2
+
+radius_global: 6.0
+radius_tabs: 8.0
+radius_list: 6.0
+radius_options: 6.0
+radius_panels: 8.0
+radius_preview: 10.0
+radius_status: 6.0
+radius_picker: 8.0
+
+accent: 0xFF6BC8FF
+top_bg: 0xFF0F1D2A
+bottom_bg: 0xFF0D1822
+panel_left: 0xCC16273A
+panel_right: 0xCC142131
+preview_bg: 0xCC16273A
+text_primary: 0xFFE6E6E6
+text_secondary: 0xFFC8C8C8
+text_muted: 0xFFA0A0A0
+tab_bg: 0xCC1C314A
+tab_sel: 0xFF6BC8FF
+tab_text: 0xFFE2F4FF
+list_bg: 0xCC192A43
+list_sel: 0xFF6BC8FF
+list_text: 0xFFE2F4FF
+option_bg: 0xCC192A43
+option_sel: 0xFF6BC8FF
+option_text: 0xFFE2F4FF
+option_header: 0xFFC5E4FF
+overlay_bg: 0xD0142131
+help_bg: 0xCC142131
+help_line: 0xFF2F5587
+help_text: 0xFFE2F4FF
+status_bg: 0xCC142131
+status_text: 0xFFE2F4FF
+status_icon: 0xFFE2F4FF
+status_dim: 0xFF68849D
+status_bolt: 0xFF4DD0FF
+toast_bg: 0xE0080F18
+toast_text: 0xFFE2F4FF
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.png
+bottom_image: botbg.png
+image_channel_order: rgba

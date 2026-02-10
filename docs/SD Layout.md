@@ -13,6 +13,7 @@ sd:/
       backgrounds/
         top/
         bottom/
+      # In Options, choose "Theme provided" to use the theme's topbg.png/botbg.png.
       bgm/
       themes/
       firmux-bootstrap-prep.3dsx

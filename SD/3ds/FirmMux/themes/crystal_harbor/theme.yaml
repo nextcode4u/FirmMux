@@ -1,0 +1,57 @@
+name: Crystal Harbor
+list_item_h: 28
+line_spacing: 26
+status_bar_h: 12
+
+font_scale_top: 1.00
+font_scale_bottom: 1.15
+font_path: fonts/theme.bcfnt
+panel_alpha: 75
+row_padding: 2
+tab_padding: 2
+
+radius_global: 6.0
+radius_tabs: 8.0
+radius_list: 6.0
+radius_options: 6.0
+radius_panels: 8.0
+radius_preview: 10.0
+radius_status: 6.0
+radius_picker: 8.0
+
+accent: 0xFF9CFF79
+top_bg: 0xFF222A0D
+bottom_bg: 0xFF1B220B
+panel_left: 0xCC2E3812
+panel_right: 0xCC262E0F
+preview_bg: 0xCC2E3812
+text_primary: 0xFFE6E6E6
+text_secondary: 0xFFC8C8C8
+text_muted: 0xFFA0A0A0
+tab_bg: 0xCC3A4818
+tab_sel: 0xFF9CFF79
+tab_text: 0xFFFAFFF2
+list_bg: 0xCC323F15
+list_sel: 0xFF9CFF79
+list_text: 0xFFFAFFF2
+option_bg: 0xCC323F15
+option_sel: 0xFF9CFF79
+option_text: 0xFFFAFFF2
+option_header: 0xFFEEF8DF
+overlay_bg: 0xD0262E0F
+help_bg: 0xCC262E0F
+help_line: 0xFF617A2E
+help_text: 0xFFFAFFF2
+status_bg: 0xCC262E0F
+status_text: 0xFFFAFFF2
+status_icon: 0xFFFAFFF2
+status_dim: 0xFF91A06F
+status_bolt: 0xFF4DD0FF
+toast_bg: 0xE0181F0B
+toast_text: 0xFFFAFFF2
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.png
+bottom_image: botbg.png
+image_channel_order: rgba

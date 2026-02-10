@@ -1,0 +1,57 @@
+name: Velvet Gruv
+list_item_h: 18
+line_spacing: 26
+status_bar_h: 16
+
+font_scale_top: 0.75
+font_scale_bottom: 0.75
+font_path: fonts/theme.bcfnt
+panel_alpha: 100
+row_padding: 2
+tab_padding: 2
+
+radius_global: 6.0
+radius_tabs: 8.0
+radius_list: 6.0
+radius_options: 6.0
+radius_panels: 8.0
+radius_preview: 10.0
+radius_status: 6.0
+radius_picker: 8.0
+
+accent: 0xFF6BB8FF
+top_bg: 0xFF141B2A
+bottom_bg: 0xFF101624
+panel_left: 0xCC1A243B
+panel_right: 0xCC172031
+preview_bg: 0xCC1A243B
+text_primary: 0xFFE6E6E6
+text_secondary: 0xFFC8C8C8
+text_muted: 0xFFA0A0A0
+tab_bg: 0xCC1E2B4A
+tab_sel: 0xFF6BB8FF
+tab_text: 0xFFD8E9F4
+list_bg: 0xCC1D2843
+list_sel: 0xFF6BB8FF
+list_text: 0xFFD8E9F4
+option_bg: 0xCC1D2843
+option_sel: 0xFF6BB8FF
+option_text: 0xFFD8E9F4
+option_header: 0xFFC0DFF7
+overlay_bg: 0xD0172031
+help_bg: 0xCC172031
+help_line: 0xFF2F4E8A
+help_text: 0xFFD8E9F4
+status_bg: 0xCC172031
+status_text: 0xFFD8E9F4
+status_icon: 0xFFD8E9F4
+status_dim: 0xFF607E9E
+status_bolt: 0xFF4DD0FF
+toast_bg: 0xE00A0F1B
+toast_text: 0xFFD8E9F4
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.png
+bottom_image: botbg.png
+image_channel_order: rgba

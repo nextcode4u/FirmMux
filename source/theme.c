@@ -186,6 +186,7 @@ void theme_default(Theme* t) {
     if (!t) return;
     memset(t, 0, sizeof(*t));
     copy_str(t->name, sizeof(t->name), "default");
+    copy_str(t->folder, sizeof(t->folder), "default");
     t->list_item_h = 20;
     t->line_spacing = 26;
     t->status_h = 16;
@@ -222,6 +223,7 @@ void theme_default(Theme* t) {
     t->accent_set = false;
     t->font_scale_top = 1.0f;
     t->font_scale_bottom = 1.0f;
+    t->font_path[0] = 0;
     t->panel_alpha = 100;
     t->row_padding = 1;
     t->tab_padding = 1;
@@ -261,6 +263,7 @@ bool load_theme(Theme* t, const char* name) {
     theme_free_images(t);
     theme_default(t);
     if (!name || !name[0]) return true;
+    copy_str(t->folder, sizeof(t->folder), name);
     copy_str(t->name, sizeof(t->name), name);
     char path[256];
     snprintf(path, sizeof(path), "sdmc:/3ds/FirmMux/themes/%s/theme.yaml", name);
@@ -298,6 +301,8 @@ bool load_theme(Theme* t, const char* name) {
                 } else if (!strncmp(p, "font_scale_bottom:", 18)) {
                     float f = 1.0f;
                     if (parse_float_value(val, &f)) t->font_scale_bottom = f;
+                } else if (!strncmp(p, "font_path:", 10)) {
+                    copy_str(t->font_path, sizeof(t->font_path), val);
                 } else if (!strncmp(p, "panel_alpha:", 12)) {
                     t->panel_alpha = clamp_int(atoi(val), 0, 100);
                 } else if (!strncmp(p, "row_padding:", 12)) {
@@ -420,6 +425,12 @@ bool load_theme(Theme* t, const char* name) {
         }
         if (!end) break;
         p = end + 1;
+    }
+    if (t->top_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->top_image, &t->top_tex, &t->top_w, &t->top_h, &t->top_loaded, t->image_channel_order, t->image_swap_rb, NULL);
+    }
+    if (t->bottom_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->bottom_image, &t->bottom_tex, &t->bottom_w, &t->bottom_h, &t->bottom_loaded, t->image_channel_order, t->image_swap_rb, NULL);
     }
     free(text);
     return true;

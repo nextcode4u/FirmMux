@@ -29,7 +29,8 @@ static bool json_find_int(const char* text, const char* key, int* out) {
 
 bool parse_state(const char* text, State* state) {
     memset(state, 0, sizeof(*state));
-    state->background_visibility = 50;
+    state->background_visibility_top = 50;
+    state->background_visibility_bottom = 50;
     state->retro_log_enabled = false;
     state->retro_chainload_enabled = true;
     state->nds_launcher_mode = 0;
@@ -48,9 +49,20 @@ bool parse_state(const char* text, State* state) {
     }
     int bgm_on = 1;
     if (json_find_int(text, "bgm_enabled", &bgm_on)) state->bgm_enabled = (bgm_on != 0);
-    json_find_int(text, "background_visibility", &state->background_visibility);
-    if (state->background_visibility < 0) state->background_visibility = 0;
-    if (state->background_visibility > 100) state->background_visibility = 100;
+    int bg_vis = -1;
+    json_find_int(text, "background_visibility_top", &state->background_visibility_top);
+    json_find_int(text, "background_visibility_bottom", &state->background_visibility_bottom);
+    json_find_int(text, "background_visibility", &bg_vis);
+    if (state->background_visibility_top < 10 || state->background_visibility_top > 90) {
+        state->background_visibility_top = (bg_vis >= 0 ? bg_vis : 50);
+    }
+    if (state->background_visibility_bottom < 10 || state->background_visibility_bottom > 90) {
+        state->background_visibility_bottom = (bg_vis >= 0 ? bg_vis : 50);
+    }
+    if (state->background_visibility_top < 10) state->background_visibility_top = 10;
+    if (state->background_visibility_top > 90) state->background_visibility_top = 90;
+    if (state->background_visibility_bottom < 10) state->background_visibility_bottom = 10;
+    if (state->background_visibility_bottom > 90) state->background_visibility_bottom = 90;
     int log_on = 0;
     if (json_find_int(text, "retro_log_enabled", &log_on)) state->retro_log_enabled = (log_on != 0);
     int chain_on = 1;
@@ -97,7 +109,8 @@ bool load_state(State* state) {
     }
     if (!file_exists(STATE_PATH)) {
         memset(state, 0, sizeof(*state));
-        state->background_visibility = 50;
+        state->background_visibility_top = 50;
+        state->background_visibility_bottom = 50;
         state->retro_log_enabled = false;
         state->retro_chainload_enabled = true;
         state->nds_launcher_mode = 0;
@@ -120,7 +133,8 @@ bool load_state(State* state) {
     rename(STATE_PATH, STATE_BAK_PATH);
     if (file_exists(STATE_PATH_OLD)) rename(STATE_PATH_OLD, STATE_BAK_PATH_OLD);
     memset(state, 0, sizeof(*state));
-    state->background_visibility = 50;
+    state->background_visibility_top = 50;
+    state->background_visibility_bottom = 50;
     state->retro_log_enabled = false;
     state->retro_chainload_enabled = true;
     state->nds_launcher_mode = 0;
@@ -157,7 +171,8 @@ bool save_state(const State* state) {
     fprintf(f, "  \"theme\":\"%s\",\n", theme_esc);
     fprintf(f, "  \"top_background\":\"%s\",\n", top_bg_esc);
     fprintf(f, "  \"bottom_background\":\"%s\",\n", bottom_bg_esc);
-    fprintf(f, "  \"background_visibility\":%d,\n", state->background_visibility);
+    fprintf(f, "  \"background_visibility_top\":%d,\n", state->background_visibility_top);
+    fprintf(f, "  \"background_visibility_bottom\":%d,\n", state->background_visibility_bottom);
     fprintf(f, "  \"retro_log_enabled\":%d,\n", state->retro_log_enabled ? 1 : 0);
     fprintf(f, "  \"retro_chainload_enabled\":%d,\n", state->retro_chainload_enabled ? 1 : 0);
     fprintf(f, "  \"nds_launcher_mode\":%d,\n", state->nds_launcher_mode);

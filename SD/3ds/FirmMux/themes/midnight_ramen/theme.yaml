@@ -1,0 +1,57 @@
+name: Midnight Ramen
+list_item_h: 24
+line_spacing: 26
+status_bar_h: 12
+
+font_scale_top: 0.75
+font_scale_bottom: 0.85
+font_path: fonts/theme.bcfnt
+panel_alpha: 85
+row_padding: 2
+tab_padding: 2
+
+radius_global: 7.0
+radius_tabs: 9.0
+radius_list: 7.0
+radius_options: 7.0
+radius_panels: 9.0
+radius_preview: 10.0
+radius_status: 7.0
+radius_picker: 9.0
+
+accent: 0xFFFFA67E
+top_bg: 0xFF271712
+bottom_bg: 0xFF221510
+panel_left: 0xCC36241C
+panel_right: 0xCC2D1D16
+preview_bg: 0xCC36241C
+text_primary: 0xFFE6E6E6
+text_secondary: 0xFFC8C8C8
+text_muted: 0xFFA0A0A0
+tab_bg: 0xCC4A3025
+tab_sel: 0xFFFFA67E
+tab_text: 0xFFFFF5F2
+list_bg: 0xCC442B21
+list_sel: 0xFFFFA67E
+list_text: 0xFFFFF5F2
+option_bg: 0xCC442B21
+option_sel: 0xFFFFA67E
+option_text: 0xFFFFF5F2
+option_header: 0xFFFFE7E0
+overlay_bg: 0xD02D1D16
+help_bg: 0xCC2D1D16
+help_line: 0xFF7D553F
+help_text: 0xFFFFF5F2
+status_bg: 0xCC2D1D16
+status_text: 0xFFFFF5F2
+status_icon: 0xFFFFF5F2
+status_dim: 0xFFA8887E
+status_bolt: 0xFF4DD0FF
+toast_bg: 0xE0221410
+toast_text: 0xFFFFF5F2
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.png
+bottom_image: botbg.png
+image_channel_order: rgba

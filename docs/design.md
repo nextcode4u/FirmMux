@@ -75,7 +75,7 @@ Transitions
 - State at /3ds/FirmMux/state.json
 - On missing config, create default
 - On malformed config, rename to .bak and regenerate
-- State stores last target, per-target directory path + selection + scroll, selected theme, selected backgrounds, and background visibility
+- State stores last target, per-target directory path + selection + scroll, selected theme, selected backgrounds, and per-screen background visibility
 
 ## RetroArch Backend Files
 
@@ -97,7 +97,7 @@ Invalid or missing JSON is regenerated automatically.
 - Options includes:
   - Top background picker
   - Bottom background picker
-  - Background visibility picker (controls panel opacity when a background is present)
+  - Theme debug menu includes top/bottom background visibility (controls panel opacity when a background is present)
 
 ## Caching
 

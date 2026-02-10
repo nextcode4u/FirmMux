@@ -26,6 +26,7 @@
 #define BACKGROUNDS_DIR "sdmc:/3ds/FirmMux/backgrounds"
 #define BACKGROUNDS_TOP_DIR BACKGROUNDS_DIR "/top"
 #define BACKGROUNDS_BOTTOM_DIR BACKGROUNDS_DIR "/bottom"
+#define THEME_BG_TOKEN "__THEME__"
 #define NDS_OPTIONS_DIR "sdmc:/_nds/firmmux/nds_options"
 #define NDS_BOOTSTRAP_PREP_3DSX "sdmc:/3ds/FirmMux/firmux-bootstrap-prep.3dsx"
 #define NDS_CHEATS_DIR "sdmc:/_nds/firmmux/nds_cheats"
@@ -128,7 +129,8 @@ typedef struct {
     char theme[32];
     char top_background[64];
     char bottom_background[64];
-    int background_visibility;
+    int background_visibility_top;
+    int background_visibility_bottom;
     int bgm_enabled;
     bool retro_log_enabled;
     bool retro_chainload_enabled;
@@ -218,9 +220,9 @@ typedef enum {
     OPTION_ACTION_NDS_LAUNCHER_MODE,
     OPTION_ACTION_SELECT_CARD_LAUNCHER,
     OPTION_ACTION_THEME_MENU,
+    OPTION_ACTION_THEME_OPTIONS,
     OPTION_ACTION_TOP_BACKGROUND,
     OPTION_ACTION_BOTTOM_BACKGROUND,
-    OPTION_ACTION_BG_VISIBILITY,
     OPTION_ACTION_TOGGLE_BGM,
     OPTION_ACTION_RETRO_LOG_TOGGLE,
     OPTION_ACTION_RETRO_CHAINLOAD_TOGGLE,
@@ -244,6 +246,7 @@ typedef struct {
 
 typedef struct {
     char name[32];
+    char folder[32];
     int list_item_h;
     int line_spacing;
     int status_h;
@@ -280,6 +283,7 @@ typedef struct {
     bool accent_set;
     float font_scale_top;
     float font_scale_bottom;
+    char font_path[128];
     int panel_alpha;
     int row_padding;
     int tab_padding;

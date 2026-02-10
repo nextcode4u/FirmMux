@@ -14,6 +14,7 @@ Theme file:
 - `status_bar_h`
 - `font_scale_top`
 - `font_scale_bottom`
+- `font_path`
 - `panel_alpha` (0–100; opacity of UI panels)
 - `row_padding`
 - `tab_padding`
@@ -42,15 +43,33 @@ Per-element values override `radius_global`.
   - Example: `sd:/3ds/FirmMux/themes/mytheme/sounds/`
   - If not set, defaults to `sd:/3ds/FirmMux/ui sounds/`
 - Sound filenames (theme folder):
-  - `tap.wav`
+  - `tap_01.wav` (or `tap.wav`)
   - `select.wav`
   - `toggle_off.wav`
-  - `swipe.wav`
+  - `swipe_01.wav` (or `swipe.wav`)
   - `toggle_on.wav`
   - `caution.wav`
 - `bgm_path`
   - Example: `sd:/3ds/FirmMux/themes/mytheme/bgm.wav`
   - If not set, defaults to `sd:/3ds/FirmMux/bgm/bgm.wav`
+
+## Theme wallpapers (optional)
+
+- `top_image`: `topbg.png` (drawn full-screen on top)
+- `bottom_image`: `botbg.png` (drawn full-screen on bottom)
+
+If a background is selected in Options, it overrides the theme wallpaper for that screen.
+
+## Theme options debug menu
+
+Options → Theme options…
+
+- Adjusts panel alpha, font scales, and corner radii live.
+- Also adjusts list item height, line spacing, status bar height, row padding, and tab padding.
+- Debug menu overlays show bounds for panels/tabs/lists/preview/help/status.
+- Theme debug menu also includes:
+  - Top background visibility (10–90%)
+  - Bottom background visibility (10–90%)
 
 ## Colors
 
@@ -85,3 +104,12 @@ All colors are hex RGB or ARGB:
 - `status_bolt`
 - `toast_bg`
 - `toast_text`
+
+## Included themes
+
+- neon_tokyo
+- crystal_harbor
+- midnight_ramen
+- velvet_gruv
+- orbit_dreams
+- golden_drizzle
