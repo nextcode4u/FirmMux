@@ -343,7 +343,15 @@ static void apply_theme_from_state_or_config(const Config* cfg, const State* sta
     if (state && state->theme[0]) name = state->theme;
     else if (cfg && cfg->theme[0]) name = cfg->theme;
     else name = "default";
-    load_theme(&g_theme, name);
+    if (!name || !name[0] || !strcasecmp(name, "default")) {
+        theme_default(&g_theme);
+        copy_str(g_theme.name, sizeof(g_theme.name), "default");
+        g_theme.folder[0] = 0;
+    } else if (!load_theme(&g_theme, name)) {
+        theme_default(&g_theme);
+        copy_str(g_theme.name, sizeof(g_theme.name), "default");
+        g_theme.folder[0] = 0;
+    }
     apply_theme_font(&g_theme);
     g_list_item_h = g_theme.list_item_h > 0 ? g_theme.list_item_h : 20;
     g_line_spacing = g_theme.line_spacing > 0 ? g_theme.line_spacing : 26;
@@ -469,7 +477,6 @@ static void bg_sort_names(char names[MAX_BACKGROUNDS][64], int count) {
 
 static int scan_background_dir(const char* dir, char names[MAX_BACKGROUNDS][64]) {
     int count = 0;
-    names[count++][0] = 0;
     DIR* d = opendir(dir);
     if (!d) return count;
     struct dirent* ent;
@@ -485,7 +492,7 @@ static int scan_background_dir(const char* dir, char names[MAX_BACKGROUNDS][64])
 
 static int find_background_index(char names[MAX_BACKGROUNDS][64], int count, const char* want) {
     if (!want || !want[0]) return 0;
-    for (int i = 1; i < count; i++) {
+    for (int i = 0; i < count; i++) {
         if (!strcasecmp(names[i], want)) return i;
     }
     return 0;
@@ -495,8 +502,16 @@ static bool is_theme_bg_selected(const char* name) {
     return (name && name[0] && !strcasecmp(name, THEME_BG_TOKEN));
 }
 
+static bool is_none_bg_selected(const char* name) {
+    return (name && name[0] && !strcasecmp(name, "none"));
+}
+
 static void background_label(const char* name, char* out, size_t out_size) {
     if (!name || !name[0]) {
+        copy_str(out, out_size, "Theme provided");
+        return;
+    }
+    if (is_none_bg_selected(name)) {
         copy_str(out, out_size, "None");
         return;
     }
@@ -544,17 +559,19 @@ static void scan_backgrounds(State* state) {
     g_top_bg_index = find_background_index(g_top_bg_names, g_top_bg_count, state ? state->top_background : NULL);
     g_bottom_bg_index = find_background_index(g_bottom_bg_names, g_bottom_bg_count, state ? state->bottom_background : NULL);
     if (state) {
-        if (!state->top_background[0] || !is_theme_bg_selected(state->top_background)) {
-            copy_str(state->top_background, sizeof(state->top_background), g_top_bg_names[g_top_bg_index]);
-        }
-        if (!state->bottom_background[0] || !is_theme_bg_selected(state->bottom_background)) {
-            copy_str(state->bottom_background, sizeof(state->bottom_background), g_bottom_bg_names[g_bottom_bg_index]);
-        }
+        if (!state->top_background[0]) copy_str(state->top_background, sizeof(state->top_background), THEME_BG_TOKEN);
+        if (!state->bottom_background[0]) copy_str(state->bottom_background, sizeof(state->bottom_background), THEME_BG_TOKEN);
     }
-    if (state && is_theme_bg_selected(state->top_background)) icon_free(&g_top_bg_tex);
-    else load_background_tex(BACKGROUNDS_TOP_DIR, g_top_bg_names[g_top_bg_index], &g_top_bg_tex);
-    if (state && is_theme_bg_selected(state->bottom_background)) icon_free(&g_bottom_bg_tex);
-    else load_background_tex(BACKGROUNDS_BOTTOM_DIR, g_bottom_bg_names[g_bottom_bg_index], &g_bottom_bg_tex);
+    if (!state || is_theme_bg_selected(state->top_background) || is_none_bg_selected(state->top_background) || g_top_bg_count <= 0) {
+        icon_free(&g_top_bg_tex);
+    } else {
+        load_background_tex(BACKGROUNDS_TOP_DIR, g_top_bg_names[g_top_bg_index], &g_top_bg_tex);
+    }
+    if (!state || is_theme_bg_selected(state->bottom_background) || is_none_bg_selected(state->bottom_background) || g_bottom_bg_count <= 0) {
+        icon_free(&g_bottom_bg_tex);
+    } else {
+        load_background_tex(BACKGROUNDS_BOTTOM_DIR, g_bottom_bg_names[g_bottom_bg_index], &g_bottom_bg_tex);
+    }
 }
 
 static void build_background_options(bool top, State* state) {
@@ -573,6 +590,11 @@ static void build_background_options(bool top, State* state) {
     o = &list[(*out_count)++];
     if (current && is_theme_bg_selected(current)) snprintf(o->label, sizeof(o->label), "Theme provided (current)");
     else snprintf(o->label, sizeof(o->label), "Theme provided");
+    o->action = OPTION_ACTION_NONE;
+
+    o = &list[(*out_count)++];
+    if (current && is_none_bg_selected(current)) snprintf(o->label, sizeof(o->label), "None (current)");
+    else snprintf(o->label, sizeof(o->label), "None");
     o->action = OPTION_ACTION_NONE;
 
     for (int i = 0; i < count && *out_count < MAX_BACKGROUNDS + 1; i++) {
@@ -604,6 +626,17 @@ static void set_background_from_index(bool top, int idx, State* state, char* sta
             icon_free(&g_bottom_bg_tex);
         }
         snprintf(status_message, status_size, "%s background: Theme provided", top ? "Top" : "Bottom");
+        return;
+    }
+    if (idx == -2) {
+        if (top) {
+            copy_str(state->top_background, sizeof(state->top_background), "none");
+            icon_free(&g_top_bg_tex);
+        } else {
+            copy_str(state->bottom_background, sizeof(state->bottom_background), "none");
+            icon_free(&g_bottom_bg_tex);
+        }
+        snprintf(status_message, status_size, "%s background: None", top ? "Top" : "Bottom");
         return;
     }
     if (idx < 0 || idx >= count) return;
@@ -1986,6 +2019,70 @@ static float text_width(float scale, const char* str) {
     return w;
 }
 
+static int wrap_text_lines(const char* str, float scale, float max_w, char lines[][96], int max_lines) {
+    if (!str || !lines || max_lines <= 0) return 0;
+    char word[96];
+    int word_len = 0;
+    int line_count = 0;
+    char line[96];
+    int line_len = 0;
+    line[0] = 0;
+    const char* p = str;
+    while (*p) {
+        if (*p == ' ' || *p == '\n' || *p == '\t') {
+            if (word_len > 0) {
+                word[word_len] = 0;
+                char candidate[96];
+                if (line_len == 0) {
+                    copy_str(candidate, sizeof(candidate), word);
+                } else {
+                    snprintf(candidate, sizeof(candidate), "%s %s", line, word);
+                }
+                if (text_width(scale * g_text_scale, candidate) > max_w && line_len > 0) {
+                    copy_str(lines[line_count++], 96, line);
+                    copy_str(line, sizeof(line), word);
+                    line_len = (int)strlen(line);
+                    if (line_count >= max_lines) break;
+                } else {
+                    copy_str(line, sizeof(line), candidate);
+                    line_len = (int)strlen(line);
+                }
+                word_len = 0;
+            }
+            if (*p == '\n') {
+                if (line_len > 0 && line_count < max_lines) {
+                    copy_str(lines[line_count++], 96, line);
+                    line[0] = 0;
+                    line_len = 0;
+                }
+            }
+        } else {
+            if (word_len < (int)sizeof(word) - 1) {
+                word[word_len++] = *p;
+            }
+        }
+        p++;
+    }
+    if (word_len > 0 && line_count < max_lines) {
+        word[word_len] = 0;
+        char candidate[96];
+        if (line_len == 0) copy_str(candidate, sizeof(candidate), word);
+        else snprintf(candidate, sizeof(candidate), "%s %s", line, word);
+        if (text_width(scale * g_text_scale, candidate) > max_w && line_len > 0) {
+            copy_str(lines[line_count++], 96, line);
+            copy_str(line, sizeof(line), word);
+            line_len = (int)strlen(line);
+        } else {
+            copy_str(line, sizeof(line), candidate);
+            line_len = (int)strlen(line);
+        }
+    }
+    if (line_len > 0 && line_count < max_lines) {
+        copy_str(lines[line_count++], 96, line);
+    }
+    return line_count;
+}
+
 static bool show_nds_card(const Target* target, const TargetState* ts) {
     if (!target || !ts) return false;
     if (strcmp(target->type, "rom_browser") != 0) return false;
@@ -2703,7 +2800,7 @@ static void build_help_label_for_target(const Target* target, char* out, size_t 
     if (!out || out_size == 0) return;
     out[0] = 0;
     if (!target || !target->type[0]) {
-        copy_str(out, out_size, "A Launch   B Back   X Sort   Y Search");
+        copy_str(out, out_size, "A Launch   B Back   X Sort");
         return;
     }
     if (!strcmp(target->type, "rom_browser")) {
@@ -2714,7 +2811,11 @@ static void build_help_label_for_target(const Target* target, char* out, size_t 
         copy_str(out, out_size, "A Launch   B Back   X Sort   Y Retro Options");
         return;
     }
-    copy_str(out, out_size, "A Launch   B Back   X Sort   Y Search");
+    if (!strcmp(target->type, "installed_titles") || !strcmp(target->type, "system_menu") || !strcmp(target->type, "homebrew_browser")) {
+        copy_str(out, out_size, "A Launch   B Back   X Sort");
+        return;
+    }
+    copy_str(out, out_size, "A Launch   B Back   X Sort");
 }
 
 
@@ -3729,7 +3830,14 @@ int main(int argc, char** argv) {
                         int theme_idx = options_selection - 1;
                         if (theme_idx >= 0 && theme_idx < g_theme_name_count) {
                             const char* name = g_theme_names[theme_idx];
-                            if (load_theme(&g_theme, name)) {
+                            if (!name || !name[0] || !strcasecmp(name, "default")) {
+                                cfg->theme[0] = 0;
+                                state->theme[0] = 0;
+                                apply_theme_from_state_or_config(cfg, state);
+                                state_dirty = true;
+                                build_theme_options("default");
+                                snprintf(status_message, sizeof(status_message), "Theme: default");
+                            } else if (load_theme(&g_theme, name)) {
                                 copy_str(cfg->theme, sizeof(cfg->theme), name);
                                 copy_str(state->theme, sizeof(state->theme), name);
                                 apply_theme_from_state_or_config(cfg, state);
@@ -3737,6 +3845,11 @@ int main(int argc, char** argv) {
                                 build_theme_options(name);
                                 snprintf(status_message, sizeof(status_message), "Theme: %s", name);
                             } else {
+                                cfg->theme[0] = 0;
+                                state->theme[0] = 0;
+                                apply_theme_from_state_or_config(cfg, state);
+                                state_dirty = true;
+                                build_theme_options("default");
                                 snprintf(status_message, sizeof(status_message), "Theme load failed");
                             }
                             status_timer = 90;
@@ -3752,12 +3865,15 @@ int main(int argc, char** argv) {
                         refresh_options_menu(cfg);
                         audio_play(SOUND_BACK);
                     } else {
-                        int idx = options_selection - 2;
+                        int idx = options_selection - 3;
                         if (options_selection == 1) idx = -1;
+                        else if (options_selection == 2) idx = -2;
                         set_background_from_index(top, idx, state, status_message, sizeof(status_message));
                         refresh_options_menu(cfg);
                         build_background_options(top, state);
-                        options_selection = (idx == -1) ? 1 : (idx + 2);
+                        if (idx == -1) options_selection = 1;
+                        else if (idx == -2) options_selection = 2;
+                        else options_selection = idx + 3;
                         clamp_scroll_list(&options_scroll, options_selection, visible, top ? g_top_bg_option_count : g_bottom_bg_option_count);
                         state_dirty = true;
                         status_timer = 90;
@@ -4447,13 +4563,14 @@ int main(int argc, char** argv) {
         if (g_scroll_phase > 100000.0f) g_scroll_phase = 0.0f;
         g_text_scale = g_text_scale_top;
         C2D_TextBufClear(g_textbuf);
+        bool theme_top_allowed = !is_none_bg_selected(g_state.top_background);
         if (g_top_bg_tex.loaded) {
             draw_theme_image_scaled(&g_top_bg_tex, 0.0f, 0.0f, TOP_W, TOP_H);
-        } else if (g_theme.top_loaded) {
+        } else if (theme_top_allowed && g_theme.top_loaded) {
             draw_theme_image_scaled(&g_theme.top_tex, 0.0f, 0.0f, TOP_W, TOP_H);
         }
 
-        bool top_has_bg = g_top_bg_tex.loaded || g_theme.top_loaded;
+        bool top_has_bg = g_top_bg_tex.loaded || (theme_top_allowed && g_theme.top_loaded);
         u32 panel_left = overlay_color(g_theme.panel_left, top_has_bg, true);
         u32 panel_right = overlay_color(g_theme.panel_right, top_has_bg, true);
         float r_panel = theme_radius(g_theme.radius_panels);
@@ -4762,12 +4879,13 @@ int main(int argc, char** argv) {
         if (g_scroll_phase > 100000.0f) g_scroll_phase = 0.0f;
         g_text_scale = g_text_scale_bottom;
         C2D_TextBufClear(g_textbuf);
+        bool theme_bottom_allowed = !is_none_bg_selected(g_state.bottom_background);
         if (g_bottom_bg_tex.loaded) {
             draw_theme_image_scaled(&g_bottom_bg_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H);
-        } else if (g_theme.bottom_loaded) {
+        } else if (theme_bottom_allowed && g_theme.bottom_loaded) {
             draw_theme_image_scaled(&g_theme.bottom_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H);
         }
-        bool bottom_has_bg = g_bottom_bg_tex.loaded || g_theme.bottom_loaded;
+        bool bottom_has_bg = g_bottom_bg_tex.loaded || (theme_bottom_allowed && g_theme.bottom_loaded);
         u8 bottom_alpha = overlay_alpha(bottom_has_bg, false);
 
         if (g_theme_debug_show_bounds) {
@@ -5093,9 +5211,31 @@ int main(int argc, char** argv) {
         }
 
         if (status_message[0]) {
+            float scale = 0.6f;
+            float max_w = BOTTOM_W - 24.0f;
+            char lines[4][96];
+            int line_count = wrap_text_lines(status_message, scale, max_w - 16.0f, lines, 4);
+            if (line_count < 1) line_count = 1;
+            float line_h = 12.0f * scale * g_text_scale + 2.0f;
+            float line_gap = 6.0f;
+            float box_h = line_h * line_count + line_gap * (line_count - 1) + 12.0f;
+            float box_w = 0.0f;
+            for (int i = 0; i < line_count; i++) {
+                float w = text_width(scale * g_text_scale, lines[i]);
+                if (w > box_w) box_w = w;
+            }
+            box_w += 16.0f;
+            if (box_w < 120.0f) box_w = 120.0f;
+            if (box_w > max_w) box_w = max_w;
+            float x = (BOTTOM_W - box_w) * 0.5f;
+            float y = (BOTTOM_H - HELP_BAR_H - box_h) * 0.5f;
             float r_toast = theme_radius(g_theme.radius_options);
-            draw_round_rect(60, 90, 200, 40, g_theme.toast_bg, r_toast);
-            draw_text(90, 104, 0.6f, g_theme.toast_text, status_message);
+            draw_round_rect(x, y, box_w, box_h, g_theme.toast_bg, r_toast);
+            float ty = y;
+            for (int i = 0; i < line_count; i++) {
+                draw_text(x + 8.0f, ty, scale, g_theme.toast_text, lines[i]);
+                ty += line_h + line_gap;
+            }
         }
 
         C3D_FrameEnd(0);
