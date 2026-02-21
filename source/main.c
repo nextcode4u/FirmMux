@@ -3327,7 +3327,14 @@ static void refresh_options_menu(const Config* cfg) {
 }
 
 static void handle_option_action(int idx, Config* cfg, State* state, int* current_target, bool* state_dirty, char* status_message, size_t status_size, int* status_timer, int* options_mode, int* options_selection, int* options_scroll) {
-    if (idx < 0 || idx >= g_option_count) return;
+    if (!cfg || !state || !current_target || idx < 0 || idx >= g_option_count) return;
+    if (cfg->target_count < 0) cfg->target_count = 0;
+    if (cfg->target_count > MAX_TARGETS) cfg->target_count = MAX_TARGETS;
+    if (cfg->target_count > 0) {
+        if (*current_target < 0 || *current_target >= cfg->target_count) *current_target = 0;
+    } else {
+        *current_target = 0;
+    }
     OptionAction action = g_options[idx].action;
     if (action == OPTION_ACTION_REBUILD_NDS_CACHE) {
         clear_dir_recursive(CACHE_NDS_DIR, false);
@@ -3340,19 +3347,33 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         g_nds_cache.count = 0;
         snprintf(status_message, status_size, "Cache cleared");
     } else if (action == OPTION_ACTION_RELOAD_CONFIG) {
+        Config* oldcfg = (Config*)malloc(sizeof(Config));
         Config* newcfg = (Config*)malloc(sizeof(Config));
-        if (!newcfg) {
+        if (!oldcfg || !newcfg) {
             snprintf(status_message, status_size, "Reload failed");
+            if (oldcfg) free(oldcfg);
+            if (newcfg) free(newcfg);
         } else if (load_or_create_config(newcfg)) {
+            *oldcfg = *cfg;
             *cfg = *newcfg;
             g_base_target_count = 0;
             rebuild_targets_from_backend(cfg, state, current_target, state_dirty, status_message, status_size, status_timer);
-            apply_theme_from_state_or_config(cfg, state);
-            if (state_dirty) *state_dirty = true;
-            snprintf(status_message, status_size, "Config reloaded");
+            if (cfg->target_count <= 0 || cfg->target_count > MAX_TARGETS) {
+                *cfg = *oldcfg;
+                g_base_target_count = 0;
+                rebuild_targets_from_backend(cfg, state, current_target, state_dirty, status_message, status_size, status_timer);
+                snprintf(status_message, status_size, "Reload failed");
+            } else {
+                if (*current_target < 0 || *current_target >= cfg->target_count) *current_target = 0;
+                apply_theme_from_state_or_config(cfg, state);
+                if (state_dirty) *state_dirty = true;
+                snprintf(status_message, status_size, "Config reloaded");
+            }
+            free(oldcfg);
             free(newcfg);
         } else {
             snprintf(status_message, status_size, "Reload failed");
+            free(oldcfg);
             free(newcfg);
         }
     } else if (action == OPTION_ACTION_TOGGLE_DEBUG) {
