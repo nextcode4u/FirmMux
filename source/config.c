@@ -123,7 +123,14 @@ bool load_or_create_config(Config* cfg) {
     size_t size = 0;
     bool exists = file_exists(CONFIG_PATH);
     if (exists && read_file(CONFIG_PATH, &data, &size)) {
-        bool ok = parse_config((const char*)data, cfg);
+        char* text = (char*)malloc(size + 1);
+        bool ok = false;
+        if (text) {
+            memcpy(text, data, size);
+            text[size] = 0;
+            ok = parse_config(text, cfg);
+            free(text);
+        }
         free(data);
         if (ok) return true;
         rename(CONFIG_PATH, CONFIG_BAK_PATH);

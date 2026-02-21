@@ -2939,11 +2939,16 @@ static void reorder_base_targets(Config* cfg) {
 static void apply_emulator_targets(Config* cfg) {
     if (!cfg) return;
     if (g_base_target_count == 0) capture_base_targets(cfg);
+    if (g_base_target_count < 0) g_base_target_count = 0;
+    if (g_base_target_count > MAX_TARGETS) g_base_target_count = MAX_TARGETS;
     cfg->target_count = g_base_target_count;
     for (int i = 0; i < g_base_target_count; i++) cfg->targets[i] = g_base_targets[i];
     reorder_base_targets(cfg);
 
-    for (int i = 0; i < g_emu.count && cfg->target_count < MAX_TARGETS; i++) {
+    int emu_count = g_emu.count;
+    if (emu_count < 0) emu_count = 0;
+    if (emu_count > MAX_SYSTEMS) emu_count = MAX_SYSTEMS;
+    for (int i = 0; i < emu_count && cfg->target_count < MAX_TARGETS; i++) {
         const EmuSystem* sys = &g_emu.systems[i];
         if (!sys->enabled) continue;
         Target* t = &cfg->targets[cfg->target_count];
@@ -3335,16 +3340,20 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         g_nds_cache.count = 0;
         snprintf(status_message, status_size, "Cache cleared");
     } else if (action == OPTION_ACTION_RELOAD_CONFIG) {
-        Config newcfg;
-        if (load_or_create_config(&newcfg)) {
-            *cfg = newcfg;
+        Config* newcfg = (Config*)malloc(sizeof(Config));
+        if (!newcfg) {
+            snprintf(status_message, status_size, "Reload failed");
+        } else if (load_or_create_config(newcfg)) {
+            *cfg = *newcfg;
             g_base_target_count = 0;
             rebuild_targets_from_backend(cfg, state, current_target, state_dirty, status_message, status_size, status_timer);
             apply_theme_from_state_or_config(cfg, state);
             if (state_dirty) *state_dirty = true;
             snprintf(status_message, status_size, "Config reloaded");
+            free(newcfg);
         } else {
             snprintf(status_message, status_size, "Reload failed");
+            free(newcfg);
         }
     } else if (action == OPTION_ACTION_TOGGLE_DEBUG) {
         bool on = !debug_log_enabled();
