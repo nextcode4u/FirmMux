@@ -33,6 +33,15 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
 
+## NDS Dependencies
+
+- NTR Forwarder releases (required baseline for FirmMux NDS flow / nds-bootstrap forwarder setup):
+  https://github.com/RocketRobz/NTR_Forwarder/releases
+- NTR Launcher releases (only the `.cia` is needed from the release package):
+  https://github.com/ApacheThunder/NTR_Launcher/releases
+- YANBF releases (install `bootstrap.cia`; `firmux-bootstrap-prep` relies on this for handoff):
+  https://github.com/YANBForwarder/YANBF/releases
+
 Per‑ROM RetroArch options (press **Y** on a ROM in emulator tabs) are stored in `sd:/3ds/emulators/rom_options.json`.
 
 ## Known Issue

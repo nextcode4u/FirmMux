@@ -19,6 +19,9 @@ Quick paths:
 - NDS launcher 3DSX (default): /3ds/FirmMux/firmux-bootstrap-prep.3dsx
 - NDS launcher CIA: FirmMuxBootstrapLauncher (TitleID CTR-P-FMBP)
 - Settings: “Check NDS launcher” (CIA) and “NDS launcher mode” (Auto/CIA/3DSX)
+- NTR Forwarder releases (required baseline for NDS forwarder flow): https://github.com/RocketRobz/NTR_Forwarder/releases
+- NTR Launcher releases (only the .cia is needed): https://github.com/ApacheThunder/NTR_Launcher/releases
+- YANBF releases (install bootstrap.cia; needed for firmux-bootstrap-prep handoff): https://github.com/YANBForwarder/YANBF/releases
 
 Widescreen system requirement:
 - Install TWPatch and enable Widescreen, then patch via Select.

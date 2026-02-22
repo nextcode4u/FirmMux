@@ -11,6 +11,14 @@ In Settings:
 - “Check NDS launcher” checks for the CIA.
 - “NDS launcher mode” chooses Auto / CIA / 3DSX.
 
+Dependencies:
+- NTR Forwarder releases (use this branch/package style for nds-bootstrap forwarder flow):
+  https://github.com/RocketRobz/NTR_Forwarder/releases
+- NTR Launcher releases (only install/use the `.cia` from the release zip):
+  https://github.com/ApacheThunder/NTR_Launcher/releases
+- YANBF releases (install `bootstrap.cia`; `firmux-bootstrap-prep` depends on it for handoff):
+  https://github.com/YANBForwarder/YANBF/releases
+
 ## Widescreen
 
 Widescreen uses per‑game `.bin` files from:
