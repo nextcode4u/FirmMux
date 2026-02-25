@@ -20,6 +20,7 @@
 #define LAUNCH_DIR "sdmc:/3ds/FirmMux/launch"
 #define DEBUG_DIR "sdmc:/3ds/FirmMux/logs"
 #define DEBUG_LOG_PATH DEBUG_DIR "/debug.log"
+#define HEALTH_LOG_PATH DEBUG_DIR "/health_check.txt"
 #define DEBUG_ICON_PATH DEBUG_DIR "/icon"
 #define SYSTEM_BLACKLIST_PATH "sdmc:/3ds/FirmMux/system_blacklist.txt"
 #define SYSTEM_ALIAS_PATH "sdmc:/3ds/FirmMux/system_aliases.txt"
@@ -228,6 +229,7 @@ typedef enum {
     OPTION_ACTION_RETRO_CHAINLOAD_TOGGLE,
     OPTION_ACTION_RETRO_INFO,
     OPTION_ACTION_EMULATORS_MENU,
+    OPTION_ACTION_SETUP_WIZARD,
     OPTION_ACTION_AUTOBOOT_STATUS,
     OPTION_ACTION_ABOUT
 } OptionAction;

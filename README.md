@@ -5,7 +5,29 @@ FirmMux is a unified front‑end for CTR, TWL, System Menu, Homebrew, and RetroA
 ![System Menu](assets/image.png)
 ![NDS Titles](assets/image2.png)
 
-## Build (Linux / WSL / MSYS2)
+## Quick Install (Recommended)
+
+Use the PC setup script for easiest full install/update:
+
+```bash
+python3 tools/firmmux_setup_pc.py
+```
+
+Windows users (Windows-only) can double-click:
+
+- `tools/FirmMux_Setup.bat`
+
+`FirmMux_Setup.bat` downloads the latest `firmmux_setup_pc.py` from GitHub and runs it.
+
+The script will:
+
+- Prompt for SD card path
+- Let you choose install/update mode
+- Download latest `FirmMux-SD.zip` from releases
+- Stage dependencies (RetroArch data, NTR Forwarder, CIAs)
+- Show DSP firmware reminder (`sd:/3ds/dspfirm.cdc`)
+
+## Build From Source (Linux / WSL / MSYS2)
 
 ```
 sudo dkp-pacman -Syu
@@ -19,6 +41,20 @@ Output: `FirmMux.3dsx`
 
 Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.
 
+On first launch, FirmMux runs a setup health check and writes:
+
+- `sd:/3ds/FirmMux/logs/health_check.txt`
+
+If dependencies are missing, FirmMux shows a setup status message.
+Run the PC setup script:
+
+- `python3 tools/firmmux_setup_pc.py`
+- Or: `python3 tools/firmmux_setup_pc.py --sd-root <SD_ROOT>`
+
+Health check also verifies:
+
+- `sd:/3ds/dspfirm.cdc` (if missing, dump DSP firmware from Rosalina menu)
+
 ## Documentation
 
 See the `docs/` folder for setup and backend details:
@@ -27,6 +63,7 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 - `docs/SD Layout.md`
 - `docs/RetroArch Emulators.md`
 - `docs/NDS Options.md`
+- `docs/PC Setup.md`
 - `docs/Themes.md`
 - `docs/ROM Organizer (PowerShell).md`
 - `docs/Cover Art Sync.md`

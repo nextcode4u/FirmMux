@@ -3366,6 +3366,60 @@ static void rebuild_targets_from_backend(Config* cfg, State* state, int* current
     if (state_dirty) *state_dirty = true;
 }
 
+static int run_health_check(char* status_message, size_t status_size) {
+    ensure_dirs();
+    bool have_retro_folder = is_dir_path("sdmc:/retroarch");
+    bool have_ntr_forwarder = is_dir_path("sdmc:/_nds/ntr-forwarder");
+    bool have_dsp = file_exists("sdmc:/3ds/dspfirm.cdc");
+
+    int missing = 0;
+    if (!have_retro_folder) missing++;
+    if (!have_ntr_forwarder) missing++;
+    if (!have_dsp) missing++;
+    FILE* f = fopen(HEALTH_LOG_PATH, "w");
+    if (f) {
+        fprintf(f, "health_checked=1\n");
+        fprintf(f, "missing=%d\n", missing);
+        fprintf(f, "retroarch_folder=%d\n", have_retro_folder ? 1 : 0);
+        fprintf(f, "ntr_forwarder=%d\n", have_ntr_forwarder ? 1 : 0);
+        fprintf(f, "dspfirm=%d\n", have_dsp ? 1 : 0);
+        fclose(f);
+    }
+
+    int missing_non_dsp = 0;
+    if (!have_retro_folder) missing_non_dsp++;
+    if (!have_ntr_forwarder) missing_non_dsp++;
+
+    #define APPEND_MISSING(txt) do { \
+        if ((txt) && (txt)[0]) { \
+            size_t __len = strlen(missing_detail); \
+            if (__len + 2 < sizeof(missing_detail)) { \
+                missing_detail[__len++] = ','; \
+                missing_detail[__len++] = ' '; \
+                missing_detail[__len] = 0; \
+            } \
+            snprintf(missing_detail + strlen(missing_detail), sizeof(missing_detail) - strlen(missing_detail), "%s", (txt)); \
+        } \
+    } while (0)
+
+    char missing_detail[256];
+    missing_detail[0] = 0;
+    if (!have_retro_folder) APPEND_MISSING("/retroarch");
+    if (!have_ntr_forwarder) APPEND_MISSING("ntr-forwarder package");
+    if (!have_dsp) APPEND_MISSING("dspfirm.cdc");
+    #undef APPEND_MISSING
+
+    if (missing == 0) {
+        snprintf(status_message, status_size, "Health check: OK");
+    } else if (!have_dsp && missing_non_dsp == 0) {
+        snprintf(status_message, status_size, "Missing dspfirm.cdc (Rosalina: Dump DSP firmware)");
+    } else {
+        if (missing_detail[0]) snprintf(status_message, status_size, "Missing: %s", missing_detail);
+        else snprintf(status_message, status_size, "Setup missing. Run PC setup script");
+    }
+    return missing;
+}
+
 static void refresh_options_menu(const Config* cfg) {
     scan_backgrounds(&g_state);
     g_option_count = 0;
@@ -3446,6 +3500,10 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_EMULATORS_MENU;
 
     o = &g_options[g_option_count++];
+    snprintf(o->label, sizeof(o->label), "Health check");
+    o->action = OPTION_ACTION_SETUP_WIZARD;
+
+    o = &g_options[g_option_count++];
     snprintf(o->label, sizeof(o->label), "Check NTR launcher");
     o->action = OPTION_ACTION_SELECT_CARD_LAUNCHER;
 
@@ -3521,10 +3579,18 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         if (cur) cur->nds_banner_mode = g_nds_banners ? 1 : 0;
         if (state_dirty) *state_dirty = true;
     } else if (action == OPTION_ACTION_SELECT_LAUNCHER) {
+        bool have_3dsx = file_exists(NDS_BOOTSTRAP_PREP_3DSX);
         LauncherCandidate cands[8];
         int found = find_launcher_candidates(cands, 8);
         if (found <= 0) {
-            snprintf(status_message, status_size, "CIA not found");
+            if (have_3dsx) {
+                g_state.nds_launcher_mode = 2;
+                refresh_options_menu(cfg);
+                if (state_dirty) *state_dirty = true;
+                snprintf(status_message, status_size, "3DSX found (CIA missing)");
+            } else {
+                snprintf(status_message, status_size, "NDS launcher missing");
+            }
         } else {
             int nds_target = *current_target;
             for (int i = 0; i < cfg->target_count; i++) {
@@ -3547,7 +3613,7 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
             g_launcher_ready = true;
             g_launcher_tid = c->tid;
             g_launcher_media = c->media;
-            snprintf(status_message, status_size, "CIA found");
+            snprintf(status_message, status_size, have_3dsx ? "CIA + 3DSX found" : "CIA found");
         }
     } else if (action == OPTION_ACTION_NDS_LAUNCHER_MODE) {
         g_state.nds_launcher_mode = (g_state.nds_launcher_mode + 1) % 3;
@@ -3566,8 +3632,13 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
                 have_cia = find_launcher_candidates(cands, 2) > 0;
             }
             if (!have_cia) {
-                snprintf(status_message, status_size, "CIA not found");
-                g_state.nds_launcher_mode = 0;
+                if (file_exists(NDS_BOOTSTRAP_PREP_3DSX)) {
+                    g_state.nds_launcher_mode = 2;
+                    snprintf(status_message, status_size, "CIA missing, switched to 3DSX");
+                } else {
+                    snprintf(status_message, status_size, "CIA not found");
+                    g_state.nds_launcher_mode = 0;
+                }
             } else {
                 snprintf(status_message, status_size, "CIA found");
             }
@@ -3660,6 +3731,8 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         if (options_mode) *options_mode = OPT_MODE_EMULATORS;
         if (options_selection) *options_selection = 0;
         if (options_scroll) *options_scroll = 0;
+    } else if (action == OPTION_ACTION_SETUP_WIZARD) {
+        run_health_check(status_message, status_size);
     } else if (action == OPTION_ACTION_AUTOBOOT_STATUS) {
         snprintf(status_message, status_size, "Autoboot enabled");
     } else if (action == OPTION_ACTION_ABOUT) {
@@ -3784,6 +3857,11 @@ int main(int argc, char** argv) {
     char status_message[64] = {0};
     int status_timer = 0;
     bool state_dirty = false;
+
+    if (!file_exists(HEALTH_LOG_PATH)) {
+        run_health_check(status_message, sizeof(status_message));
+        status_timer = 180;
+    }
 
     int current_target = 0;
     g_base_target_count = 0;
