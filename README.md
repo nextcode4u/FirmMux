@@ -29,6 +29,7 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 - `docs/NDS Options.md`
 - `docs/Themes.md`
 - `docs/ROM Organizer (PowerShell).md`
+- `docs/Cover Art Sync.md`
 
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders

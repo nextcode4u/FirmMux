@@ -60,6 +60,12 @@ static bool g_hb_preview_valid = false;
 static u8 g_hb_preview_rgba[48 * 48 * 4];
 static IconTexture g_hb_preview_icon;
 static u16 g_hb_preview_raw[48 * 48];
+static char g_cover_preview_key[640];
+static bool g_cover_preview_valid = false;
+static IconTexture g_cover_preview_icon;
+static int g_cover_preview_w = 0;
+static int g_cover_preview_h = 0;
+static u8 g_cover_preview_rgba[96 * 96 * 4];
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
 static C2D_Font g_font;
@@ -2345,6 +2351,132 @@ static bool update_homebrew_preview(const char* sd_path) {
     return true;
 }
 
+static void clear_cover_preview(void) {
+    g_cover_preview_key[0] = 0;
+    g_cover_preview_valid = false;
+    g_cover_preview_w = 0;
+    g_cover_preview_h = 0;
+    icon_free(&g_cover_preview_icon);
+}
+
+static void sanitize_cover_cache_name(const char* in, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    if (!in) in = "";
+    size_t j = 0;
+    bool last_space = false;
+    for (size_t i = 0; in[i] && j + 1 < out_size; i++) {
+        unsigned char c = (unsigned char)in[i];
+        bool invalid = (c < 0x20 || c == '<' || c == '>' || c == ':' || c == '"' || c == '/' || c == '\\' || c == '|' || c == '?' || c == '*');
+        char ch = invalid ? '_' : (char)c;
+        if (ch == ' ') {
+            if (last_space) continue;
+            last_space = true;
+        } else {
+            last_space = false;
+        }
+        out[j++] = ch;
+    }
+    while (j > 0 && out[j - 1] == ' ') j--;
+    out[j] = 0;
+}
+
+static bool load_png_cover_rgba(const char* path, u8* out_rgba, size_t out_rgba_size, int* out_w, int* out_h) {
+    if (!path || !path[0] || !out_rgba || out_rgba_size < (96 * 96 * 4)) return false;
+    u8* file = NULL;
+    size_t fsize = 0;
+    if (!read_file(path, &file, &fsize) || !file || fsize == 0) {
+        if (file) free(file);
+        return false;
+    }
+    int w = 0, h = 0, comp = 0;
+    unsigned char* data = stbi_load_from_memory(file, (int)fsize, &w, &h, &comp, 4);
+    free(file);
+    if (!data || w <= 0 || h <= 0) {
+        if (data) stbi_image_free(data);
+        return false;
+    }
+
+    int tw = w;
+    int th = h;
+    if (tw > 96 || th > 96) {
+        float sx = 96.0f / (float)tw;
+        float sy = 96.0f / (float)th;
+        float s = (sx < sy) ? sx : sy;
+        tw = (int)((float)tw * s);
+        th = (int)((float)th * s);
+        if (tw < 1) tw = 1;
+        if (th < 1) th = 1;
+    }
+
+    memset(out_rgba, 0, out_rgba_size);
+    if (tw == w && th == h) {
+        memcpy(out_rgba, data, (size_t)w * (size_t)h * 4);
+    } else {
+        for (int y = 0; y < th; y++) {
+            int sy = (y * h) / th;
+            if (sy < 0) sy = 0;
+            if (sy >= h) sy = h - 1;
+            for (int x = 0; x < tw; x++) {
+                int sx = (x * w) / tw;
+                if (sx < 0) sx = 0;
+                if (sx >= w) sx = w - 1;
+                const u8* src = data + ((size_t)sy * (size_t)w + (size_t)sx) * 4;
+                u8* dst = out_rgba + ((size_t)y * (size_t)tw + (size_t)x) * 4;
+                dst[0] = src[0];
+                dst[1] = src[1];
+                dst[2] = src[2];
+                dst[3] = src[3];
+            }
+        }
+    }
+    stbi_image_free(data);
+    if (out_w) *out_w = tw;
+    if (out_h) *out_h = th;
+    return true;
+}
+
+static bool update_cover_preview(const Target* target, const FileEntry* fe, const char* rom_sd_path) {
+    if (!target || !fe || fe->is_dir || !rom_sd_path || !rom_sd_path[0]) {
+        clear_cover_preview();
+        return false;
+    }
+    char system_key[16];
+    if (!emu_resolve_system(&g_emu, rom_sd_path, target->id, system_key, sizeof(system_key))) {
+        copy_str(system_key, sizeof(system_key), target->id);
+    }
+    if (!system_key[0]) {
+        clear_cover_preview();
+        return false;
+    }
+
+    char base[256];
+    base_name_no_ext(fe->name, base, sizeof(base));
+    if (!base[0]) copy_str(base, sizeof(base), fe->name);
+    char safe_base[256];
+    sanitize_cover_cache_name(base, safe_base, sizeof(safe_base));
+    if (!safe_base[0]) {
+        clear_cover_preview();
+        return false;
+    }
+
+    char path[640];
+    snprintf(path, sizeof(path), "%s/covers/%s/%s.png", CACHE_DIR, system_key, safe_base);
+    if (!strcmp(path, g_cover_preview_key)) {
+        return g_cover_preview_valid;
+    }
+
+    clear_cover_preview();
+    copy_str(g_cover_preview_key, sizeof(g_cover_preview_key), path);
+    if (!file_exists(path)) return false;
+
+    if (!load_png_cover_rgba(path, g_cover_preview_rgba, sizeof(g_cover_preview_rgba), &g_cover_preview_w, &g_cover_preview_h)) {
+        clear_cover_preview();
+        return false;
+    }
+    g_cover_preview_valid = true;
+    return true;
+}
+
 static void draw_rgba_icon(float x, float y, float scale, const u8* rgba, int w, int h) {
     if (!rgba) return;
     float step = scale;
@@ -3560,6 +3692,7 @@ int main(int argc, char** argv) {
     if (hidKeysHeld() & KEY_B) {
     icon_free(&g_title_preview_icon);
     icon_free(&g_hb_preview_icon);
+    icon_free(&g_cover_preview_icon);
     free_fonts();
     C2D_TextBufDelete(g_textbuf);
     C2D_Fini();
@@ -4698,6 +4831,10 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (!is_emulator_target(target) && (g_cover_preview_icon.loaded || g_cover_preview_key[0])) {
+            clear_cover_preview();
+        }
+
         float text_scale = 0.7f;
         int max_lines = 3;
         if (show_system_info) max_lines = 1;
@@ -4799,6 +4936,32 @@ int main(int argc, char** argv) {
                         }
                     }
                 }
+            }
+        } else if (!show_system_info && is_emulator_target(target)) {
+            DirCache* cache = &g_runtimes[current_target].cache;
+            if (emu_root_exists && cache->count > 0) {
+                int entry_idx = ts->selection;
+                if (entry_idx < 0) entry_idx = 0;
+                if (entry_idx >= cache->count) entry_idx = cache->count - 1;
+                FileEntry* fe = &cache->entries[entry_idx];
+                if (!fe->is_dir) {
+                    char joined[512];
+                    path_join(ts->path, fe->name, joined, sizeof(joined));
+                    char sdpath[512];
+                    make_sd_path(joined, sdpath, sizeof(sdpath));
+                    if (update_cover_preview(target, fe, sdpath) && g_cover_preview_valid && g_cover_preview_w > 0 && g_cover_preview_h > 0) {
+                        float scale = 1.0f;
+                        float px = 8.0f;
+                        float py = banner_y;
+                        preview_icon_layout(g_cover_preview_w, g_cover_preview_h, banner_y, &px, &py, &scale);
+                        draw_rgba_icon(px + g_preview_offset_x, py + g_preview_offset_y, scale, g_cover_preview_rgba, g_cover_preview_w, g_cover_preview_h);
+                        drew_icon = true;
+                    }
+                } else {
+                    clear_cover_preview();
+                }
+            } else {
+                clear_cover_preview();
             }
         } else if (!show_system_info && !strcmp(target->type, "installed_titles")) {
             TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
@@ -5277,6 +5440,7 @@ int main(int argc, char** argv) {
     icon_free(&g_bottom_bg_tex);
     icon_free(&g_title_preview_icon);
     icon_free(&g_hb_preview_icon);
+    icon_free(&g_cover_preview_icon);
     free_fonts();
     C2D_TextBufDelete(g_textbuf);
     C2D_Fini();
