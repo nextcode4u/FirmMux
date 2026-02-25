@@ -160,6 +160,7 @@ static const RetroSystemCoreList g_retro_core_lists[] = {
     { "col", { "bluemsx_libretro.3dsx" }, 1 },
     { "cpc", { "cap32_libretro.3dsx" }, 1 },
     { "gb",  { "gambatte_libretro.3dsx", "gearboy_libretro.3dsx", "tgbdual_libretro.3dsx" }, 3 },
+    { "gba", { "mgba_libretro.3dsx", "gpsp_libretro.3dsx" }, 2 },
     { "gen", { "picodrive_libretro.3dsx", "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx" }, 3 },
     { "gg",  { "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx", "picodrive_libretro.3dsx", "smsplus_libretro.3dsx" }, 4 },
     { "intv",{ "freeintv_libretro.3dsx" }, 1 },

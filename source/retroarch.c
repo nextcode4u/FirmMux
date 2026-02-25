@@ -33,6 +33,7 @@ static const DefaultRule g_default_rules[] = {
     { "col",  "blueMSX",         { "col" }, 1 },
     { "cpc",  "Caprice32",       { "dsk", "cdt", "cpr" }, 3 },
     { "gb",   "Gambatte",        { "gb", "gbc" }, 2 },
+    { "gba",  "gpSP",            { "gba" }, 1 },
     { "gen",  "Genesis Plus GX", { "gen", "md", "smd", "bin" }, 4 },
     { "gg",   "Genesis Plus GX", { "gg" }, 1 },
     { "intv", "FreeIntv",        { "intv", "bin", "rom" }, 3 },
@@ -62,6 +63,8 @@ static const CoreMap g_core_map[] = {
     { "blueMSX",         { "bluemsx", "blue_msx", "msx" }, 3 },
     { "Caprice32",       { "cap32", "caprice32" }, 2 },
     { "Gambatte",        { "gambatte" }, 1 },
+    { "mGBA",            { "mgba", "mgba_libretro" }, 2 },
+    { "gpSP",            { "gpsp", "gpsp_libretro" }, 2 },
     { "Genesis Plus GX", { "genesis_plus_gx", "genesisplusgx", "genesis" }, 3 },
     { "FreeIntv",        { "freeintv" }, 1 },
     { "O2EM",            { "o2em" }, 1 },
@@ -349,6 +352,7 @@ static const char* fallback_core_for_ext(const char* ext_lower) {
     if (!strcasecmp(ext_lower, "nes")) return "Nestopia UE";
     if (!strcasecmp(ext_lower, "smc") || !strcasecmp(ext_lower, "sfc")) return "Snes9x 2002";
     if (!strcasecmp(ext_lower, "gb") || !strcasecmp(ext_lower, "gbc")) return "Gambatte";
+    if (!strcasecmp(ext_lower, "gba")) return "gpSP";
     if (!strcasecmp(ext_lower, "gg") || !strcasecmp(ext_lower, "sms") || !strcasecmp(ext_lower, "sg")) return "Genesis Plus GX";
     if (!strcasecmp(ext_lower, "gen") || !strcasecmp(ext_lower, "md") || !strcasecmp(ext_lower, "smd")) return "Genesis Plus GX";
     if (!strcasecmp(ext_lower, "a26")) return "Stella 2014";

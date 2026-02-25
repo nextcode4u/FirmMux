@@ -17,6 +17,7 @@ static const KnownSystem g_known_systems[] = {
     { "col", "ColecoVision" },
     { "cpc", "Amstrad CPC" },
     { "gb",  "Game Boy" },
+    { "gba", "Game Boy Advance" },
     { "gen", "Genesis" },
     { "gg",  "Game Gear" },
     { "intv","Intellivision" },

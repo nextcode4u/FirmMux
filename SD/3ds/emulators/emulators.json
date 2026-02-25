@@ -7,6 +7,7 @@
     "col": {"displayName":"ColecoVision","enabled":true,"romFolder":"sd:/roms/col"},
     "cpc": {"displayName":"Amstrad CPC","enabled":true,"romFolder":"sd:/roms/cpc"},
     "gb": {"displayName":"GB/GBC","enabled":true,"romFolder":"sd:/roms/gb"},
+    "gba": {"displayName":"Game Boy Advance","enabled":true,"romFolder":"sd:/roms/gba"},
     "gen": {"displayName":"Genesis","enabled":true,"romFolder":"sd:/roms/gen"},
     "gg": {"displayName":"Game Gear","enabled":true,"romFolder":"sd:/roms/gg"},
     "intv": {"displayName":"Intellivision","enabled":true,"romFolder":"sd:/roms/intv"},

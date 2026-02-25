@@ -10,6 +10,7 @@
     {"match":{"folder":"col","ext":["col"]},"core":"blueMSX"},
     {"match":{"folder":"cpc","ext":["dsk","cdt","cpr"]},"core":"Caprice32"},
     {"match":{"folder":"gb","ext":["gb","gbc"]},"core":"Gambatte"},
+    {"match":{"folder":"gba","ext":["gba"]},"core":"gpSP"},
     {"match":{"folder":"gen","ext":["gen","md","smd","bin"]},"core":"Genesis Plus GX"},
     {"match":{"folder":"gg","ext":["gg"]},"core":"Genesis Plus GX"},
     {"match":{"folder":"intv","ext":["int","bin","rom"]},"core":"FreeIntv"},

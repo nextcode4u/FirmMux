@@ -20,6 +20,7 @@ FirmMux maps these folders under `sd:/roms/`:
 - ColecoVision (`col`)
 - Amstrad CPC (`cpc`)
 - Game Boy/Color (`gb`)
+- Game Boy Advance (`gba`)
 - Genesis/Mega Drive (`gen`)
 - Game Gear (`gg`)
 - Intellivision (`intv`)
