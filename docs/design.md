@@ -76,6 +76,8 @@ Transitions
 - On missing config, create default
 - On malformed config, rename to .bak and regenerate
 - State stores last target, per-target directory path + selection + scroll, selected theme, selected backgrounds, and per-screen background visibility
+- State writes are atomic (`state.json.tmp` -> `state.json`) with backup rollover to `state.json.bak`
+- Runtime persistence is deferred and idle-only to avoid launch-time stalls
 
 ## RetroArch Backend Files
 

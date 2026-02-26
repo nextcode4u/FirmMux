@@ -7,8 +7,11 @@ FirmMux is the frontend. RetroArch 3DSX is the backend.
 - RetroArch 3DSX release (not CIA): https://buildbot.libretro.com/stable/
 - Copy the `retroarch/` folder from the 3DSX release to:
   - `sd:/retroarch/`
-- RetroArch binary used by FirmMux:
+- FirmMux custom RetroArch binary:
   - `sd:/3ds/FirmMux/emulators/retroarch.3dsx`
+- Optional stock RetroArch app files for manual launch/testing:
+  - `sd:/3ds/retroarch.3dsx`
+  - `sd:/3ds/retroarch.smdh`
 
 ## Supported Systems
 

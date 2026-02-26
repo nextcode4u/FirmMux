@@ -41,8 +41,8 @@ sd:/
     firmmux/
       launch.txt
       nds_options/
-    nds_cheats/
-      <hash>.sel
+      nds_cheats/
+        <hash>.sel
       nds_widescreen/
         *.bin
 ```

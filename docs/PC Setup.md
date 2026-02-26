@@ -36,6 +36,13 @@ What it stages:
 - RetroArch 3DSX package files
 - Latest FirmMux release SD package (`FirmMux-SD.zip`) when using install/update modes
 
+RetroArch staging note:
+
+- `sd:/retroarch/` data folder is staged from the official 3DSX release.
+- `sd:/3ds/retroarch.3dsx` and `sd:/3ds/retroarch.smdh` are staged for optional manual RetroArch launch.
+- FirmMux runtime still chainloads its custom binary at:
+  - `sd:/3ds/FirmMux/emulators/retroarch.3dsx`
+
 After script completes:
 
 1. Put SD back in 3DS.
