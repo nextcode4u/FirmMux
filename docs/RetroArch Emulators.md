@@ -33,6 +33,29 @@ FirmMux maps these folders under `sd:/roms/`:
 - SNES (`snes`)
 - TurboGrafx‑16/PC Engine (`tg16`)
 - WonderSwan/Color (`ws`)
+- Arcade (`arcade`)
+- Capcom Play System 1 (`cps1`)
+- Capcom Play System 2 (`cps2`)
+- Capcom Play System 3 (`cps3`)
+- Neo Geo (`neogeo`)
+- Neo Geo CD (`neogeocd`)
+- Commodore 64 (`c64`)
+- Commodore 128 (`c128`)
+- Commodore VIC-20 (`vic20`)
+- Commodore Plus/4 (`plus4`)
+- Commodore PET (`pet`)
+- PlayStation (`psx`)
+- Virtual Boy (`vb`)
+- Atari Lynx (`lynx`)
+- Atari Jaguar (`jaguar`)
+- DOS (`dos`)
+- NEC PC-98 (`pc98`)
+- ScummVM (`scummvm`)
+- Quake (`quake`)
+- Uzebox (`uzebox`)
+- TIC-80 (`tic80`)
+- WASM-4 (`wasm`)
+- LowRes NX (`lowresnx`)
 
 ## Backend Files (auto‑created)
 
@@ -82,3 +105,8 @@ tools/build_retroarch_with_firmux.sh
 
 Output:
 - `SD/3ds/FirmMux/emulators/retroarch.3dsx`
+
+## Stability Note
+
+State persistence now uses atomic writes (`state.json.tmp` -> `state.json`) and deferred idle saves.
+FirmMux does not write state during launch handoff paths.

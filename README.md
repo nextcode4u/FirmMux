@@ -1,6 +1,6 @@
 # FirmMux 3DS
 
-FirmMux is a unified front‑end for CTR, TWL, System Menu, Homebrew, and RetroArch‑backed systems: Atari 2600, Atari 5200, Atari 7800, ColecoVision, Amstrad CPC, Game Boy/Color, Game Boy Advance, Genesis/Mega Drive, Game Gear, Intellivision, Sord M5, NES, Neo Geo Pocket/Color, PokeMini, SG‑1000, Master System, SNES, TurboGrafx‑16/PC Engine, WonderSwan/Color.
+FirmMux is a unified front‑end for CTR, TWL, System Menu, Homebrew, and RetroArch‑backed systems including: Atari 2600/5200/7800, ColecoVision, Amstrad CPC, GB/GBC, GBA, Genesis, Game Gear, Intellivision, Sord M5, NES, Neo Geo Pocket, PokeMini, SG‑1000, Master System, SNES, TurboGrafx‑16, WonderSwan, Arcade/CPS1/CPS2/CPS3, Neo Geo/Neo Geo CD, C64/C128/VIC‑20/Plus4/PET, PSX, Virtual Boy, Lynx, Jaguar, DOS, PC‑98, ScummVM, Quake, Uzebox, TIC‑80, WASM‑4, and LowRes NX.
 
 ![System Menu](assets/image.png)
 ![NDS Titles](assets/image2.png)
@@ -67,6 +67,8 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 - `docs/Themes.md`
 - `docs/ROM Organizer (PowerShell).md`
 - `docs/Cover Art Sync.md`
+
+State persistence uses atomic writes with deferred idle saves to avoid launch-time stalls.
 
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders

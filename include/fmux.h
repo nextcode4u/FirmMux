@@ -12,6 +12,7 @@
 #define CONFIG_BAK_PATH "sdmc:/3ds/FirmMux/config.yaml.bak"
 #define STATE_PATH "sdmc:/3ds/FirmMux/state.json"
 #define STATE_BAK_PATH "sdmc:/3ds/FirmMux/state.json.bak"
+#define STATE_TMP_PATH "sdmc:/3ds/FirmMux/state.json.tmp"
 #define STATE_PATH_OLD "sdmc:/3ds/FirmMux/state->json"
 #define STATE_BAK_PATH_OLD "sdmc:/3ds/FirmMux/state->json.bak"
 #define CACHE_DIR "sdmc:/3ds/FirmMux/cache"
@@ -54,14 +55,14 @@
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 
-#define MAX_TARGETS 24
+#define MAX_TARGETS 64
 #define MAX_EXTENSIONS 8
 #define MAX_ENTRIES 1024
 #define MAX_OPTIONS 32
 #define MAX_THEMES 32
 #define MAX_BACKGROUNDS 64
-#define MAX_SYSTEMS 20
-#define MAX_RETRO_RULES 40
+#define MAX_SYSTEMS 64
+#define MAX_RETRO_RULES 96
 
 #define TOP_W 400
 #define TOP_H 240

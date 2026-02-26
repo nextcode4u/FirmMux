@@ -45,7 +45,30 @@ static const DefaultRule g_default_rules[] = {
     { "sms",  "Genesis Plus GX", { "sms" }, 1 },
     { "snes", "Snes9x 2002",     { "smc", "sfc" }, 2 },
     { "tg16", "Beetle PCE Fast", { "pce" }, 1 },
-    { "ws",   "Beetle Cygne",    { "ws", "wsc" }, 2 }
+    { "ws",   "Beetle Cygne",    { "ws", "wsc" }, 2 },
+    { "arcade", "fbalpha2012_libretro", { "zip", "7z" }, 2 },
+    { "cps1", "fbalpha2012_cps1_libretro", { "zip", "7z" }, 2 },
+    { "cps2", "fbalpha2012_cps2_libretro", { "zip", "7z" }, 2 },
+    { "cps3", "fbalpha2012_cps3_libretro", { "zip", "7z" }, 2 },
+    { "neogeo", "fbalpha2012_neogeo_libretro", { "zip", "7z" }, 2 },
+    { "neogeocd", "neocd_libretro", { "cue", "chd", "iso", "bin" }, 4 },
+    { "c64", "vice_x64_libretro", { "d64", "t64", "prg", "crt" }, 4 },
+    { "c128", "vice_x128_libretro", { "d64", "t64", "prg", "crt" }, 4 },
+    { "vic20", "vice_xvic_libretro", { "d64", "t64", "prg", "crt" }, 4 },
+    { "plus4", "vice_xplus4_libretro", { "d64", "t64", "prg", "crt" }, 4 },
+    { "pet", "vice_xpet_libretro", { "prg", "d64", "t64" }, 3 },
+    { "psx", "pcsx_rearmed_libretro", { "cue", "chd", "pbp", "iso", "bin" }, 5 },
+    { "vb", "mednafen_vb_libretro", { "vb" }, 1 },
+    { "lynx", "handy_libretro", { "lnx", "o" }, 2 },
+    { "jaguar", "virtualjaguar_libretro", { "j64", "jag", "abs", "cof" }, 4 },
+    { "dos", "dosbox_svn_libretro", { "exe", "com", "bat", "zip" }, 4 },
+    { "pc98", "np2kai_libretro", { "hdi", "fdi", "d88", "xdf", "nhd" }, 5 },
+    { "scummvm", "scummvm_libretro", { "scummvm" }, 1 },
+    { "quake", "tyrquake_libretro", { "pak" }, 1 },
+    { "uzebox", "uzem_libretro", { "uze" }, 1 },
+    { "tic80", "tic80_libretro", { "tic" }, 1 },
+    { "wasm", "wasm4_libretro", { "wasm" }, 1 },
+    { "lowresnx", "lowresnx_libretro", { "nx" }, 1 }
 };
 
 static const int g_default_rule_count = (int)(sizeof(g_default_rules) / sizeof(g_default_rules[0]));
@@ -73,7 +96,30 @@ static const CoreMap g_core_map[] = {
     { "PokeMini",        { "pokemini" }, 1 },
     { "Snes9x 2002",     { "snes9x2002", "snes9x_2002" }, 2 },
     { "Beetle PCE Fast", { "beetle_pce_fast", "mednafen_pce_fast", "pce_fast", "pcefast" }, 4 },
-    { "Beetle Cygne",    { "beetle_cygne", "mednafen_wswan", "wswan", "wonderswan", "cygne" }, 5 }
+    { "Beetle Cygne",    { "beetle_cygne", "mednafen_wswan", "wswan", "wonderswan", "cygne" }, 5 },
+    { "fbalpha2012_libretro", { "fbalpha2012", "fbalpha_2012" }, 2 },
+    { "fbalpha2012_cps1_libretro", { "fbalpha2012_cps1", "fbneo_cps1" }, 2 },
+    { "fbalpha2012_cps2_libretro", { "fbalpha2012_cps2", "fbneo_cps2" }, 2 },
+    { "fbalpha2012_cps3_libretro", { "fbalpha2012_cps3" }, 1 },
+    { "fbalpha2012_neogeo_libretro", { "fbalpha2012_neogeo", "fbneo_neogeo" }, 2 },
+    { "neocd_libretro", { "neocd" }, 1 },
+    { "vice_x64_libretro", { "vice_x64" }, 1 },
+    { "vice_x128_libretro", { "vice_x128" }, 1 },
+    { "vice_xvic_libretro", { "vice_xvic" }, 1 },
+    { "vice_xplus4_libretro", { "vice_xplus4" }, 1 },
+    { "vice_xpet_libretro", { "vice_xpet" }, 1 },
+    { "pcsx_rearmed_libretro", { "pcsx_rearmed" }, 1 },
+    { "mednafen_vb_libretro", { "mednafen_vb", "vb" }, 2 },
+    { "handy_libretro", { "handy" }, 1 },
+    { "virtualjaguar_libretro", { "virtualjaguar" }, 1 },
+    { "dosbox_svn_libretro", { "dosbox_svn", "dosbox" }, 2 },
+    { "np2kai_libretro", { "np2kai", "neko2" }, 2 },
+    { "scummvm_libretro", { "scummvm" }, 1 },
+    { "tyrquake_libretro", { "tyrquake", "quake" }, 2 },
+    { "uzem_libretro", { "uzem" }, 1 },
+    { "tic80_libretro", { "tic80" }, 1 },
+    { "wasm4_libretro", { "wasm4" }, 1 },
+    { "lowresnx_libretro", { "lowresnx" }, 1 }
 };
 
 static const int g_core_map_count = (int)(sizeof(g_core_map) / sizeof(g_core_map[0]));
@@ -214,18 +260,17 @@ static bool write_default_rules_file(void) {
 
 static bool parse_rules_text(const char* text, RetroRules* out_rules) {
     if (!text || !out_rules) return false;
-    RetroRules tmp;
-    rules_set_defaults(&tmp);
+    rules_set_defaults(out_rules);
 
     int ver = 0;
-    if (parse_json_int(text, "version", &ver) && ver > 0) tmp.version = ver;
-    parse_json_string(text, "mode", tmp.mode, sizeof(tmp.mode));
-    parse_json_string(text, "retroarch_entry", tmp.retroarch_entry, sizeof(tmp.retroarch_entry));
-    parse_json_string(text, "handoff_path", tmp.handoff_path, sizeof(tmp.handoff_path));
+    if (parse_json_int(text, "version", &ver) && ver > 0) out_rules->version = ver;
+    parse_json_string(text, "mode", out_rules->mode, sizeof(out_rules->mode));
+    parse_json_string(text, "retroarch_entry", out_rules->retroarch_entry, sizeof(out_rules->retroarch_entry));
+    parse_json_string(text, "handoff_path", out_rules->handoff_path, sizeof(out_rules->handoff_path));
 
-    tmp.rule_count = 0;
+    out_rules->rule_count = 0;
     const char* p = text;
-    while (p && tmp.rule_count < MAX_RETRO_RULES) {
+    while (p && out_rules->rule_count < MAX_RETRO_RULES) {
         const char* pfolder = strstr(p, "\"folder\"");
         if (!pfolder) break;
         const char* next_folder = strstr(pfolder + 8, "\"folder\"");
@@ -248,7 +293,7 @@ static bool parse_rules_text(const char* text, RetroRules* out_rules) {
             continue;
         }
 
-        RetroRule* r = &tmp.rules[tmp.rule_count++];
+        RetroRule* r = &out_rules->rules[out_rules->rule_count++];
         lower_copy(r->folder, sizeof(r->folder), folder);
         copy_str(r->core, sizeof(r->core), core);
 
@@ -262,9 +307,7 @@ static bool parse_rules_text(const char* text, RetroRules* out_rules) {
         p = pfolder + 8;
     }
 
-    if (tmp.rule_count == 0) return false;
-    *out_rules = tmp;
-    return true;
+    return out_rules->rule_count > 0;
 }
 
 static void backup_external_rules(void) {
@@ -365,6 +408,17 @@ static const char* fallback_core_for_ext(const char* ext_lower) {
     if (!strcasecmp(ext_lower, "min")) return "PokeMini";
     if (!strcasecmp(ext_lower, "pce")) return "Beetle PCE Fast";
     if (!strcasecmp(ext_lower, "ws") || !strcasecmp(ext_lower, "wsc")) return "Beetle Cygne";
+    if (!strcasecmp(ext_lower, "cue") || !strcasecmp(ext_lower, "chd") || !strcasecmp(ext_lower, "pbp")) return "pcsx_rearmed_libretro";
+    if (!strcasecmp(ext_lower, "scummvm")) return "scummvm_libretro";
+    if (!strcasecmp(ext_lower, "uze")) return "uzem_libretro";
+    if (!strcasecmp(ext_lower, "tic")) return "tic80_libretro";
+    if (!strcasecmp(ext_lower, "wasm")) return "wasm4_libretro";
+    if (!strcasecmp(ext_lower, "nx")) return "lowresnx_libretro";
+    if (!strcasecmp(ext_lower, "lnx")) return "handy_libretro";
+    if (!strcasecmp(ext_lower, "j64") || !strcasecmp(ext_lower, "jag")) return "virtualjaguar_libretro";
+    if (!strcasecmp(ext_lower, "hdi") || !strcasecmp(ext_lower, "fdi") || !strcasecmp(ext_lower, "d88") || !strcasecmp(ext_lower, "xdf") || !strcasecmp(ext_lower, "nhd")) return "np2kai_libretro";
+    if (!strcasecmp(ext_lower, "d64") || !strcasecmp(ext_lower, "t64") || !strcasecmp(ext_lower, "prg") || !strcasecmp(ext_lower, "crt")) return "vice_x64_libretro";
+    if (!strcasecmp(ext_lower, "pak")) return "tyrquake_libretro";
     if (!strcasecmp(ext_lower, "bin")) return "Genesis Plus GX";
     return "Nestopia UE";
 }

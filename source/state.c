@@ -155,9 +155,8 @@ void json_escape(const char* in, char* out, size_t out_size) {
     out[oi] = 0;
 }
 
-bool save_state(const State* state) {
-    FILE* f = fopen(STATE_PATH, "w");
-    if (!f) return false;
+static bool write_state_json_file(FILE* f, const State* state) {
+    if (!f || !state) return false;
     char last_esc[64];
     char theme_esc[64];
     char top_bg_esc[96];
@@ -197,7 +196,29 @@ bool save_state(const State* state) {
     }
     fprintf(f, "  ]\n");
     fprintf(f, "}\n");
+    fflush(f);
     fclose(f);
+    return true;
+}
+
+bool save_state(const State* state) {
+    if (!state) return false;
+    ensure_dirs();
+
+    FILE* f = fopen(STATE_TMP_PATH, "w");
+    if (!f) return false;
+    if (!write_state_json_file(f, state)) {
+        remove(STATE_TMP_PATH);
+        return false;
+    }
+
+    if (file_exists(STATE_BAK_PATH)) remove(STATE_BAK_PATH);
+    if (file_exists(STATE_PATH)) rename(STATE_PATH, STATE_BAK_PATH);
+    if (rename(STATE_TMP_PATH, STATE_PATH) != 0) {
+        if (file_exists(STATE_BAK_PATH) && !file_exists(STATE_PATH)) rename(STATE_BAK_PATH, STATE_PATH);
+        remove(STATE_TMP_PATH);
+        return false;
+    }
     return true;
 }
 

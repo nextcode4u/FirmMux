@@ -172,7 +172,30 @@ static const RetroSystemCoreList g_retro_core_lists[] = {
     { "sms", { "genesis_plus_gx_libretro.3dsx", "genesis_plus_gx_wide_libretro.3dsx", "picodrive_libretro.3dsx", "smsplus_libretro.3dsx" }, 4 },
     { "snes",{ "snes9x2002_libretro.3dsx", "snes9x2005_libretro.3dsx", "snes9x2005_plus_libretro.3dsx", "snes9x2010_libretro.3dsx" }, 4 },
     { "tg16",{ "mednafen_pce_fast_libretro.3dsx", "mednafen_pce_libretro.3dsx", "geargrafx_libretro.3dsx" }, 3 },
-    { "ws",  { "mednafen_wswan_libretro.3dsx" }, 1 }
+    { "ws",  { "mednafen_wswan_libretro.3dsx" }, 1 },
+    { "arcade", { "fbalpha2012_libretro.3dsx" }, 1 },
+    { "cps1", { "fbalpha2012_cps1_libretro.3dsx" }, 1 },
+    { "cps2", { "fbalpha2012_cps2_libretro.3dsx" }, 1 },
+    { "cps3", { "fbalpha2012_cps3_libretro.3dsx" }, 1 },
+    { "neogeo", { "fbalpha2012_neogeo_libretro.3dsx" }, 1 },
+    { "neogeocd", { "neocd_libretro.3dsx" }, 1 },
+    { "c64", { "vice_x64_libretro.3dsx" }, 1 },
+    { "c128", { "vice_x128_libretro.3dsx" }, 1 },
+    { "vic20", { "vice_xvic_libretro.3dsx" }, 1 },
+    { "plus4", { "vice_xplus4_libretro.3dsx" }, 1 },
+    { "pet", { "vice_xpet_libretro.3dsx" }, 1 },
+    { "psx", { "pcsx_rearmed_libretro.3dsx" }, 1 },
+    { "vb", { "mednafen_vb_libretro.3dsx" }, 1 },
+    { "lynx", { "handy_libretro.3dsx" }, 1 },
+    { "jaguar", { "virtualjaguar_libretro.3dsx" }, 1 },
+    { "dos", { "dosbox_svn_libretro.3dsx" }, 1 },
+    { "pc98", { "np2kai_libretro.3dsx" }, 1 },
+    { "scummvm", { "scummvm_libretro.3dsx" }, 1 },
+    { "quake", { "tyrquake_libretro.3dsx" }, 1 },
+    { "uzebox", { "uzem_libretro.3dsx" }, 1 },
+    { "tic80", { "tic80_libretro.3dsx" }, 1 },
+    { "wasm", { "wasm4_libretro.3dsx" }, 1 },
+    { "lowresnx", { "lowresnx_libretro.3dsx" }, 1 }
 };
 
 static const int g_retro_core_list_count = (int)(sizeof(g_retro_core_lists) / sizeof(g_retro_core_lists[0]));
@@ -241,6 +264,9 @@ static bool g_theme_debug_show_help = false;
 static bool g_theme_debug_show_status = false;
 static Target g_base_targets[MAX_TARGETS];
 static int g_base_target_count = 0;
+static Target g_target_scratch[MAX_TARGETS];
+static bool g_target_used[MAX_TARGETS];
+static TargetState g_state_scratch[MAX_TARGETS];
 
 enum {
     OPT_MODE_MAIN = 0,
@@ -263,6 +289,7 @@ enum {
 
 static int clamp_pct(int v);
 static void refresh_options_menu(const Config* cfg);
+static bool is_emulator_target(const Target* target);
 
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
@@ -1854,7 +1881,6 @@ static bool launch_nds_loader(const Target* target, const char* sd_path, char* s
     if (try_3dsx && have_3dsx) {
         if (homebrew_launch_3dsx(NDS_BOOTSTRAP_PREP_3DSX, status_message, status_size)) {
             if (status_message && status_size > 0) snprintf(status_message, status_size, "Launching...");
-            save_state(&g_state);
             g_exit_requested = true;
             return true;
         }
@@ -3036,37 +3062,76 @@ static bool is_nds_base_target(const Target* t) {
     return strstr(t->root, "/roms/nds") != NULL;
 }
 
+static int first_non_emulator_target_index(const Config* cfg) {
+    if (!cfg || cfg->target_count <= 0) return 0;
+    for (int i = 0; i < cfg->target_count; i++) {
+        if (!is_emulator_target(&cfg->targets[i])) return i;
+    }
+    return 0;
+}
+
 static void reorder_base_targets(Config* cfg) {
     if (!cfg || cfg->target_count <= 1) return;
-    Target reordered[MAX_TARGETS];
-    bool used[MAX_TARGETS];
-    memset(used, 0, sizeof(used));
+    memset(g_target_used, 0, sizeof(g_target_used));
     int count = 0;
 
     for (int pass = 0; pass < 4; pass++) {
         for (int i = 0; i < cfg->target_count && count < MAX_TARGETS; i++) {
-            if (used[i]) continue;
+            if (g_target_used[i]) continue;
             const Target* t = &cfg->targets[i];
             bool take = false;
             if (pass == 0 && !strcmp(t->type, "system_menu")) take = true;
-            else if (pass == 1 && !strcmp(t->type, "installed_titles")) take = true;
+            else if (pass == 1 && !strcmp(t->type, "homebrew_browser")) take = true;
             else if (pass == 2 && is_nds_base_target(t)) take = true;
-            else if (pass == 3 && !strcmp(t->type, "homebrew_browser")) take = true;
+            else if (pass == 3 && !strcmp(t->type, "installed_titles")) take = true;
             if (!take) continue;
-            reordered[count++] = *t;
-            used[i] = true;
+            g_target_scratch[count++] = *t;
+            g_target_used[i] = true;
             break;
         }
     }
 
     for (int i = 0; i < cfg->target_count && count < MAX_TARGETS; i++) {
-        if (used[i]) continue;
-        reordered[count++] = cfg->targets[i];
-        used[i] = true;
+        if (g_target_used[i]) continue;
+        g_target_scratch[count++] = cfg->targets[i];
+        g_target_used[i] = true;
     }
 
     cfg->target_count = count;
-    for (int i = 0; i < count; i++) cfg->targets[i] = reordered[i];
+    for (int i = 0; i < count; i++) cfg->targets[i] = g_target_scratch[i];
+}
+
+static bool cfg_has_target_id(const Config* cfg, const char* id) {
+    if (!cfg || !id) return false;
+    for (int i = 0; i < cfg->target_count; i++) {
+        if (!strcmp(cfg->targets[i].id, id)) return true;
+    }
+    return false;
+}
+
+static void push_base_target(Config* cfg, const char* id, const char* type, const char* label, const char* root) {
+    if (!cfg || cfg->target_count >= MAX_TARGETS) return;
+    Target* t = &cfg->targets[cfg->target_count++];
+    memset(t, 0, sizeof(*t));
+    copy_str(t->id, sizeof(t->id), id);
+    copy_str(t->type, sizeof(t->type), type);
+    copy_str(t->label, sizeof(t->label), label);
+    if (root && root[0]) copy_str(t->root, sizeof(t->root), root);
+}
+
+static void ensure_minimum_base_targets(Config* cfg) {
+    if (!cfg) return;
+    if (!cfg_has_target_id(cfg, "system")) push_base_target(cfg, "system", "system_menu", "System Menu", "");
+    if (!cfg_has_target_id(cfg, "hbl")) push_base_target(cfg, "hbl", "homebrew_browser", "Homebrew Launcher", "/3ds/");
+    if (!cfg_has_target_id(cfg, "nds")) {
+        push_base_target(cfg, "nds", "rom_browser", "NDS Titles", "/roms/nds/");
+        Target* t = &cfg->targets[cfg->target_count - 1];
+        t->ext_count = 2;
+        copy_str(t->extensions[0], sizeof(t->extensions[0]), ".nds");
+        copy_str(t->extensions[1], sizeof(t->extensions[1]), ".dsi");
+        t->alpha_buckets = true;
+    }
+    reorder_base_targets(cfg);
 }
 
 static void apply_emulator_targets(Config* cfg) {
@@ -3077,13 +3142,17 @@ static void apply_emulator_targets(Config* cfg) {
     cfg->target_count = g_base_target_count;
     for (int i = 0; i < g_base_target_count; i++) cfg->targets[i] = g_base_targets[i];
     reorder_base_targets(cfg);
+    ensure_minimum_base_targets(cfg);
 
     int emu_count = g_emu.count;
     if (emu_count < 0) emu_count = 0;
     if (emu_count > MAX_SYSTEMS) emu_count = MAX_SYSTEMS;
+    int emu_added = 0;
+    const int emu_safe_boot_cap = MAX_SYSTEMS;
     for (int i = 0; i < emu_count && cfg->target_count < MAX_TARGETS; i++) {
         const EmuSystem* sys = &g_emu.systems[i];
         if (!sys->enabled) continue;
+        if (emu_added >= emu_safe_boot_cap) break;
         Target* t = &cfg->targets[cfg->target_count];
         memset(t, 0, sizeof(*t));
         copy_str(t->id, sizeof(t->id), sys->key);
@@ -3108,6 +3177,7 @@ static void apply_emulator_targets(Config* cfg) {
         }
 
         cfg->target_count++;
+        emu_added++;
     }
 }
 
@@ -3121,22 +3191,22 @@ static TargetState* state_find(State* state, const char* id) {
 
 static void prune_state_targets(State* state, const Config* cfg) {
     if (!state || !cfg) return;
-    TargetState next[MAX_TARGETS];
     int next_count = 0;
     for (int i = 0; i < cfg->target_count && next_count < MAX_TARGETS; i++) {
         const Target* t = &cfg->targets[i];
         TargetState* existing = state_find(state, t->id);
         if (existing) {
-            next[next_count++] = *existing;
+            g_state_scratch[next_count++] = *existing;
         } else {
             TargetState fresh;
             memset(&fresh, 0, sizeof(fresh));
             copy_str(fresh.id, sizeof(fresh.id), t->id);
             if (t->root[0]) copy_str(fresh.path, sizeof(fresh.path), t->root);
-            next[next_count++] = fresh;
+            g_state_scratch[next_count++] = fresh;
         }
     }
-    memcpy(state->entries, next, sizeof(next));
+    memset(state->entries, 0, sizeof(state->entries));
+    memcpy(state->entries, g_state_scratch, sizeof(g_state_scratch));
     state->count = next_count;
 }
 
@@ -3312,7 +3382,6 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
         if (retro_chainload(g_retro.retroarch_entry, status_message, status_size)) {
             retro_log_line("launch mode: chainload");
             save_emulators(&g_emu);
-            save_state(state);
             if (state_dirty) *state_dirty = false;
             if (status_message && status_size > 0) snprintf(status_message, status_size, "Launching RetroArch...");
             if (status_timer) *status_timer = 60;
@@ -3327,7 +3396,6 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
 
     retro_log_line("launch mode: hbmenu");
     save_emulators(&g_emu);
-    save_state(state);
     if (state_dirty) *state_dirty = false;
     g_exit_after_status = true;
     if (!known) snprintf(status_message, status_size, "Core unknown. Launch RetroArch from hbmenu");
@@ -3758,7 +3826,7 @@ int main(int argc, char** argv) {
     g_font = g_font_default;
     g_font_is_default = true;
 
-    g_textbuf = C2D_TextBufNew(4096);
+    g_textbuf = C2D_TextBufNew(32768);
     g_top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     g_bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
@@ -3878,6 +3946,13 @@ int main(int argc, char** argv) {
         current_target = 0;
         if (cfg->target_count > 0) copy_str(state->last_target, sizeof(state->last_target), cfg->targets[0].id);
     }
+    if (cfg->target_count > 0 && current_target >= 0 && current_target < cfg->target_count) {
+        if (is_emulator_target(&cfg->targets[current_target])) {
+            current_target = first_non_emulator_target_index(cfg);
+            copy_str(state->last_target, sizeof(state->last_target), cfg->targets[current_target].id);
+            state_dirty = true;
+        }
+    }
 
     memset(g_runtimes, 0, sizeof(g_runtimes));
 
@@ -3935,17 +4010,19 @@ int main(int argc, char** argv) {
     int hold_down = 0;
     refresh_options_menu(cfg);
     u64 last_save_ms = osGetTime();
+    u64 last_input_ms = last_save_ms;
+    u64 next_state_save_ms = 0;
     int move_cooldown = 0;
 
     TargetState* cur_ts = ensure_target_state(state, cfg, &cfg->targets[current_target]);
     if (cur_ts) g_nds_banners = cur_ts->nds_banner_mode != 0;
     auto_set_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
     auto_set_card_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
-
     while (aptMainLoop()) {
         hidScanInput();
         u32 kDown = hidKeysDown();
         u32 kHeld = hidKeysHeld();
+        if (kDown || kHeld) last_input_ms = osGetTime();
         if (kHeld & KEY_UP) hold_up++; else hold_up = 0;
         if (kHeld & KEY_DOWN) hold_down++; else hold_down = 0;
         bool rep_up = (kDown & KEY_UP) || (hold_up > 10 && (hold_up % 2 == 0));
@@ -4026,7 +4103,9 @@ int main(int argc, char** argv) {
             }
         }
 
-        update_card_status();
+        if (!strcmp(target->type, "rom_browser")) {
+            update_card_status();
+        }
 
         if (options_open) {
             int visible = (BOTTOM_H - HELP_BAR_H - 10) / g_list_item_h;
@@ -4760,7 +4839,6 @@ int main(int argc, char** argv) {
                                 make_sd_path(joined, sdpath, sizeof(sdpath));
                                 if (homebrew_launch_3dsx(sdpath, status_message, sizeof(status_message))) {
                                     snprintf(status_message, sizeof(status_message), "Launching...");
-                                    save_state(state);
                                     g_exit_requested = true;
                                 } else if (status_message[0] == 0) {
                                     snprintf(status_message, sizeof(status_message), "Launch failed");
@@ -4788,11 +4866,20 @@ int main(int argc, char** argv) {
 
         if (state_dirty) {
             u64 now = osGetTime();
-            if (now - last_save_ms > 1000) {
-                save_state(state);
-                last_save_ms = now;
-                state_dirty = false;
+            if (next_state_save_ms == 0) next_state_save_ms = now + 1200;
+            bool idle_input = (kHeld == 0) && (now - last_input_ms >= 500);
+            bool can_save_now = idle_input && !g_exit_requested && !g_exit_after_status;
+            if (can_save_now && now >= next_state_save_ms && now - last_save_ms >= 1000) {
+                if (save_state(state)) {
+                    state_dirty = false;
+                    next_state_save_ms = 0;
+                    last_save_ms = now;
+                } else {
+                    next_state_save_ms = now + 2000;
+                }
             }
+        } else {
+            next_state_save_ms = 0;
         }
 
         audio_update();
@@ -5512,8 +5599,6 @@ int main(int argc, char** argv) {
 
         C3D_FrameEnd(0);
     }
-
-    save_state(state);
 
     icon_free(&g_top_bg_tex);
     icon_free(&g_bottom_bg_tex);

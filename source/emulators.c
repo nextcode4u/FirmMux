@@ -29,7 +29,30 @@ static const KnownSystem g_known_systems[] = {
     { "sms", "Master System" },
     { "snes","SNES" },
     { "tg16","TurboGrafx-16" },
-    { "ws",  "WonderSwan" }
+    { "ws",  "WonderSwan" },
+    { "arcade", "Arcade" },
+    { "cps1", "Capcom Play System 1" },
+    { "cps2", "Capcom Play System 2" },
+    { "cps3", "Capcom Play System 3" },
+    { "neogeo", "Neo Geo" },
+    { "neogeocd", "Neo Geo CD" },
+    { "c64", "Commodore 64" },
+    { "c128", "Commodore 128" },
+    { "vic20", "Commodore VIC-20" },
+    { "plus4", "Commodore Plus/4" },
+    { "pet", "Commodore PET" },
+    { "psx", "Sony PlayStation 1" },
+    { "vb", "Virtual Boy" },
+    { "lynx", "Atari Lynx" },
+    { "jaguar", "Atari Jaguar" },
+    { "dos", "DOS" },
+    { "pc98", "NEC PC-98" },
+    { "scummvm", "ScummVM" },
+    { "quake", "Quake" },
+    { "uzebox", "Uzebox" },
+    { "tic80", "TIC-80" },
+    { "wasm", "WASM-4" },
+    { "lowresnx", "LowRes NX" }
 };
 
 static const int g_known_system_count = (int)(sizeof(g_known_systems) / sizeof(g_known_systems[0]));
@@ -140,15 +163,14 @@ static const char* find_system_block(const char* text, const char* key, const ch
 
 static bool parse_emulators_text(const char* text, EmuConfig* out_cfg) {
     if (!text || !out_cfg) return false;
-    EmuConfig tmp;
-    emu_set_defaults(&tmp);
+    emu_set_defaults(out_cfg);
 
     const char* systems = strstr(text, "\"systems\"");
     if (!systems) return false;
 
     int parsed_blocks = 0;
-    for (int i = 0; i < tmp.count; i++) {
-        EmuSystem* sys = &tmp.systems[i];
+    for (int i = 0; i < out_cfg->count; i++) {
+        EmuSystem* sys = &out_cfg->systems[i];
         const char* limit = NULL;
         const char* block = find_system_block(text, sys->key, &limit);
         if (!block || !limit || block >= limit) continue;
@@ -168,9 +190,7 @@ static bool parse_emulators_text(const char* text, EmuConfig* out_cfg) {
         }
     }
 
-    if (parsed_blocks == 0) return false;
-    *out_cfg = tmp;
-    return true;
+    return parsed_blocks > 0;
 }
 
 static void backup_external_emulators(void) {

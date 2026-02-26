@@ -31,7 +31,10 @@ sd:/
       audio/
     system/
   roms/
-    a26/ a52/ a78/ col/ cpc/ gb/ gen/ gg/ intv/ m5/ nes/ ngp/ pkmni/ sg/ sms/ snes/ tg16/ ws/
+    a26/ a52/ a78/ col/ cpc/ gb/ gba/ gen/ gg/ intv/ m5/ nes/ ngp/ pkmni/ sg/ sms/ snes/ tg16/ ws/
+    arcade/ cps1/ cps2/ cps3/ neogeo/ neogeocd/
+    c64/ c128/ vic20/ plus4/ pet/
+    psx/ vb/ lynx/ jaguar/ dos/ pc98/ scummvm/ quake/ uzebox/ tic80/ wasm/ lowresnx/
   _nds/
     nds-bootstrap.nds
     nds-bootstrap.ini
