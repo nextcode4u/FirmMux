@@ -84,6 +84,9 @@ https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
 
 Per‑ROM RetroArch options (press **Y** on a ROM in emulator tabs) are stored in `sd:/3ds/emulators/rom_options.json`.
 
+Default enabled emulator tabs are: NES, SNES, GB/GBC, GBA, Genesis, Master System, Game Gear, TG16/PCE, CPS1, CPS2, Neo Geo, Lynx, Virtual Boy, Neo Geo Pocket, WonderSwan.  
+Other supported systems can be enabled from Settings -> Emulators.
+
 ## Known Issue
 
 - NDS cheats are currently work in progress. Cheat selection UI and usrcheat flag writes are implemented, but in-game cheat activation is not yet reliable across all titles.

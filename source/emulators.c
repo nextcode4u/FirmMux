@@ -57,6 +57,32 @@ static const KnownSystem g_known_systems[] = {
 
 static const int g_known_system_count = (int)(sizeof(g_known_systems) / sizeof(g_known_systems[0]));
 
+static bool default_enabled_for_key(const char* key) {
+    if (!key || !key[0]) return false;
+    static const char* enabled_keys[] = {
+        "nes",
+        "snes",
+        "gb",
+        "gba",
+        "gen",
+        "sms",
+        "gg",
+        "tg16",
+        "cps1",
+        "cps2",
+        "neogeo",
+        "lynx",
+        "vb",
+        "ngp",
+        "ws"
+    };
+    const int count = (int)(sizeof(enabled_keys) / sizeof(enabled_keys[0]));
+    for (int i = 0; i < count; i++) {
+        if (!strcasecmp(key, enabled_keys[i])) return true;
+    }
+    return false;
+}
+
 static void lower_copy(char* out, size_t out_size, const char* in) {
     if (!out || out_size == 0) return;
     out[0] = 0;
@@ -109,7 +135,7 @@ static void set_system_defaults(EmuSystem* sys, const char* key, const char* dis
     memset(sys, 0, sizeof(*sys));
     lower_copy(sys->key, sizeof(sys->key), key);
     copy_str(sys->display_name, sizeof(sys->display_name), display);
-    sys->enabled = true;
+    sys->enabled = default_enabled_for_key(key);
     snprintf(sys->rom_folder, sizeof(sys->rom_folder), "sd:/roms/%s", key);
 }
 

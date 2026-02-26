@@ -60,6 +60,30 @@ FirmMux maps these folders under `sd:/roms/`:
 - WASM-4 (`wasm`)
 - LowRes NX (`lowresnx`)
 
+## Default Enabled Systems
+
+By default, FirmMux enables these tabs:
+
+- NES
+- SNES
+- Game Boy / Game Boy Color
+- Game Boy Advance
+- Genesis / Mega Drive
+- Master System
+- Game Gear
+- TurboGrafx-16 / PC Engine
+- Capcom Play System 1
+- Capcom Play System 2
+- Neo Geo
+- Atari Lynx
+- Virtual Boy
+- Neo Geo Pocket
+- WonderSwan
+
+All other supported systems are disabled by default and can be enabled in Settings -> Emulators.
+
+Note: if `sd:/3ds/emulators/emulators.json` already exists, FirmMux keeps the user's current enabled/disabled choices.
+
 ## Backend Files (auto‑created)
 
 FirmMux uses:

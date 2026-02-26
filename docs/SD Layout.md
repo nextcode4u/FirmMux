@@ -50,6 +50,7 @@ sd:/
 ## Notes
 
 - `sd:/3ds/emulators/` is only used for RetroArch handoff/config/log files.
+- `sd:/3ds/emulators/emulators.json` controls which emulator tabs are enabled; existing files are preserved and not overwritten.
 - `sd:/retroarch/` must come from the RetroArch 3DSX release (not CIA). It provides cores and system files.
 - `sd:/_nds/firmmux/nds_widescreen/` stores per-game widescreen `.bin` files.
 - `sd:/_nds/ntr-forwarder/usrcheat.dat` is the cheat database.
