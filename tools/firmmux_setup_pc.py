@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 FIRMUX_REPO_API = "https://api.github.com/repos/nextcode4u/FirmMux/releases/latest"
 FIRMUX_ZIP_NAME = "FirmMux-SD.zip"
+PATHFILE_REPO_API = "https://api.github.com/repos/nextcode4u/Pathfile-Mod-3DS/releases/latest"
 
 DEP_TASKS = {
     "bootstrap_cia": (
@@ -278,6 +279,45 @@ def fetch_latest_firmux_asset_url() -> Tuple[str, str]:
     raise RuntimeError("No SD zip asset found on latest FirmMux release")
 
 
+def fetch_latest_release_asset_url(repo_api: str, preferred_name_substr: Optional[str] = None) -> Tuple[str, str]:
+    req = urllib.request.Request(repo_api, headers={"User-Agent": "FirmMux-Setup-PC/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        if getattr(r, "status", 200) < 200 or getattr(r, "status", 200) >= 300:
+            raise RuntimeError(f"Could not read latest release: {repo_api}")
+        data = json.loads(r.read().decode("utf-8"))
+    tag = data.get("tag_name", "latest")
+    assets = data.get("assets", [])
+
+    def is_archive(name: str) -> bool:
+        n = name.lower()
+        return n.endswith(".zip") or n.endswith(".7z")
+
+    exact = None
+    preferred = None
+    fallback = None
+    for a in assets:
+        name = str(a.get("name", ""))
+        url = str(a.get("browser_download_url", ""))
+        if not url or not is_archive(name):
+            continue
+        lname = name.lower()
+        if preferred_name_substr and preferred_name_substr.lower() in lname:
+            preferred = url
+            break
+        if "sd" in lname and fallback is None:
+            fallback = url
+        if exact is None:
+            exact = url
+
+    if preferred:
+        return preferred, tag
+    if fallback:
+        return fallback, tag
+    if exact:
+        return exact, tag
+    raise RuntimeError(f"No archive asset found on latest release: {repo_api}")
+
+
 def copy_tree_contents(src: Path, dst: Path) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     for item in src.iterdir():
@@ -372,6 +412,39 @@ def extract_zip_to_sd(zip_path: Path, sd_root: Path) -> None:
                 copy_tree_contents(c, sd_root)
                 return
         raise RuntimeError("Could not detect SD root layout in FirmMux zip")
+
+
+def extract_archive_to_tmp(archive_path: Path, out_dir: Path) -> None:
+    name = archive_path.name.lower()
+    if name.endswith(".zip"):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(out_dir)
+        return
+    if name.endswith(".7z"):
+        extract_7z(archive_path, out_dir)
+        return
+    raise RuntimeError(f"Unsupported archive type: {archive_path.name}")
+
+
+def stage_pathfile_standalone_package(sd_root: Path) -> Dict[str, str]:
+    print_line("- Fetching latest Pathfile standalone package...")
+    url, tag = fetch_latest_release_asset_url(PATHFILE_REPO_API, preferred_name_substr="sd")
+    asset_name = Path(url).name
+    pkg_out = sd_root / "3ds" / "FirmMux" / "deps" / asset_name
+    download(url, pkg_out)
+    print_line(f"- Downloaded standalone package: {asset_name} ({tag})")
+
+    with tempfile.TemporaryDirectory(prefix="firmmux_pathfile_") as td:
+        tmp = Path(td)
+        extract_archive_to_tmp(pkg_out, tmp)
+        apply_extracted_sd_layout(tmp, sd_root)
+
+    return {
+        "pathfile_release": tag,
+        "pathfile_asset": str(pkg_out),
+        "pathfile_marker": str(sd_root / "3ds" / "emulators" / "pathfile"),
+    }
 
 
 def extract_zip_cia(zip_path: Path, out_cia: Path) -> bool:
@@ -508,6 +581,12 @@ def stage_dependencies(sd_root: Path) -> Dict[str, str]:
         "ntr_launcher_cia": str(sd_root / "cias" / "NTR_Launcher.cia"),
     }
     result.update(retro_paths)
+    try:
+        print_line("- Staging optional standalone pathfile package...")
+        result.update(stage_pathfile_standalone_package(sd_root))
+    except Exception as e:
+        print_line(f"- Optional standalone package skipped: {e}")
+        result["pathfile_package"] = f"skipped: {e}"
     return result
 
 

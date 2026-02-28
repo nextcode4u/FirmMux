@@ -134,6 +134,23 @@ Fallback behavior if standalone package/app is missing:
 
 - GBA/SNES/N64 use normal RetroArch backend resolution.
 
+Pathfile package source:
+
+- Repo: https://github.com/nextcode4u/Pathfile-Mod-3DS
+- Releases: https://github.com/nextcode4u/Pathfile-Mod-3DS/releases/
+
+Expected package files (when installed):
+
+- Marker: `sd:/3ds/emulators/pathfile`
+- Apps:
+  - `sd:/pathfile/mgba.3dsx`
+  - `sd:/pathfile/snes9x_3ds.3dsx`
+  - `sd:/pathfile/DaedalusX64.3dsx`
+- Runtime-written launch files:
+  - `sd:/pathfile/gba_launch.txt`
+  - `sd:/pathfile/snes_launch.txt`
+  - `sd:/pathfile/n64_launch.txt`
+
 ## Custom RetroArch Build (FirmMux)
 
 Source:

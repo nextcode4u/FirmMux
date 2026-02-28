@@ -34,6 +34,7 @@ What it stages:
 - `sd:/cias/NTR_Launcher.cia`
 - NTR Forwarder SD files
 - RetroArch 3DSX package files
+- Optional standalone pathfile package files (latest release)
 - Latest FirmMux release SD package (`FirmMux-SD.zip`) when using install/update modes
 
 RetroArch staging note:
@@ -42,6 +43,14 @@ RetroArch staging note:
 - `sd:/3ds/retroarch.3dsx` and `sd:/3ds/retroarch.smdh` are staged for optional manual RetroArch launch.
 - FirmMux runtime still chainloads its custom binary at:
   - `sd:/3ds/FirmMux/emulators/retroarch.3dsx`
+
+Standalone pathfile package staging note (optional):
+
+- Marker: `sd:/3ds/emulators/pathfile`
+- Apps:
+  - `sd:/pathfile/mgba.3dsx`
+  - `sd:/pathfile/snes9x_3ds.3dsx`
+  - `sd:/pathfile/DaedalusX64.3dsx`
 
 After script completes:
 

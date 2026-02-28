@@ -25,6 +25,7 @@ The script will:
 - Let you choose install/update mode
 - Download latest `FirmMux-SD.zip` from releases
 - Stage dependencies (RetroArch data, NTR Forwarder, CIAs)
+- Stage optional standalone pathfile package (mGBA/snes9x_3ds/DaedalusX64)
 - Show DSP firmware reminder (`sd:/3ds/dspfirm.cdc`)
 
 ## Build From Source (Linux / WSL / MSYS2)
@@ -81,6 +82,12 @@ https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
   https://github.com/ApacheThunder/NTR_Launcher/releases
 - YANBF releases (install `bootstrap.cia`; `firmux-bootstrap-prep` relies on this for handoff):
   https://github.com/YANBForwarder/YANBF/releases
+
+## Optional Standalone Pathfile Package
+
+- Pathfile-Mod-3DS releases:
+  https://github.com/nextcode4u/Pathfile-Mod-3DS/releases/
+- PC setup script can stage this package automatically in full/deps mode.
 
 Per‑ROM RetroArch options (press **Y** on a ROM in emulator tabs) are stored in `sd:/3ds/emulators/rom_options.json`.
 
