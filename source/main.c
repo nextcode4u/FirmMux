@@ -66,6 +66,7 @@ static IconTexture g_cover_preview_icon;
 static int g_cover_preview_w = 0;
 static int g_cover_preview_h = 0;
 static u8 g_cover_preview_rgba[96 * 96 * 4];
+static bool g_is_new_3ds = false;
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
 static C2D_Font g_font;
@@ -187,6 +188,7 @@ static const RetroSystemCoreList g_retro_core_lists[] = {
     { "psx", { "pcsx_rearmed_libretro.3dsx" }, 1 },
     { "vb", { "mednafen_vb_libretro.3dsx" }, 1 },
     { "lynx", { "handy_libretro.3dsx" }, 1 },
+    { "n64", { "mupen64plus_next_libretro.3dsx" }, 1 },
     { "jaguar", { "virtualjaguar_libretro.3dsx" }, 1 },
     { "dos", { "dosbox_svn_libretro.3dsx" }, 1 },
     { "pc98", { "np2kai_libretro.3dsx" }, 1 },
@@ -3045,6 +3047,113 @@ static bool target_root_exists(const Target* target) {
     return is_dir_path(sdmc);
 }
 
+static bool standalone_package_installed(void) {
+    return file_exists(STANDALONE_MARKER_PATH);
+}
+
+static bool standalone_app_installed(const char* app_sdmc) {
+    return app_sdmc && app_sdmc[0] && file_exists(app_sdmc);
+}
+
+static void sd_path_to_sdmc(const char* in, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = 0;
+    if (!in || !in[0]) return;
+    if (!strncasecmp(in, "sdmc:/", 6)) {
+        copy_str(out, out_size, in);
+        return;
+    }
+    if (!strncasecmp(in, "sd:/", 4)) {
+        snprintf(out, out_size, "sdmc:/%s", in + 4);
+        return;
+    }
+    if (in[0] == '/') {
+        snprintf(out, out_size, "sdmc:%s", in);
+        return;
+    }
+    snprintf(out, out_size, "sdmc:/%s", in);
+}
+
+static bool write_pathfile_atomic(const char* path_sdmc, const char* rom_path_sd) {
+    if (!path_sdmc || !path_sdmc[0] || !rom_path_sd || !rom_path_sd[0]) return false;
+    mkdir(STANDALONE_PATHFILE_DIR, 0777);
+
+    char rom_sdmc[512];
+    sd_path_to_sdmc(rom_path_sd, rom_sdmc, sizeof(rom_sdmc));
+    normalize_path_sd(rom_sdmc, sizeof(rom_sdmc));
+    if (!strncasecmp(rom_sdmc, "sd:/", 4)) {
+        char forced[512];
+        snprintf(forced, sizeof(forced), "sdmc:/%s", rom_sdmc + 4);
+        copy_str(rom_sdmc, sizeof(rom_sdmc), forced);
+    }
+
+    char tmp[640];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path_sdmc);
+
+    FILE* f = fopen(tmp, "w");
+    if (!f) {
+        int err = errno;
+        retro_log_line("standalone pathfile tmp open failed: %s errno=%d", tmp, err);
+        FILE* fd = fopen(path_sdmc, "w");
+        if (!fd) {
+            retro_log_line("standalone pathfile direct open failed: %s errno=%d", path_sdmc, errno);
+            return false;
+        }
+        fprintf(fd, "%s\n", rom_sdmc);
+        fclose(fd);
+        retro_log_line("standalone pathfile direct write ok: %s", path_sdmc);
+        return true;
+    }
+
+    fprintf(f, "%s\n", rom_sdmc);
+    fclose(f);
+    if (rename(tmp, path_sdmc) != 0) {
+        int err = errno;
+        retro_log_line("standalone pathfile rename failed: %s -> %s errno=%d", tmp, path_sdmc, err);
+        remove(tmp);
+        FILE* fd = fopen(path_sdmc, "w");
+        if (!fd) {
+            retro_log_line("standalone pathfile direct open failed after rename: %s errno=%d", path_sdmc, errno);
+            return false;
+        }
+        fprintf(fd, "%s\n", rom_sdmc);
+        fclose(fd);
+        retro_log_line("standalone pathfile direct write ok after rename fail: %s", path_sdmc);
+        return true;
+    }
+    retro_log_line("standalone pathfile atomic write ok: %s", path_sdmc);
+    return true;
+}
+
+static bool launch_standalone_pathfile(const char* app_sd, const char* app_sdmc, const char* launch_file_sdmc, const char* rom_sd, const char* label, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty) {
+    if (!app_sd || !app_sd[0] || !app_sdmc || !app_sdmc[0] || !launch_file_sdmc || !launch_file_sdmc[0] || !rom_sd || !rom_sd[0]) return false;
+    if (!standalone_app_installed(app_sdmc)) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "%s standalone not found", label ? label : "Standalone");
+        if (status_timer) *status_timer = 120;
+        return false;
+    }
+    if (!write_pathfile_atomic(launch_file_sdmc, rom_sd)) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Pathfile write failed");
+        if (status_timer) *status_timer = 120;
+        return false;
+    }
+    retro_log_line("standalone pathfile written: %s", launch_file_sdmc);
+
+    bool can_chainload = state && state->retro_chainload_enabled && retro_chainload_available();
+    if (can_chainload && retro_chainload(app_sd, status_message, status_size)) {
+        retro_log_line("launch mode: standalone chainload app=%s", app_sd);
+        if (state_dirty) *state_dirty = false;
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launching %s...", label ? label : "standalone");
+        if (status_timer) *status_timer = 60;
+        g_exit_requested = true;
+        return true;
+    }
+
+    if (status_message && status_size > 0) snprintf(status_message, status_size, "Launch %s from hbmenu", label ? label : "standalone");
+    if (status_timer) *status_timer = 180;
+    return false;
+}
+
 static void capture_base_targets(const Config* cfg) {
     g_base_target_count = 0;
     if (!cfg) return;
@@ -3152,6 +3261,14 @@ static void apply_emulator_targets(Config* cfg) {
     for (int i = 0; i < emu_count && cfg->target_count < MAX_TARGETS; i++) {
         const EmuSystem* sys = &g_emu.systems[i];
         if (!sys->enabled) continue;
+        if (!g_is_new_3ds &&
+            (!strcasecmp(sys->key, "n64") ||
+             !strcasecmp(sys->key, "psx") ||
+             !strcasecmp(sys->key, "cps3") ||
+             !strcasecmp(sys->key, "pc98") ||
+             !strcasecmp(sys->key, "dos"))) {
+            continue;
+        }
         if (emu_added >= emu_safe_boot_cap) break;
         Target* t = &cfg->targets[cfg->target_count];
         memset(t, 0, sizeof(*t));
@@ -3328,6 +3445,67 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
     char ext_lower[16];
     file_ext_lower(fe->name, ext_lower, sizeof(ext_lower));
     bool matched_rule = false;
+
+    bool standalone_installed = standalone_package_installed();
+    if (!strcasecmp(system_key, "n64")) {
+        if (!g_is_new_3ds) {
+            snprintf(status_message, status_size, "N64 is New 3DS only");
+            if (status_timer) *status_timer = 120;
+            return false;
+        }
+        if (standalone_installed && standalone_app_installed(STANDALONE_N64_APP_SDMC)) {
+            retro_log_line("standalone route: system=n64 app=DaedalusX64");
+            return launch_standalone_pathfile(
+                STANDALONE_N64_APP_SD,
+                STANDALONE_N64_APP_SDMC,
+                STANDALONE_N64_LAUNCH_TXT,
+                rom_sd,
+                "DaedalusX64",
+                state,
+                status_message,
+                status_size,
+                status_timer,
+                state_dirty);
+        }
+        retro_log_line("standalone route skipped: system=n64 installed=%d app=%d", standalone_installed ? 1 : 0, standalone_app_installed(STANDALONE_N64_APP_SDMC) ? 1 : 0);
+    }
+
+    if (!strcasecmp(system_key, "gba")) {
+        if (g_is_new_3ds && standalone_installed && standalone_app_installed(STANDALONE_GBA_APP_SDMC)) {
+            retro_log_line("standalone route: system=gba app=mGBA");
+            return launch_standalone_pathfile(
+                STANDALONE_GBA_APP_SD,
+                STANDALONE_GBA_APP_SDMC,
+                STANDALONE_GBA_LAUNCH_TXT,
+                rom_sd,
+                "mGBA",
+                state,
+                status_message,
+                status_size,
+                status_timer,
+                state_dirty);
+        }
+        retro_log_line("standalone route skipped: system=gba new3ds=%d installed=%d app=%d", g_is_new_3ds ? 1 : 0, standalone_installed ? 1 : 0, standalone_app_installed(STANDALONE_GBA_APP_SDMC) ? 1 : 0);
+    }
+
+    if (!strcasecmp(system_key, "snes")) {
+        if (standalone_installed && standalone_app_installed(STANDALONE_SNES_APP_SDMC)) {
+            retro_log_line("standalone route: system=snes app=snes9x_3ds");
+            return launch_standalone_pathfile(
+                STANDALONE_SNES_APP_SD,
+                STANDALONE_SNES_APP_SDMC,
+                STANDALONE_SNES_LAUNCH_TXT,
+                rom_sd,
+                "snes9x_3ds",
+                state,
+                status_message,
+                status_size,
+                status_timer,
+                state_dirty);
+        }
+        retro_log_line("standalone route skipped: system=snes installed=%d app=%d", standalone_installed ? 1 : 0, standalone_app_installed(STANDALONE_SNES_APP_SDMC) ? 1 : 0);
+    }
+
     RetroRomOptions opt;
     retro_rom_options_default(&opt);
     retro_rom_options_load(rom_sd, &opt);
@@ -3821,6 +3999,10 @@ int main(int argc, char** argv) {
     cfguInit();
     load_time_format();
     mcuHwcInit();
+    {
+        bool is_new = false;
+        if (R_SUCCEEDED(APT_CheckNew3DS(&is_new)) && is_new) g_is_new_3ds = true;
+    }
     g_font_default = C2D_FontLoadFromMem(comfortaa_bold_bcfnt, comfortaa_bold_bcfnt_size);
     if (g_font_default) C2D_FontSetFilter(g_font_default, GPU_LINEAR, GPU_LINEAR);
     g_font = g_font_default;

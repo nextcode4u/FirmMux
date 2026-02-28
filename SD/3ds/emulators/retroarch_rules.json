@@ -37,6 +37,7 @@
     {"match":{"folder":"psx","ext":["cue","chd","pbp","iso","bin"]},"core":"pcsx_rearmed_libretro"},
     {"match":{"folder":"vb","ext":["vb"]},"core":"mednafen_vb_libretro"},
     {"match":{"folder":"lynx","ext":["lnx","o"]},"core":"handy_libretro"},
+    {"match":{"folder":"n64","ext":["z64","n64","v64"]},"core":"mupen64plus_next_libretro"},
     {"match":{"folder":"jaguar","ext":["j64","jag","abs","cof"]},"core":"virtualjaguar_libretro"},
     {"match":{"folder":"dos","ext":["exe","com","bat","zip"]},"core":"dosbox_svn_libretro"},
     {"match":{"folder":"pc98","ext":["hdi","fdi","d88","xdf","nhd"]},"core":"np2kai_libretro"},

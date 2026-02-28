@@ -39,7 +39,7 @@ FirmMux maps these folders under `sd:/roms/`:
 - Arcade (`arcade`)
 - Capcom Play System 1 (`cps1`)
 - Capcom Play System 2 (`cps2`)
-- Capcom Play System 3 (`cps3`)
+- Capcom Play System 3 (`cps3`, New 3DS only tab)
 - Neo Geo (`neogeo`)
 - Neo Geo CD (`neogeocd`)
 - Commodore 64 (`c64`)
@@ -47,12 +47,13 @@ FirmMux maps these folders under `sd:/roms/`:
 - Commodore VIC-20 (`vic20`)
 - Commodore Plus/4 (`plus4`)
 - Commodore PET (`pet`)
-- PlayStation (`psx`)
+- PlayStation (`psx`, New 3DS only tab)
 - Virtual Boy (`vb`)
 - Atari Lynx (`lynx`)
+- Nintendo 64 (`n64`, New 3DS only tab)
 - Atari Jaguar (`jaguar`)
-- DOS (`dos`)
-- NEC PC-98 (`pc98`)
+- DOS (`dos`, New 3DS only tab)
+- NEC PC-98 (`pc98`, New 3DS only tab)
 - ScummVM (`scummvm`)
 - Quake (`quake`)
 - Uzebox (`uzebox`)
@@ -116,6 +117,22 @@ If no favorites file is present or it is empty, FirmMux will list files from:
 
 Audio filters are listed from:
 - `sd:/retroarch/filters/audio/`
+
+## Standalone Pathfile Routing (Optional)
+
+If `sd:/3ds/emulators/pathfile` exists and standalone apps are installed in `sd:/pathfile/`, FirmMux can route specific systems to standalone `.3dsx` apps using pathfiles:
+
+- `sd:/pathfile/gba_launch.txt` -> `sd:/pathfile/mgba.3dsx` (New 3DS only)
+- `sd:/pathfile/snes_launch.txt` -> `sd:/pathfile/snes9x_3ds.3dsx` (Old/New 3DS)
+- `sd:/pathfile/n64_launch.txt` -> `sd:/pathfile/DaedalusX64.3dsx` (New 3DS only)
+
+Pathfile contents are a single absolute ROM path, for example:
+
+`sdmc:/roms/gba/Metroid Fusion.gba`
+
+Fallback behavior if standalone package/app is missing:
+
+- GBA/SNES/N64 use normal RetroArch backend resolution.
 
 ## Custom RetroArch Build (FirmMux)
 

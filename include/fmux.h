@@ -52,6 +52,17 @@
 #define RETRO_AUDIO_FILTERS_DIR RETRO_FILTERS_DIR "/audio"
 #define RETRO_COMPAT_HANDOFF_PATH "sd:/firmmux/launch.json"
 #define RETRO_COMPAT_HANDOFF_PATH_3DS "sd:/3ds/firmmux/launch.json"
+#define STANDALONE_MARKER_PATH "sdmc:/3ds/emulators/pathfile"
+#define STANDALONE_PATHFILE_DIR "sdmc:/pathfile"
+#define STANDALONE_GBA_APP_SD "sd:/pathfile/mgba.3dsx"
+#define STANDALONE_GBA_APP_SDMC "sdmc:/pathfile/mgba.3dsx"
+#define STANDALONE_GBA_LAUNCH_TXT "sdmc:/pathfile/gba_launch.txt"
+#define STANDALONE_SNES_APP_SD "sd:/pathfile/snes9x_3ds.3dsx"
+#define STANDALONE_SNES_APP_SDMC "sdmc:/pathfile/snes9x_3ds.3dsx"
+#define STANDALONE_SNES_LAUNCH_TXT "sdmc:/pathfile/snes_launch.txt"
+#define STANDALONE_N64_APP_SD "sd:/pathfile/DaedalusX64.3dsx"
+#define STANDALONE_N64_APP_SDMC "sdmc:/pathfile/DaedalusX64.3dsx"
+#define STANDALONE_N64_LAUNCH_TXT "sdmc:/pathfile/n64_launch.txt"
 #define NDS_CACHE_MAGIC 0x4e445343
 #define MAX_3DS_TITLES 512
 

@@ -60,6 +60,7 @@ static const DefaultRule g_default_rules[] = {
     { "psx", "pcsx_rearmed_libretro", { "cue", "chd", "pbp", "iso", "bin" }, 5 },
     { "vb", "mednafen_vb_libretro", { "vb" }, 1 },
     { "lynx", "handy_libretro", { "lnx", "o" }, 2 },
+    { "n64", "mupen64plus_next_libretro", { "z64", "n64", "v64" }, 3 },
     { "jaguar", "virtualjaguar_libretro", { "j64", "jag", "abs", "cof" }, 4 },
     { "dos", "dosbox_svn_libretro", { "exe", "com", "bat", "zip" }, 4 },
     { "pc98", "np2kai_libretro", { "hdi", "fdi", "d88", "xdf", "nhd" }, 5 },
@@ -111,6 +112,7 @@ static const CoreMap g_core_map[] = {
     { "pcsx_rearmed_libretro", { "pcsx_rearmed" }, 1 },
     { "mednafen_vb_libretro", { "mednafen_vb", "vb" }, 2 },
     { "handy_libretro", { "handy" }, 1 },
+    { "mupen64plus_next_libretro", { "mupen64plus_next", "mupen64plus", "parallel_n64" }, 3 },
     { "virtualjaguar_libretro", { "virtualjaguar" }, 1 },
     { "dosbox_svn_libretro", { "dosbox_svn", "dosbox" }, 2 },
     { "np2kai_libretro", { "np2kai", "neko2" }, 2 },
@@ -415,6 +417,7 @@ static const char* fallback_core_for_ext(const char* ext_lower) {
     if (!strcasecmp(ext_lower, "wasm")) return "wasm4_libretro";
     if (!strcasecmp(ext_lower, "nx")) return "lowresnx_libretro";
     if (!strcasecmp(ext_lower, "lnx")) return "handy_libretro";
+    if (!strcasecmp(ext_lower, "z64") || !strcasecmp(ext_lower, "n64") || !strcasecmp(ext_lower, "v64")) return "mupen64plus_next_libretro";
     if (!strcasecmp(ext_lower, "j64") || !strcasecmp(ext_lower, "jag")) return "virtualjaguar_libretro";
     if (!strcasecmp(ext_lower, "hdi") || !strcasecmp(ext_lower, "fdi") || !strcasecmp(ext_lower, "d88") || !strcasecmp(ext_lower, "xdf") || !strcasecmp(ext_lower, "nhd")) return "np2kai_libretro";
     if (!strcasecmp(ext_lower, "d64") || !strcasecmp(ext_lower, "t64") || !strcasecmp(ext_lower, "prg") || !strcasecmp(ext_lower, "crt")) return "vice_x64_libretro";

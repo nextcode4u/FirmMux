@@ -19,6 +19,14 @@ Dependencies:
 - YANBF releases (install `bootstrap.cia`; `firmux-bootstrap-prep` depends on it for handoff):
   https://github.com/YANBForwarder/YANBF/releases
 
+Expected NTR Forwarder package layout under `sd:/_nds/`:
+- `nds-bootstrap-hb-release.nds`
+- `nds-bootstrap-release.nds`
+- `nds-bootstrap.ini`
+- `ntr_forwarder.ini`
+- `release-bootstrap.ver`
+- `ntr-forwarder/sdcard.nds`
+
 ## Widescreen
 
 Widescreen uses per‑game `.bin` files from:
