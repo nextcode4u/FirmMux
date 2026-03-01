@@ -28,6 +28,12 @@ The script will:
 - Stage optional standalone pathfile package (mGBA/snes9x_3ds/DaedalusX64)
 - Show DSP firmware reminder (`sd:/3ds/dspfirm.cdc`)
 
+Autoboot toggle (Settings):
+- OFF by default.
+- Enable: backs up `sd:/boot.3dsx` to `sd:/boot.3dsx.bak`, then installs FirmMux boot file.
+- Enable also stages `sd:/boot.smdh` from template so hbmenu shows "FirmMux Boot Forwarder".
+- Disable: restores `sd:/boot.3dsx.bak` back to `sd:/boot.3dsx` (and restores `boot.smdh` backup if present).
+
 ## Build From Source (Linux / WSL / MSYS2)
 
 ```

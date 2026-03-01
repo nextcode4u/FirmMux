@@ -34,6 +34,12 @@
 #define NDS_CHEATS_DIR "sdmc:/_nds/firmmux/nds_cheats"
 #define NDS_CHEATS_DB_PATH "sdmc:/_nds/ntr-forwarder/usrcheat.dat"
 #define NDS_WIDESCREEN_DIR "sdmc:/_nds/firmmux/nds_widescreen"
+#define AUTOBOOT_ACTIVE_PATH "sdmc:/boot.3dsx"
+#define AUTOBOOT_BACKUP_PATH "sdmc:/boot.3dsx.bak"
+#define AUTOBOOT_TEMPLATE_PATH "sdmc:/3ds/FirmMux/boot.3dsx"
+#define AUTOBOOT_ACTIVE_SMDH_PATH "sdmc:/boot.smdh"
+#define AUTOBOOT_BACKUP_SMDH_PATH "sdmc:/boot.smdh.bak"
+#define AUTOBOOT_TEMPLATE_SMDH_PATH "sdmc:/3ds/FirmMux/boot.smdh"
 #define EMU_EXT_DIR "sdmc:/3ds/emulators"
 #define RETRO_RULES_PATH EMU_EXT_DIR "/retroarch_rules.json"
 #define RETRO_EMULATORS_PATH EMU_EXT_DIR "/emulators.json"
@@ -145,6 +151,7 @@ typedef struct {
     int background_visibility_top;
     int background_visibility_bottom;
     int bgm_enabled;
+    bool autoboot_enabled;
     bool retro_log_enabled;
     bool retro_chainload_enabled;
     int nds_launcher_mode;

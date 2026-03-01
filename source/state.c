@@ -35,6 +35,7 @@ bool parse_state(const char* text, State* state) {
     state->retro_chainload_enabled = true;
     state->nds_launcher_mode = 0;
     state->bgm_enabled = 1;
+    state->autoboot_enabled = false;
     if (!json_find_string(text, "last_target", state->last_target, sizeof(state->last_target))) {
         state->last_target[0] = 0;
     }
@@ -49,6 +50,8 @@ bool parse_state(const char* text, State* state) {
     }
     int bgm_on = 1;
     if (json_find_int(text, "bgm_enabled", &bgm_on)) state->bgm_enabled = (bgm_on != 0);
+    int autoboot_on = 0;
+    if (json_find_int(text, "autoboot_enabled", &autoboot_on)) state->autoboot_enabled = (autoboot_on != 0);
     int bg_vis = -1;
     json_find_int(text, "background_visibility_top", &state->background_visibility_top);
     json_find_int(text, "background_visibility_bottom", &state->background_visibility_bottom);
@@ -115,6 +118,7 @@ bool load_state(State* state) {
         state->retro_chainload_enabled = true;
         state->nds_launcher_mode = 0;
         state->bgm_enabled = 1;
+        state->autoboot_enabled = false;
         return true;
     }
     FILE* f = fopen(STATE_PATH, "r");
@@ -139,6 +143,7 @@ bool load_state(State* state) {
     state->retro_chainload_enabled = true;
     state->nds_launcher_mode = 0;
     state->bgm_enabled = 1;
+    state->autoboot_enabled = false;
     return true;
 }
 
@@ -172,6 +177,7 @@ static bool write_state_json_file(FILE* f, const State* state) {
     fprintf(f, "  \"bottom_background\":\"%s\",\n", bottom_bg_esc);
     fprintf(f, "  \"background_visibility_top\":%d,\n", state->background_visibility_top);
     fprintf(f, "  \"background_visibility_bottom\":%d,\n", state->background_visibility_bottom);
+    fprintf(f, "  \"autoboot_enabled\":%d,\n", state->autoboot_enabled ? 1 : 0);
     fprintf(f, "  \"retro_log_enabled\":%d,\n", state->retro_log_enabled ? 1 : 0);
     fprintf(f, "  \"retro_chainload_enabled\":%d,\n", state->retro_chainload_enabled ? 1 : 0);
     fprintf(f, "  \"nds_launcher_mode\":%d,\n", state->nds_launcher_mode);

@@ -61,6 +61,20 @@ static bool entry_allowed(const Target* target, const char* name, bool is_dir) {
     return true;
 }
 
+static bool should_hide_entry(const Target* target, const TargetState* ts, const char* name, bool is_dir) {
+    if (!target || !ts || !name || is_dir) return false;
+    if (strcmp(target->type, "homebrew_browser") != 0) return false;
+
+    char p[256];
+    copy_str(p, sizeof(p), ts->path);
+    normalize_path(p);
+    if (!strcasecmp(p, "/3ds/FirmMux")) {
+        if (!strcasecmp(name, "boot.3dsx")) return true;
+        if (!strcasecmp(name, "firmux-bootstrap-prep.3dsx")) return true;
+    }
+    return false;
+}
+
 bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
     cache->count = 0;
     cache->valid = false;
@@ -83,6 +97,7 @@ bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
             if (stat(full, &st) == 0) is_dir = S_ISDIR(st.st_mode);
         }
         if (!entry_allowed(target, ent->d_name, is_dir)) continue;
+        if (should_hide_entry(target, ts, ent->d_name, is_dir)) continue;
         FileEntry* fe = &cache->entries[cache->count++];
         snprintf(fe->name, sizeof(fe->name), "%s", ent->d_name);
         fe->is_dir = is_dir;

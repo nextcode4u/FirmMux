@@ -6,6 +6,8 @@ See docs in the repo for full details:
 - docs/NDS Options.md
 
 Quick paths:
+- Autoboot template (used by Settings toggle): /3ds/FirmMux/boot.3dsx
+- Autoboot metadata template (name/icon): /3ds/FirmMux/boot.smdh
 - FirmMux: /3ds/FirmMux.3dsx
 - RetroArch (FirmMux build): /3ds/FirmMux/emulators/retroarch.3dsx
 - RetroArch data/cores: /retroarch/

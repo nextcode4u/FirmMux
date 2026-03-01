@@ -14,6 +14,7 @@
 #include <3ds/services/apt.h>
 #include <3ds/services/am.h>
 #include <3ds/services/ptmu.h>
+#include <3ds/services/ptmsysm.h>
 #include <3ds/services/ac.h>
 #include <3ds/services/cfgu.h>
 #include <3ds/services/mcuhwc.h>
@@ -50,6 +51,14 @@ static bool g_easter_loaded = false;
 static bool g_select_last = false;
 static bool g_exit_requested = false;
 static bool g_exit_after_status = false;
+static bool g_title_launch_home_init_done = false;
+static bool g_title_launch_home_init_pending = false;
+static int g_title_launch_home_init_delay = 0;
+
+static void cancel_title_home_init_pending(void) {
+    g_title_launch_home_init_pending = false;
+    g_title_launch_home_init_delay = 0;
+}
 static u64 g_title_preview_tid = 0;
 static bool g_title_preview_valid = false;
 static u8 g_title_preview_rgba[48 * 48 * 4];
@@ -1779,9 +1788,19 @@ static void auto_set_card_launcher(Config* cfg, State* state, bool* state_dirty,
 
 bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
     if (status_message && status_size > 0) status_message[0] = 0;
+    aptSetHomeAllowed(false);
     Result rc = APT_PrepareToDoApplicationJump(0, title_id, media);
     if (R_FAILED(rc)) {
-        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launcher missing (TitleID %016llX)", (unsigned long long)title_id);
+        svcSleepThread(50ULL * 1000ULL * 1000ULL);
+        rc = APT_PrepareToDoApplicationJump(0, title_id, media);
+    }
+    if (R_FAILED(rc)) {
+        // On direct autoboot flows, HOME Menu process may not be initialized yet.
+        // Don't force-jump here; user can press HOME and return, then retry launch.
+        aptClearChainloader();
+        if (status_message && status_size > 0) {
+            snprintf(status_message, status_size, "HOME init needed (%08lX). Press HOME, return, retry.", (unsigned long)rc);
+        }
         return false;
     }
     u8 param[0x300];
@@ -1790,10 +1809,42 @@ bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, siz
     memset(hmac, 0, sizeof(hmac));
     rc = APT_DoApplicationJump(param, sizeof(param), hmac);
     if (R_FAILED(rc)) {
-        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launch failed %lx", (unsigned long)rc);
+        svcSleepThread(50ULL * 1000ULL * 1000ULL);
+        rc = APT_DoApplicationJump(param, sizeof(param), hmac);
+    }
+    if (R_FAILED(rc)) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launch failed %08lX", (unsigned long)rc);
         return false;
     }
     return true;
+}
+
+static bool launch_installed_title_fallback_media(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
+    if (launch_title_id(title_id, media, status_message, status_size)) return true;
+    if (media == MEDIATYPE_SD || media == MEDIATYPE_NAND) {
+        FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
+        if (launch_title_id(title_id, alt, status_message, status_size)) return true;
+    }
+    return false;
+}
+
+static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
+    if (!g_title_launch_home_init_done) {
+        g_title_launch_home_init_done = true;
+        g_title_launch_home_init_pending = true;
+        g_title_launch_home_init_delay = 45;
+        if (status_message && status_size > 0) {
+            snprintf(status_message, status_size, "Launching HOME Menu, please return to FirmMux...");
+        }
+        return false;
+    }
+    if (g_title_launch_home_init_pending) {
+        if (status_message && status_size > 0) {
+            snprintf(status_message, status_size, "Launching HOME Menu, please wait...");
+        }
+        return false;
+    }
+    return launch_installed_title_fallback_media(title_id, media, status_message, status_size);
 }
 
 static int find_target_index(const Config* cfg, const char* id) {
@@ -3047,6 +3098,92 @@ static bool target_root_exists(const Target* target) {
     return is_dir_path(sdmc);
 }
 
+static bool copy_file_binary(const char* src, const char* dst) {
+    if (!src || !dst || !src[0] || !dst[0]) return false;
+    FILE* in = fopen(src, "rb");
+    if (!in) return false;
+    FILE* out = fopen(dst, "wb");
+    if (!out) {
+        fclose(in);
+        return false;
+    }
+    char buf[8192];
+    size_t n = 0;
+    bool ok = true;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) {
+            ok = false;
+            break;
+        }
+    }
+    fclose(in);
+    fclose(out);
+    if (!ok) remove(dst);
+    return ok;
+}
+
+static bool ensure_autoboot_template(char* status_message, size_t status_size) {
+    if (file_exists(AUTOBOOT_TEMPLATE_PATH)) return true;
+    if (!file_exists("sdmc:/3ds/FirmMux.3dsx")) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "FirmMux binary missing");
+        return false;
+    }
+    if (!copy_file_binary("sdmc:/3ds/FirmMux.3dsx", AUTOBOOT_TEMPLATE_PATH)) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot template create failed");
+        return false;
+    }
+    return true;
+}
+
+static bool set_autoboot_enabled(bool enable, char* status_message, size_t status_size) {
+    if (enable) {
+        if (!ensure_autoboot_template(status_message, status_size)) {
+            return false;
+        }
+        if (file_exists(AUTOBOOT_ACTIVE_PATH) && !file_exists(AUTOBOOT_BACKUP_PATH)) {
+            if (rename(AUTOBOOT_ACTIVE_PATH, AUTOBOOT_BACKUP_PATH) != 0) {
+                if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot backup failed");
+                return false;
+            }
+        }
+        if (file_exists(AUTOBOOT_ACTIVE_SMDH_PATH) && !file_exists(AUTOBOOT_BACKUP_SMDH_PATH)) {
+            if (rename(AUTOBOOT_ACTIVE_SMDH_PATH, AUTOBOOT_BACKUP_SMDH_PATH) != 0) {
+                if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot smdh backup failed");
+                return false;
+            }
+        }
+        if (!copy_file_binary(AUTOBOOT_TEMPLATE_PATH, AUTOBOOT_ACTIVE_PATH)) {
+            if (!file_exists(AUTOBOOT_ACTIVE_PATH) && file_exists(AUTOBOOT_BACKUP_PATH)) {
+                rename(AUTOBOOT_BACKUP_PATH, AUTOBOOT_ACTIVE_PATH);
+            }
+            if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot install failed");
+            return false;
+        }
+        if (file_exists(AUTOBOOT_TEMPLATE_SMDH_PATH)) {
+            if (!copy_file_binary(AUTOBOOT_TEMPLATE_SMDH_PATH, AUTOBOOT_ACTIVE_SMDH_PATH)) {
+                if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot smdh install failed");
+                return false;
+            }
+        } else if (file_exists("sdmc:/3ds/FirmMux.smdh")) {
+            copy_file_binary("sdmc:/3ds/FirmMux.smdh", AUTOBOOT_ACTIVE_SMDH_PATH);
+        }
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot enabled");
+        return true;
+    }
+
+    if (file_exists(AUTOBOOT_ACTIVE_PATH)) remove(AUTOBOOT_ACTIVE_PATH);
+    if (file_exists(AUTOBOOT_ACTIVE_SMDH_PATH)) remove(AUTOBOOT_ACTIVE_SMDH_PATH);
+    if (file_exists(AUTOBOOT_BACKUP_PATH)) {
+        if (rename(AUTOBOOT_BACKUP_PATH, AUTOBOOT_ACTIVE_PATH) != 0) {
+            if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot restore failed");
+            return false;
+        }
+    }
+    if (file_exists(AUTOBOOT_BACKUP_SMDH_PATH)) rename(AUTOBOOT_BACKUP_SMDH_PATH, AUTOBOOT_ACTIVE_SMDH_PATH);
+    if (status_message && status_size > 0) snprintf(status_message, status_size, "Autoboot disabled");
+    return true;
+}
+
 static bool standalone_package_installed(void) {
     return file_exists(STANDALONE_MARKER_PATH);
 }
@@ -3755,7 +3892,7 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_SELECT_CARD_LAUNCHER;
 
     o = &g_options[g_option_count++];
-    snprintf(o->label, sizeof(o->label), "Autoboot: Enabled");
+    snprintf(o->label, sizeof(o->label), "Autoboot: %s", g_state.autoboot_enabled ? "On" : "Off");
     o->action = OPTION_ACTION_AUTOBOOT_STATUS;
 
     o = &g_options[g_option_count++];
@@ -3981,11 +4118,16 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
     } else if (action == OPTION_ACTION_SETUP_WIZARD) {
         run_health_check(status_message, status_size);
     } else if (action == OPTION_ACTION_AUTOBOOT_STATUS) {
-        snprintf(status_message, status_size, "Autoboot enabled");
+        bool next = !state->autoboot_enabled;
+        if (set_autoboot_enabled(next, status_message, status_size)) {
+            state->autoboot_enabled = next;
+            if (state_dirty) *state_dirty = true;
+            refresh_options_menu(cfg);
+        }
     } else if (action == OPTION_ACTION_ABOUT) {
         snprintf(status_message, status_size, "Build %s", g_build_id);
     }
-    if (status_timer && status_message && status_message[0]) *status_timer = 90;
+    if (status_timer && status_message && status_message[0]) *status_timer = 150;
 }
 
 int main(int argc, char** argv) {
@@ -3995,10 +4137,12 @@ int main(int argc, char** argv) {
     C2D_Prepare();
     C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
     ptmuInit();
+    ptmSysmInit();
     acInit();
     cfguInit();
     load_time_format();
     mcuHwcInit();
+    aptSetHomeAllowed(true);
     {
         bool is_new = false;
         if (R_SUCCEEDED(APT_CheckNew3DS(&is_new)) && is_new) g_is_new_3ds = true;
@@ -4023,6 +4167,7 @@ int main(int argc, char** argv) {
     C3D_Fini();
     mcuHwcExit();
     cfguExit();
+    ptmSysmExit();
     ptmuExit();
     acExit();
     ndspExit();
@@ -4078,6 +4223,7 @@ int main(int argc, char** argv) {
         int saved_vis_top = state->background_visibility_top;
         int saved_vis_bottom = state->background_visibility_bottom;
         int saved_bgm = state->bgm_enabled;
+        bool saved_autoboot = state->autoboot_enabled;
         bool saved_retro_log = state->retro_log_enabled;
         bool saved_chainload = state->retro_chainload_enabled;
         copy_str(saved_theme, sizeof(saved_theme), state->theme);
@@ -4091,6 +4237,7 @@ int main(int argc, char** argv) {
         state->background_visibility_top = saved_vis_top;
         state->background_visibility_bottom = saved_vis_bottom;
         state->bgm_enabled = saved_bgm;
+        state->autoboot_enabled = saved_autoboot;
         state->retro_log_enabled = saved_retro_log;
         state->retro_chainload_enabled = saved_chainload;
     }
@@ -4201,6 +4348,7 @@ int main(int argc, char** argv) {
     auto_set_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
     auto_set_card_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
     while (aptMainLoop()) {
+        aptSetHomeAllowed(false);
         hidScanInput();
         u32 kDown = hidKeysDown();
         u32 kHeld = hidKeysHeld();
@@ -4211,7 +4359,30 @@ int main(int argc, char** argv) {
         bool rep_down = (kDown & KEY_DOWN) || (hold_down > 10 && (hold_down % 2 == 0));
         if (move_cooldown > 0) move_cooldown--;
 
-        if (kDown & KEY_START) {
+        bool quick_system_jump = (kDown & KEY_START) && (kHeld & KEY_SELECT);
+        if (quick_system_jump) {
+            int sys_idx = find_target_index(cfg, "system");
+            if (sys_idx < 0) {
+                for (int i = 0; i < cfg->target_count; i++) {
+                    if (!strcmp(cfg->targets[i].type, "system_menu")) {
+                        sys_idx = i;
+                        break;
+                    }
+                }
+            }
+            if (sys_idx >= 0 && sys_idx < cfg->target_count) {
+                current_target = sys_idx;
+                snprintf(state->last_target, sizeof(state->last_target), "%s", cfg->targets[current_target].id);
+                options_open = false;
+                g_options_mode = OPT_MODE_MAIN;
+                state_dirty = true;
+                snprintf(status_message, sizeof(status_message), "System Menu");
+                status_timer = 120;
+                audio_play(SOUND_MOVE);
+            }
+        }
+
+        if ((kDown & KEY_START) && !quick_system_jump) {
             options_open = !options_open;
             if (options_open) {
                 g_options_mode = OPT_MODE_MAIN;
@@ -4816,7 +4987,7 @@ int main(int argc, char** argv) {
         } else {
             if (!strcmp(target->type, "system_menu")) {
                 ensure_titles_loaded(cfg);
-                int total = title_count_system() + 1;
+                int total = title_count_system() + 2;
                 int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
                 int prev = ts->selection;
                 if (rep_up) ts->selection--;
@@ -4833,24 +5004,34 @@ int main(int argc, char** argv) {
                     state_dirty = true;
                     if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
                     else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
-                    status_timer = 60;
+                    status_timer = 120;
                     audio_play(SOUND_SELECT);
                 }
                 if (kDown & KEY_A) {
                     if (ts->selection == 0) {
-                        snprintf(status_message, sizeof(status_message), "Exiting...");
-                        break;
+                        cancel_title_home_init_pending();
+                        aptJumpToHomeMenu();
+                        snprintf(status_message, sizeof(status_message), "Returning to HOME Menu...");
+                    } else if (ts->selection == 1) {
+                        cancel_title_home_init_pending();
+                        Result rc = PTMSYSM_ShutdownAsync(0);
+                        if (R_SUCCEEDED(rc)) {
+                            snprintf(status_message, sizeof(status_message), "Powering off...");
+                            g_exit_requested = true;
+                        } else {
+                            snprintf(status_message, sizeof(status_message), "Power off failed %08lX", (unsigned long)rc);
+                        }
                     } else {
-                        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
+                        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
                         if (tinfo) {
-                            if (launch_title_id(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
+                            if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
                                 snprintf(status_message, sizeof(status_message), "Launching...");
                             } else if (status_message[0] == 0) {
                                 snprintf(status_message, sizeof(status_message), "Launch failed");
                             }
                         }
                     }
-                    status_timer = 60;
+                    status_timer = 120;
                     audio_play(SOUND_SELECT);
                 }
             } else if (!strcmp(target->type, "installed_titles")) {
@@ -4872,18 +5053,18 @@ int main(int argc, char** argv) {
                     state_dirty = true;
                     if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
                     else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
-                    status_timer = 60;
+                    status_timer = 120;
                     audio_play(SOUND_SELECT);
                 }
                 if (kDown & KEY_A) {
                     TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
                     if (tinfo) {
-                        if (launch_title_id(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
+                        if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
                             snprintf(status_message, sizeof(status_message), "Launching...");
                         } else {
                             if (status_message[0] == 0) snprintf(status_message, sizeof(status_message), "Launch failed");
                         }
-                        status_timer = 60;
+                        status_timer = 120;
                         audio_play(SOUND_SELECT);
                     }
                 }
@@ -5032,7 +5213,7 @@ int main(int argc, char** argv) {
                             }
                             audio_play(SOUND_SELECT);
                         }
-                        if (status_timer < 60) status_timer = 60;
+                        if (status_timer < 150) status_timer = 150;
                     }
                 }
             }
@@ -5096,8 +5277,11 @@ int main(int argc, char** argv) {
             if (ts->selection == 0) {
                 preview_title = "Return to HOME";
                 show_system_info = true;
+            } else if (ts->selection == 1) {
+                preview_title = "Turn Off Console";
+                show_system_info = true;
             } else {
-                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
+                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
                 if (tinfo) {
                     preview_title = tinfo->name;
                     preview_tinfo = tinfo;
@@ -5326,8 +5510,8 @@ int main(int argc, char** argv) {
                 drew_icon = true;
             }
         } else if (!show_system_info && !strcmp(target->type, "system_menu")) {
-            if (ts->selection > 0) {
-                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 1, ts->sort_mode);
+            if (ts->selection > 1) {
+                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
                 if (update_title_preview_rgba(tinfo)) {
                     float scale = 1.0f;
                     float px = 8.0f;
@@ -5612,7 +5796,7 @@ int main(int argc, char** argv) {
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
-            int total = title_count_system() + 1;
+            int total = title_count_system() + 2;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
             for (int i = 0; i < visible; i++) {
                 int idx = ts->scroll + i;
@@ -5640,8 +5824,14 @@ int main(int argc, char** argv) {
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                     float text_w = (float)(BOTTOM_W - 24);
                     draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, text_w, row_h, "Return to HOME", list_bias, sel);
+                } else if (idx == 1) {
+                    float list_bias = -2.0f;
+                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    float text_w = (float)(BOTTOM_W - 24);
+                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y, 0.6f, g_theme.list_text, text_w, row_h, "Turn Off Console", list_bias, sel);
                 } else {
-                    TitleInfo3ds* t = title_system_at_sorted(idx - 1, ts->sort_mode);
+                    TitleInfo3ds* t = title_system_at_sorted(idx - 2, ts->sort_mode);
                     if (!t) continue;
                     char shortname[56];
                     copy_str(shortname, sizeof(shortname), t->name);
@@ -5780,6 +5970,14 @@ int main(int argc, char** argv) {
         }
 
         C3D_FrameEnd(0);
+
+        if (g_title_launch_home_init_pending) {
+            if (g_title_launch_home_init_delay > 0) g_title_launch_home_init_delay--;
+            if (g_title_launch_home_init_delay <= 0) {
+                g_title_launch_home_init_pending = false;
+                aptJumpToHomeMenu();
+            }
+        }
     }
 
     icon_free(&g_top_bg_tex);

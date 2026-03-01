@@ -10,6 +10,8 @@ sd:/
     FirmMux.3dsx
     FirmMux.smdh
     FirmMux/
+      boot.3dsx   # autoboot template used by Settings toggle
+      boot.smdh   # autoboot name/icon metadata
       backgrounds/
         top/
         bottom/
