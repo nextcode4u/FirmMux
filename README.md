@@ -60,11 +60,6 @@ Tool placement:
   - `tools/bin/bannertool`
   - `tools/bin/makerom`
 
-Credits (CIA toolchain):
-
-- bannertool by carstene1ns: https://github.com/carstene1ns/3ds-bannertool
-- makerom from Project_CTR by 3DSGuy: https://github.com/3DSGuy/Project_CTR
-
 ## Run
 
 Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.
