@@ -30,6 +30,27 @@ pip install pillow
 
 The script will show a summary at the end (scanned, found, unresolved, errors).
 
+## Supported RetroArch Systems
+
+The sync script now covers all FirmMux RetroArch system keys:
+
+- `a26`, `a52`, `a78`
+- `arcade`, `cps1`, `cps2`, `cps3`
+- `col`, `cpc`
+- `gb`, `gba`
+- `gen`, `gg`
+- `intv`
+- `c64`, `c128`, `vic20`, `plus4`, `pet`
+- `nes`
+- `ngp`, `pkmni` (`pknmini` alias supported)
+- `sg`, `sms`, `snes`, `tg16`, `ws`
+- `neogeo`, `neogeocd`
+- `psx`, `vb`, `lynx`, `n64`, `jaguar`
+- `dos`, `pc98`, `scummvm`, `quake`
+- `uzebox`, `tic80`, `wasm`, `lowresnx`
+
+Note: availability of artwork still depends on what exists in Libretro thumbnail sources for the exact ROM naming.
+
 ## CLI Use
 
 Linux:

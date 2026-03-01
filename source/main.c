@@ -2539,20 +2539,47 @@ static bool update_cover_preview(const Target* target, const FileEntry* fe, cons
         return false;
     }
 
-    char path[640];
-    snprintf(path, sizeof(path), "%s/covers/%s/%s.png", CACHE_DIR, system_key, safe_base);
-    if (!strcmp(path, g_cover_preview_key)) {
+    char system_key_alt[16] = {0};
+    if (!strcmp(system_key, "pkmni")) copy_str(system_key_alt, sizeof(system_key_alt), "pknmini");
+    else if (!strcmp(system_key, "pknmini")) copy_str(system_key_alt, sizeof(system_key_alt), "pkmni");
+
+    char path_candidates[8][640];
+    int path_count = 0;
+    snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "%s/covers/%s/%s.png", CACHE_DIR, system_key, safe_base);
+    snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "%s/covers/_user/%s/%s.png", CACHE_DIR, system_key, safe_base);
+    snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "sdmc:/firmmux/covers/%s/%s.png", system_key, safe_base);
+    snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "sdmc:/firmmux/covers/_user/%s/%s.png", system_key, safe_base);
+    if (system_key_alt[0]) {
+        snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "%s/covers/%s/%s.png", CACHE_DIR, system_key_alt, safe_base);
+        snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "%s/covers/_user/%s/%s.png", CACHE_DIR, system_key_alt, safe_base);
+        snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "sdmc:/firmmux/covers/%s/%s.png", system_key_alt, safe_base);
+        snprintf(path_candidates[path_count++], sizeof(path_candidates[0]), "sdmc:/firmmux/covers/_user/%s/%s.png", system_key_alt, safe_base);
+    }
+
+    const char* found_path = NULL;
+    for (int i = 0; i < path_count; i++) {
+        if (file_exists(path_candidates[i])) {
+            found_path = path_candidates[i];
+            break;
+        }
+    }
+    if (!found_path) {
+        clear_cover_preview();
+        return false;
+    }
+
+    if (!strcmp(found_path, g_cover_preview_key)) {
         return g_cover_preview_valid;
     }
 
     clear_cover_preview();
-    copy_str(g_cover_preview_key, sizeof(g_cover_preview_key), path);
-    if (!file_exists(path)) return false;
-
-    if (!load_png_cover_rgba(path, g_cover_preview_rgba, sizeof(g_cover_preview_rgba), &g_cover_preview_w, &g_cover_preview_h)) {
+    copy_str(g_cover_preview_key, sizeof(g_cover_preview_key), found_path);
+    if (!load_png_cover_rgba(found_path, g_cover_preview_rgba, sizeof(g_cover_preview_rgba), &g_cover_preview_w, &g_cover_preview_h)) {
         clear_cover_preview();
         return false;
     }
+    // Keep cover preview on the direct RGBA path for reliability on 3DS.
+    g_cover_preview_icon.loaded = false;
     g_cover_preview_valid = true;
     return true;
 }
@@ -4162,8 +4189,15 @@ int main(int argc, char** argv) {
     return 0;
 #endif
     gfxInitDefault();
-    C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
-    C2D_Init(8192);
+    if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
+        gfxExit();
+        return 1;
+    }
+    if (!C2D_Init(8192)) {
+        C3D_Fini();
+        gfxExit();
+        return 1;
+    }
     C2D_Prepare();
     C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
     ptmuInit();
@@ -4185,9 +4219,41 @@ int main(int argc, char** argv) {
     g_textbuf = C2D_TextBufNew(32768);
     g_top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     g_bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
+    if (!g_textbuf || !g_top || !g_bottom) {
+        icon_free(&g_title_preview_icon);
+        icon_free(&g_hb_preview_icon);
+        icon_free(&g_cover_preview_icon);
+        free_fonts();
+        if (g_textbuf) C2D_TextBufDelete(g_textbuf);
+        C2D_Fini();
+        C3D_Fini();
+        mcuHwcExit();
+        cfguExit();
+        ptmSysmExit();
+        ptmuExit();
+        acExit();
+        ndspExit();
+        fsExit();
+        gfxExit();
+        return 1;
+    }
 
     Config* cfg = &g_cfg;
     if (!load_or_create_config(cfg)) {
+        icon_free(&g_title_preview_icon);
+        icon_free(&g_hb_preview_icon);
+        icon_free(&g_cover_preview_icon);
+        free_fonts();
+        C2D_TextBufDelete(g_textbuf);
+        C2D_Fini();
+        C3D_Fini();
+        mcuHwcExit();
+        cfguExit();
+        ptmSysmExit();
+        ptmuExit();
+        acExit();
+        ndspExit();
+        fsExit();
         gfxExit();
         return 1;
     }
@@ -4222,6 +4288,20 @@ int main(int argc, char** argv) {
 
     State* state = &g_state;
     if (!load_state(state)) {
+        icon_free(&g_title_preview_icon);
+        icon_free(&g_hb_preview_icon);
+        icon_free(&g_cover_preview_icon);
+        free_fonts();
+        C2D_TextBufDelete(g_textbuf);
+        C2D_Fini();
+        C3D_Fini();
+        mcuHwcExit();
+        cfguExit();
+        ptmSysmExit();
+        ptmuExit();
+        acExit();
+        ndspExit();
+        fsExit();
         gfxExit();
         return 1;
     }
@@ -5999,6 +6079,11 @@ int main(int argc, char** argv) {
     C2D_TextBufDelete(g_textbuf);
     C2D_Fini();
     C3D_Fini();
+    mcuHwcExit();
+    cfguExit();
+    ptmSysmExit();
+    ptmuExit();
+    acExit();
     ndspExit();
     fsExit();
     gfxExit();
