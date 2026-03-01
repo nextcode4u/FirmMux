@@ -15,6 +15,13 @@ build_boot() {
     APP_AUTHOR='FirmMux Team' 2>&1 | tee -a "$log_file"
 }
 
+build_cia_forwarder() {
+  make -B -j4 TARGET=firmmux_cia_forwarder \
+    APP_TITLE='FirmMux CIA Forwarder' \
+    APP_DESCRIPTION='Launches sd:/3ds/FirmMux.3dsx' \
+    APP_AUTHOR='FirmMux Team' 2>&1 | tee -a "$log_file"
+}
+
 stage_sd() {
   cp -f FirmMux.3dsx SD/3ds/FirmMux.3dsx
   cp -f FirmMux.smdh SD/3ds/FirmMux.smdh
@@ -68,6 +75,14 @@ else
 fi
 
 echo "Building optional FirmMux CIA..."
+echo "Building FirmMux CIA forwarder ELF..."
+if build_cia_forwarder; then
+  echo "CIA forwarder ELF build succeeded. Log: $log_file"
+else
+  echo "CIA forwarder ELF build failed. Log: $log_file" >&2
+  exit 1
+fi
+
 if tools/build_firmmux_cia.sh 2>&1 | tee -a "$log_file"; then
   echo "CIA step complete. Log: $log_file"
 else

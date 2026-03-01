@@ -4,10 +4,10 @@ import wave
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Prepare 2s loop-friendly WAV for 3DS banner audio.")
+    parser = argparse.ArgumentParser(description="Prepare 3s loop-friendly WAV for 3DS banner audio.")
     parser.add_argument("input_wav")
     parser.add_argument("output_wav")
-    parser.add_argument("--seconds", type=float, default=2.0)
+    parser.add_argument("--seconds", type=float, default=3.0)
     parser.add_argument("--fade-ms", type=int, default=20)
     args = parser.parse_args()
 

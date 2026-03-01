@@ -32,6 +32,7 @@ What it stages:
 
 - `sd:/cias/bootstrap.cia`
 - `sd:/cias/NTR_Launcher.cia`
+- `sd:/cias/FirmMux.cia` setup helper placeholder (from FirmMux SD package/build)
 - NTR Forwarder SD files
 - RetroArch 3DSX package files
 - Optional standalone pathfile package files (latest release)
@@ -59,3 +60,8 @@ After script completes:
 3. If `sd:/3ds/dspfirm.cdc` is missing, open Rosalina and dump DSP firmware:
 - `L + D-Pad Down + Select` -> `Miscellaneous options` -> `Dump DSP firmware`
 4. Launch FirmMux and run Health check.
+
+CIA note:
+
+- `FirmMux.cia` is not the runtime app.
+- Use the default Homebrew Menu to launch `sd:/3ds/FirmMux.3dsx`.

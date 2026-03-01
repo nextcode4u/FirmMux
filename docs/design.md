@@ -19,7 +19,7 @@ Bottom screen
 
 - L/R: cycle targets globally with wraparound
 - D-pad/Circle Pad: navigate bottom content
-- A: launch/open (placeholder messaging only)
+- A: launch/open selected entry
 - B: back (directory up or previous screen)
 - START: open options overlay
 - While options open: L/R page options list, B closes
@@ -145,4 +145,9 @@ Invalid or missing JSON is regenerated automatically.
 ## Autoboot
 
 - Intended for Luma Hbmenu autoboot
-- On cold boot, holding B bypasses FirmMux and returns to HOME
+
+## FirmMux CIA
+
+- `FirmMux.cia` is a setup helper placeholder.
+- It shows Rosalina setup instructions and exits to HOME.
+- Official runtime path is `FirmMux.3dsx` via default Homebrew Menu (3DSX mode).

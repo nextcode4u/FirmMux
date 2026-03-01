@@ -24,6 +24,12 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 			$(ARCH)
 
 CFLAGS	+=	-D__3DS__
+ifeq ($(TARGET),firmmux_cia_forwarder)
+CFLAGS	+=	-DFIRMUX_CIA_FORWARDER
+endif
+ifeq ($(TARGET),boot)
+CFLAGS	+=	-DFIRMUX_BOOT_FORWARDER
+endif
 ifneq ($(strip $(BUILD_ID)),)
 CFLAGS	+=	-DFIRMUX_BUILD_ID=\"$(BUILD_ID)\"
 endif

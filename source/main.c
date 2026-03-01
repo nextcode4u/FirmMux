@@ -4131,6 +4131,36 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
 }
 
 int main(int argc, char** argv) {
+#ifdef FIRMUX_CIA_FORWARDER
+    gfxInitDefault();
+    consoleInit(GFX_TOP, NULL);
+    printf("\x1b[1;1HFirmMux CIA Setup Helper\n\n");
+    printf("This CIA is a setup placeholder.\n");
+    printf("Use FirmMux through 3DSX mode.\n\n");
+    printf("Rosalina steps:\n");
+    printf("1) Launch this CIA.\n");
+    printf("2) Press L + Down + Select.\n");
+    printf("3) Open Miscellaneous options.\n");
+    printf("4) Switch the hb. title to current app.\n");
+    printf("5) Save settings.\n\n");
+    printf("Then launch FirmMux through the default Homebrew Menu and enable:\n");
+    printf("Settings -> Autoboot\n\n");
+    printf("In FirmMux: System Menu tab -> Return to Home.\n");
+    printf("Then test launching FirmMux from HOME Menu.\n\n");
+    printf("Press START or B to return HOME.");
+
+    while (aptMainLoop()) {
+        hidScanInput();
+        u32 kDown = hidKeysDown();
+        if (kDown & (KEY_START | KEY_B)) break;
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+    gfxExit();
+    aptJumpToHomeMenu();
+    return 0;
+#endif
     gfxInitDefault();
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
     C2D_Init(8192);
@@ -4155,26 +4185,6 @@ int main(int argc, char** argv) {
     g_textbuf = C2D_TextBufNew(32768);
     g_top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     g_bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
-
-    hidScanInput();
-    if (hidKeysHeld() & KEY_B) {
-    icon_free(&g_title_preview_icon);
-    icon_free(&g_hb_preview_icon);
-    icon_free(&g_cover_preview_icon);
-    free_fonts();
-    C2D_TextBufDelete(g_textbuf);
-    C2D_Fini();
-    C3D_Fini();
-    mcuHwcExit();
-    cfguExit();
-    ptmSysmExit();
-    ptmuExit();
-    acExit();
-    ndspExit();
-    fsExit();
-    gfxExit();
-    return 0;
-}
 
     Config* cfg = &g_cfg;
     if (!load_or_create_config(cfg)) {

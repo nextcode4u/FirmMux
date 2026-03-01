@@ -44,10 +44,10 @@ make
 
 Output: `FirmMux.3dsx`
 
-Optional CIA build support (for a HOME Menu launch icon) is wired into `build.sh`.
+Optional CIA build support (for a HOME Menu setup helper) is wired into `build.sh`.
 If these tools are installed in PATH, `build.sh` also generates:
 
-- `SD/cias/FirmMux.cia`
+- `SD/cias/FirmMux.cia` (setup helper placeholder)
 
 Tools:
 
@@ -68,6 +68,12 @@ Credits (CIA toolchain):
 ## Run
 
 Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.
+
+CIA behavior (official):
+
+- `FirmMux.cia` is a setup helper placeholder.
+- It shows Rosalina setup instructions and exits to HOME.
+- FirmMux runtime is the 3DSX app launched from the default Homebrew Menu.
 
 On first launch, FirmMux runs a setup health check and writes:
 

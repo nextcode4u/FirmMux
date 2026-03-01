@@ -16,7 +16,7 @@ APP_PRODUCT_CODE="${APP_PRODUCT_CODE:-CTR-H-FMUX}"
 APP_UNIQUE_ID_HEX="${APP_UNIQUE_ID_HEX:-0xF4D58}"
 APP_TITLE_ID_HEX="${APP_TITLE_ID_HEX:-0x000400000FF40A00}"
 
-ELF_PATH="${ELF_PATH:-$ROOT_DIR/FirmMux.elf}"
+ELF_PATH="${ELF_PATH:-$ROOT_DIR/firmmux_cia_forwarder.elf}"
 ICON_PATH="${ICON_PATH:-$ROOT_DIR/assets/icon.png}"
 BANNER_IMAGE_PATH="${BANNER_IMAGE_PATH:-$ROOT_DIR/assets/banner.png}"
 # Banner audio is required by some bannertool builds.
@@ -105,7 +105,7 @@ fi
 python3 "$ROOT_DIR/tools/prepare_banner_audio.py" \
   "$BANNER_AUDIO_PATH" \
   "$PREPARED_BANNER_AUDIO_PATH" \
-  --seconds 2.0
+  --seconds 3.0
 "$BANNERTOOL_BIN" makebanner \
   -i "$RESIZED_BANNER_IMAGE_PATH" \
   -a "$PREPARED_BANNER_AUDIO_PATH" \
@@ -132,6 +132,11 @@ SystemControlInfo:
   SaveDataSize            : 0KB
   RemasterVersion         : 0
   JumpId                  : $APP_TITLE_ID_HEX
+
+AccessControlInfo:
+  ServiceAccessControl:
+    - "APT:U"
+    - "hb:ldr"
 EOF
 
 echo "Building CIA..."
