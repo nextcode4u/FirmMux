@@ -44,6 +44,27 @@ make
 
 Output: `FirmMux.3dsx`
 
+Optional CIA build support (for a HOME Menu launch icon) is wired into `build.sh`.
+If these tools are installed in PATH, `build.sh` also generates:
+
+- `SD/cias/FirmMux.cia`
+
+Tools:
+
+- bannertool: https://github.com/carstene1ns/3ds-bannertool
+- makerom: https://github.com/3DSGuy/Project_CTR
+
+Tool placement:
+
+- You can either install both tools in PATH, or place executables here:
+  - `tools/bin/bannertool`
+  - `tools/bin/makerom`
+
+Credits (CIA toolchain):
+
+- bannertool by carstene1ns: https://github.com/carstene1ns/3ds-bannertool
+- makerom from Project_CTR by 3DSGuy: https://github.com/3DSGuy/Project_CTR
+
 ## Run
 
 Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.

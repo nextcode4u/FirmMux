@@ -18,6 +18,8 @@ build_boot() {
 stage_sd() {
   cp -f FirmMux.3dsx SD/3ds/FirmMux.3dsx
   cp -f FirmMux.smdh SD/3ds/FirmMux.smdh
+  mkdir -p SD/3ds/FirmMux
+  mkdir -p SD/cias
   if [ -f boot.3dsx ]; then
     cp -f boot.3dsx SD/3ds/FirmMux/boot.3dsx
   fi
@@ -62,6 +64,14 @@ if build_boot; then
   echo "Boot build succeeded. Log: $log_file"
 else
   echo "Boot build failed. Log: $log_file" >&2
+  exit 1
+fi
+
+echo "Building optional FirmMux CIA..."
+if tools/build_firmmux_cia.sh 2>&1 | tee -a "$log_file"; then
+  echo "CIA step complete. Log: $log_file"
+else
+  echo "CIA build failed. Log: $log_file" >&2
   exit 1
 fi
 

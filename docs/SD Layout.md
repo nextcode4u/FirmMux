@@ -26,6 +26,8 @@ sd:/
       rom_options.json
       filter_favorites.txt
       log.txt
+  cias/
+    FirmMux.cia   # optional: HOME Menu launcher icon for FirmMux
   retroarch/
     cores/
     filters/
@@ -59,6 +61,9 @@ sd:/
 ## Notes
 
 - `sd:/3ds/emulators/` is only used for RetroArch handoff/config/log files.
+- Optional `sd:/cias/FirmMux.cia` is built via external tools:
+  - bannertool by carstene1ns: https://github.com/carstene1ns/3ds-bannertool
+  - makerom from Project_CTR by 3DSGuy: https://github.com/3DSGuy/Project_CTR
 - Standalone pathfile routing is optional.
 - To enable optional standalone routing, install marker + apps:
   - `sd:/3ds/emulators/pathfile`
