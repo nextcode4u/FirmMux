@@ -17,6 +17,7 @@ FirmMux_SD*.zip
 *.Zone.Identifier
 *:Zone.Identifier
 debug.log
+SD/3ds/FirmMux/bgm/credit.txt
 
 # Source drop folders (keep parent dirs)
 ndsbs_src/nds-bootstrap-master/
