@@ -1,0 +1,57 @@
+name: Cyber Sunset
+list_item_h: 17
+line_spacing: 26
+status_bar_h: 12
+
+font_scale_top: 0.86
+font_scale_bottom: 0.83
+font_path: fonts/theme.bcfnt
+panel_alpha: 100
+row_padding: 2
+tab_padding: 2
+
+radius_global: 8.0
+radius_tabs: 10.0
+radius_list: 8.0
+radius_options: 8.0
+radius_panels: 10.0
+radius_preview: 8.0
+radius_status: 7.0
+radius_picker: 10.0
+
+accent: 0xFF3D9AFF
+top_bg: 0xFF231324
+bottom_bg: 0xFF20101B
+panel_left: 0xD9301830
+panel_right: 0xD9281426
+preview_bg: 0xCC30162A
+text_primary: 0xFFFFF1F6
+text_secondary: 0xFFE9CAD8
+text_muted: 0xFFBE92A9
+tab_bg: 0xCC351A34
+tab_sel: 0xFF3D9AFF
+tab_text: 0xFFEEF7FF
+list_bg: 0xCC2E182C
+list_sel: 0xFF3D9AFF
+list_text: 0xFFEEF7FF
+option_bg: 0xCC2E182C
+option_sel: 0xFF3D9AFF
+option_text: 0xFFEEF7FF
+option_header: 0xFFB0D8FF
+overlay_bg: 0xCC261425
+help_bg: 0xCC221122
+help_line: 0xFF9A4D7D
+help_text: 0xFFFFEEFC
+status_bg: 0xCC221122
+status_text: 0xFFEEF7FF
+status_icon: 0xFFEEF7FF
+status_dim: 0xFFC5A5BC
+status_bolt: 0xFF3D9AFF
+toast_bg: 0xE0281320
+toast_text: 0xFFEEF7FF
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.bmp
+bottom_image: botbg.bmp
+image_channel_order: rgba

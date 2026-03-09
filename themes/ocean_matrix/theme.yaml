@@ -1,0 +1,57 @@
+name: Ocean Matrix
+list_item_h: 24
+line_spacing: 26
+status_bar_h: 12
+
+font_scale_top: 0.80
+font_scale_bottom: 0.67
+font_path: fonts/theme.bcfnt
+panel_alpha: 100
+row_padding: 2
+tab_padding: 2
+
+radius_global: 9.0
+radius_tabs: 10.0
+radius_list: 8.0
+radius_options: 8.0
+radius_panels: 10.0
+radius_preview: 8.0
+radius_status: 7.0
+radius_picker: 10.0
+
+accent: 0xFFFFE864
+top_bg: 0xFF221608
+bottom_bg: 0xFF2A1A0B
+panel_left: 0xCC34250A
+panel_right: 0xCC301F0A
+preview_bg: 0xC0423118
+text_primary: 0xFFFFF9EA
+text_secondary: 0xFFF6E8C5
+text_muted: 0xFFCCB98C
+tab_bg: 0xCC473211
+tab_sel: 0xFFFFE864
+tab_text: 0xFFFFF9EA
+list_bg: 0xCC3D2B0E
+list_sel: 0xFFFFE864
+list_text: 0xFFFFF9EA
+option_bg: 0xCC3D2B0E
+option_sel: 0xFFFFE864
+option_text: 0xFFFFF9EA
+option_header: 0xFFFFEFBC
+overlay_bg: 0xCC2C1D0A
+help_bg: 0xCC2C1D0A
+help_line: 0xFF8A6F2B
+help_text: 0xFFFFF9EA
+status_bg: 0xCC2C1D0A
+status_text: 0xFFFFF9EA
+status_icon: 0xFFFFF9EA
+status_dim: 0xFFCCB98C
+status_bolt: 0xFFFFE864
+toast_bg: 0xE03A2A11
+toast_text: 0xFFFFF9EA
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.bmp
+bottom_image: botbg.bmp
+image_channel_order: rgba

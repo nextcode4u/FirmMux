@@ -1,0 +1,57 @@
+name: Ember Forest
+list_item_h: 25
+line_spacing: 26
+status_bar_h: 12
+
+font_scale_top: 0.96
+font_scale_bottom: 0.99
+font_path: fonts/theme.bcfnt
+panel_alpha: 100
+row_padding: 2
+tab_padding: 2
+
+radius_global: 8.0
+radius_tabs: 11.0
+radius_list: 8.0
+radius_options: 8.0
+radius_panels: 10.0
+radius_preview: 8.0
+radius_status: 7.0
+radius_picker: 10.0
+
+accent: 0xFF47B3FF
+top_bg: 0xFF141F1A
+bottom_bg: 0xFF121B16
+panel_left: 0xCC1E2F2A
+panel_right: 0xCC182822
+preview_bg: 0xCC1F352F
+text_primary: 0xFFE8F2F6
+text_secondary: 0xFFBED0D8
+text_muted: 0xFF89A3A9
+tab_bg: 0xCC273931
+tab_sel: 0xFF47B3FF
+tab_text: 0xFFE8F5FF
+list_bg: 0xCC21312A
+list_sel: 0xFF47B3FF
+list_text: 0xFFE8F5FF
+option_bg: 0xCC21312A
+option_sel: 0xFF47B3FF
+option_text: 0xFFE8F5FF
+option_header: 0xFFA4D9FF
+overlay_bg: 0xCC18241F
+help_bg: 0xCC18241F
+help_line: 0xFF487E6F
+help_text: 0xFFE8F5FF
+status_bg: 0xCC18241F
+status_text: 0xFFE8F5FF
+status_icon: 0xFFE8F5FF
+status_dim: 0xFF8FB0B7
+status_bolt: 0xFF47B3FF
+toast_bg: 0xE01C2D25
+toast_text: 0xFFE8F5FF
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.bmp
+bottom_image: botbg.bmp
+image_channel_order: rgba

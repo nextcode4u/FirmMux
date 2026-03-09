@@ -1,0 +1,57 @@
+name: Violet Circuit
+list_item_h: 18
+line_spacing: 25
+status_bar_h: 12
+
+font_scale_top: 0.70
+font_scale_bottom: 0.63
+font_path: fonts/theme.bcfnt
+panel_alpha: 100
+row_padding: 2
+tab_padding: 2
+
+radius_global: 11.0
+radius_tabs: 11.0
+radius_list: 8.5
+radius_options: 8.5
+radius_panels: 10.0
+radius_preview: 8.5
+radius_status: 7.0
+radius_picker: 10.0
+
+accent: 0xFFFF7BA9
+top_bg: 0xFF230D12
+bottom_bg: 0xFF2A1015
+panel_left: 0xCC3D1A22
+panel_right: 0xCC34171D
+preview_bg: 0xCC50212A
+text_primary: 0xFFFFEEF2
+text_secondary: 0xFFFFCED7
+text_muted: 0xFFD9A2AC
+tab_bg: 0xCC51242D
+tab_sel: 0xFFFF7BA9
+tab_text: 0xFFFFF3F8
+list_bg: 0xCC461F27
+list_sel: 0xFFFF7BA9
+list_text: 0xFFFFF3F8
+option_bg: 0xCC461F27
+option_sel: 0xFFFF7BA9
+option_text: 0xFFFFF3F8
+option_header: 0xFFFFC7DC
+overlay_bg: 0xCC30141A
+help_bg: 0xCC30141A
+help_line: 0xFFA34A5F
+help_text: 0xFFFFF3F8
+status_bg: 0xCC30141A
+status_text: 0xFFFFF3F8
+status_icon: 0xFFFFF3F8
+status_dim: 0xFFE0A8B6
+status_bolt: 0xFFFF7BA9
+toast_bg: 0xE034151B
+toast_text: 0xFFFFF3F8
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+top_image: topbg.bmp
+bottom_image: botbg.bmp
+image_channel_order: rgba
