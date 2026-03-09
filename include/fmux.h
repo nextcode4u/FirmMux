@@ -172,8 +172,9 @@ typedef struct {
 
 typedef struct {
     char path[256];
-    FileEntry entries[MAX_ENTRIES];
+    FileEntry* entries;
     int count;
+    int capacity;
     bool valid;
 } DirCache;
 
@@ -553,6 +554,7 @@ void icon_free(IconTexture* icon);
 bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache);
 bool cache_matches(const DirCache* cache, const char* path);
 void sort_dir_cache(DirCache* cache, int sort_mode);
+void dir_cache_release(DirCache* cache);
 
 void ensure_titles_loaded(const Config* cfg);
 void titles_mark_dirty(void);

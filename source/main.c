@@ -1,4 +1,5 @@
 #include "fmux.h"
+#include "runtime_cache.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,7 +86,6 @@ static bool g_time_24 = true;
 
 static void draw_rect(float x, float y, float w, float h, u32 color);
 
-static TargetRuntime g_runtimes[MAX_TARGETS];
 static Config g_cfg;
 static State g_state;
 static Theme g_theme;
@@ -4380,7 +4380,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    memset(g_runtimes, 0, sizeof(g_runtimes));
+    runtime_cache_init();
 
     for (int i = 0; i < cfg->target_count; i++) {
         Target* t = &cfg->targets[i];
@@ -4502,6 +4502,13 @@ int main(int argc, char** argv) {
             g_exit_requested = true;
             break;
         }
+        TargetRuntime* runtime = runtime_get(target->id);
+        if (!runtime) {
+            snprintf(status_message, sizeof(status_message), "Runtime cache error");
+            status_timer = 120;
+            g_exit_requested = true;
+            break;
+        }
         bool emu_root_exists = !is_emulator_target(target) || target_root_exists(target);
 
         if (!options_open) {
@@ -4519,6 +4526,13 @@ int main(int argc, char** argv) {
                 if (ts) g_nds_banners = ts->nds_banner_mode != 0;
                 state_dirty = true;
                 audio_play(SOUND_MOVE);
+                runtime = runtime_get(target->id);
+                if (!runtime) {
+                    snprintf(status_message, sizeof(status_message), "Runtime cache error");
+                    status_timer = 120;
+                    g_exit_requested = true;
+                    break;
+                }
             } else if (kDown & KEY_R) {
                 current_target = (current_target + 1) % cfg->target_count;
                 target = &cfg->targets[current_target];
@@ -4533,21 +4547,28 @@ int main(int argc, char** argv) {
                 if (ts) g_nds_banners = ts->nds_banner_mode != 0;
                 state_dirty = true;
                 audio_play(SOUND_MOVE);
+                runtime = runtime_get(target->id);
+                if (!runtime) {
+                    snprintf(status_message, sizeof(status_message), "Runtime cache error");
+                    status_timer = 120;
+                    g_exit_requested = true;
+                    break;
+                }
             }
         }
 
         if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             if (is_emulator_target(target) && !emu_root_exists) {
                 cache->count = 0;
                 cache->valid = true;
                 copy_str(cache->path, sizeof(cache->path), ts->path);
-                g_runtimes[current_target].root_missing = true;
+                runtime->root_missing = true;
             } else if (is_emulator_target(target)) {
-                if (g_runtimes[current_target].root_missing || !cache_matches(cache, ts->path)) {
+                if (runtime->root_missing || !cache_matches(cache, ts->path)) {
                     build_dir_cache(target, ts, cache);
                 }
-                g_runtimes[current_target].root_missing = false;
+                runtime->root_missing = false;
             } else if (!cache_matches(cache, ts->path)) {
                 build_dir_cache(target, ts, cache);
             }
@@ -5169,7 +5190,7 @@ int main(int argc, char** argv) {
             bool is_rom = !strcmp(target->type, "rom_browser");
             bool is_hb = !strcmp(target->type, "homebrew_browser");
             bool is_emu = is_emulator_target(target);
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
             bool show_card = is_rom ? show_nds_card(target, ts) : false;
             int card_offset = (is_rom && show_card) ? 1 : 0;
@@ -5396,7 +5417,7 @@ int main(int argc, char** argv) {
                 preview_title = preview_buf;
             }
         } else if (!strcmp(target->type, "homebrew_browser")) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             if (cache->count > 0) {
                 char joined[512];
                 path_join(ts->path, cache->entries[ts->selection].name, joined, sizeof(joined));
@@ -5415,7 +5436,7 @@ int main(int argc, char** argv) {
                 preview_title = "Empty";
             }
         } else if (!strcmp(target->type, "rom_browser")) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             bool show_card = show_nds_card(target, ts);
             int card_offset = show_card ? 1 : 0;
             int total = cache->count + card_offset;
@@ -5440,7 +5461,7 @@ int main(int argc, char** argv) {
                 preview_title = "Empty";
             }
         } else if (is_emulator_target(target)) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             if (!emu_root_exists) {
                 preview_title = "Missing folder";
             } else if (cache->count <= 0) {
@@ -5484,7 +5505,7 @@ int main(int argc, char** argv) {
             }
         }
         if (!show_system_info && !strcmp(target->type, "homebrew_browser")) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             if (cache->count > 0) {
                 FileEntry* fe = &cache->entries[ts->selection];
                 if (!fe->is_dir && is_3dsx_name(fe->name) && g_hb_preview_valid) {
@@ -5501,7 +5522,7 @@ int main(int argc, char** argv) {
                 }
             }
         } else if (!show_system_info && !strcmp(target->type, "rom_browser")) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             bool show_card = show_nds_card(target, ts);
             if (cache->count > 0 || show_card) {
                 int card_offset = show_card ? 1 : 0;
@@ -5567,7 +5588,7 @@ int main(int argc, char** argv) {
                 }
             }
         } else if (!show_system_info && is_emulator_target(target)) {
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             if (emu_root_exists && cache->count > 0) {
                 int entry_idx = ts->selection;
                 if (entry_idx < 0) entry_idx = 0;
@@ -5949,7 +5970,7 @@ int main(int argc, char** argv) {
             bool is_rom = !strcmp(target->type, "rom_browser");
             bool is_emu = is_emulator_target(target);
             bool root_ok = !is_emu || emu_root_exists;
-            DirCache* cache = &g_runtimes[current_target].cache;
+            DirCache* cache = &runtime->cache;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
             bool show_card = is_rom ? show_nds_card(target, ts) : false;
             int card_offset = (is_rom && show_card) ? 1 : 0;
@@ -6020,7 +6041,7 @@ int main(int argc, char** argv) {
                 bool is_rom = !strcmp(target->type, "rom_browser");
                 bool is_emu = is_emulator_target(target);
                 bool root_ok = !is_emu || emu_root_exists;
-                DirCache* cache = &g_runtimes[current_target].cache;
+                DirCache* cache = &runtime->cache;
                 bool show_card = is_rom ? show_nds_card(target, ts) : false;
                 int card_offset = (is_rom && show_card) ? 1 : 0;
                 int total = root_ok ? (cache->count + card_offset) : 0;
@@ -6077,6 +6098,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    runtime_cache_shutdown();
     icon_free(&g_top_bg_tex);
     icon_free(&g_bottom_bg_tex);
     icon_free(&g_title_preview_icon);

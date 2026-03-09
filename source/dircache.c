@@ -27,7 +27,7 @@ static int entry_cmp(const void* a, const void* b) {
 }
 
 void sort_dir_cache(DirCache* cache, int sort_mode) {
-    if (!cache || cache->count <= 1) return;
+    if (!cache || !cache->entries || cache->count <= 1) return;
     g_sort_mode = sort_mode;
     qsort(cache->entries, cache->count, sizeof(FileEntry), entry_cmp);
 }
@@ -76,6 +76,15 @@ static bool should_hide_entry(const Target* target, const TargetState* ts, const
 }
 
 bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
+    if (!target || !ts || !cache) return false;
+    if (!cache->entries) {
+        cache->entries = (FileEntry*)calloc(MAX_ENTRIES, sizeof(FileEntry));
+        if (!cache->entries) {
+            cache->capacity = 0;
+            return false;
+        }
+        cache->capacity = MAX_ENTRIES;
+    }
     cache->count = 0;
     cache->valid = false;
     char path[512];
@@ -87,7 +96,7 @@ bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
     DIR* dir = opendir(path);
     if (!dir) return false;
     struct dirent* ent;
-    while ((ent = readdir(dir)) && cache->count < MAX_ENTRIES) {
+    while ((ent = readdir(dir)) && cache->count < cache->capacity) {
         if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) continue;
         bool is_dir = ent->d_type == DT_DIR;
         if (ent->d_type == DT_UNKNOWN) {
@@ -111,4 +120,14 @@ bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
 
 bool cache_matches(const DirCache* cache, const char* path) {
     return cache->valid && !strcmp(cache->path, path);
+}
+
+void dir_cache_release(DirCache* cache) {
+    if (!cache) return;
+    if (cache->entries) free(cache->entries);
+    cache->entries = NULL;
+    cache->capacity = 0;
+    cache->count = 0;
+    cache->valid = false;
+    cache->path[0] = 0;
 }
