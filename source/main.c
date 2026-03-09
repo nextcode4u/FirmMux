@@ -1828,7 +1828,7 @@ static bool launch_installed_title_fallback_media(u64 title_id, FS_MediaType med
     return false;
 }
 
-static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
+static bool ensure_home_menu_ready(char* status_message, size_t status_size) {
     if (!g_title_launch_home_init_done) {
         g_title_launch_home_init_done = true;
         g_title_launch_home_init_pending = true;
@@ -1844,6 +1844,11 @@ static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, ch
         }
         return false;
     }
+    return true;
+}
+
+static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
+    if (!ensure_home_menu_ready(status_message, status_size)) return false;
     return launch_installed_title_fallback_media(title_id, media, status_message, status_size);
 }
 
@@ -1855,6 +1860,8 @@ static int find_target_index(const Config* cfg, const char* id) {
 }
 
 static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size) {
+    if (!ensure_home_menu_ready(status_message, status_size)) return false;
+
     u64 tid = 0;
     FS_MediaType media = MEDIATYPE_SD;
     int mode = g_state.nds_launcher_mode;
