@@ -2255,6 +2255,13 @@ static u8* downscale_rgba_nearest(const u8* src, unsigned sw, unsigned sh, unsig
     return dst;
 }
 
+static int clamp_entry_index(const DirCache* cache, int selection) {
+    if (!cache || cache->count <= 0) return -1;
+    if (selection < 0) return 0;
+    if (selection >= cache->count) return cache->count - 1;
+    return selection;
+}
+
 static void smdh_icon_to_rgba_tiled(const u16* src, u8* out) {
     for (int ty = 0; ty < 6; ty++) {
         for (int tx = 0; tx < 6; tx++) {
@@ -4594,6 +4601,7 @@ int main(int argc, char** argv) {
             else if (g_options_mode == OPT_MODE_RETRO_CHOICE) active_count = g_retro_choice_option_count;
             else if (g_options_mode == OPT_MODE_THEME_OPTIONS) active_count = g_theme_opt_count;
             else if (g_options_mode == OPT_MODE_THEME_DEBUG) active_count = g_theme_dbg_count;
+            else if (g_options_mode == OPT_MODE_THEME_SAVE) active_count = g_theme_save_count;
             if (active_count <= 0) active_count = 1;
             int prev = options_selection;
             if (rep_up) options_selection--;
@@ -5430,18 +5438,20 @@ int main(int argc, char** argv) {
         } else if (!strcmp(target->type, "homebrew_browser")) {
             DirCache* cache = &runtime->cache;
             if (cache->count > 0) {
+                int hb_idx = clamp_entry_index(cache, ts->selection);
+                if (hb_idx < 0) hb_idx = 0;
                 char joined[512];
-                path_join(ts->path, cache->entries[ts->selection].name, joined, sizeof(joined));
-                bool is_file = !cache->entries[ts->selection].is_dir;
-                if (is_file && is_3dsx_name(cache->entries[ts->selection].name)) {
+                path_join(ts->path, cache->entries[hb_idx].name, joined, sizeof(joined));
+                bool is_file = !cache->entries[hb_idx].is_dir;
+                if (is_file && is_3dsx_name(cache->entries[hb_idx].name)) {
                     char sdpath[512];
                     make_sd_path(joined, sdpath, sizeof(sdpath));
                     update_homebrew_preview(sdpath);
                     if (g_hb_preview_title[0]) preview_title = g_hb_preview_title;
-                    else preview_title = cache->entries[ts->selection].name;
+                    else preview_title = cache->entries[hb_idx].name;
                 } else {
                     clear_hb_preview();
-                    preview_title = cache->entries[ts->selection].name;
+                    preview_title = cache->entries[hb_idx].name;
                 }
             } else {
                 preview_title = "Empty";
@@ -5514,7 +5524,9 @@ int main(int argc, char** argv) {
         if (!show_system_info && !strcmp(target->type, "homebrew_browser")) {
             DirCache* cache = &runtime->cache;
             if (cache->count > 0) {
-                FileEntry* fe = &cache->entries[ts->selection];
+                int hb_idx = clamp_entry_index(cache, ts->selection);
+                if (hb_idx < 0) hb_idx = 0;
+                FileEntry* fe = &cache->entries[hb_idx];
                 if (!fe->is_dir && is_3dsx_name(fe->name) && g_hb_preview_valid) {
                     float scale = 1.0f;
                     float px = 8.0f;
