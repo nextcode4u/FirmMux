@@ -9,6 +9,8 @@
 #include <stdarg.h>
 #include <3ds/services/apt.h>
 
+#define RETRO_RULES_MAX_BYTES (1024 * 1024)
+
 static bool g_retro_log_enabled = false;
 static bool g_retro_log_touched = false;
 
@@ -313,16 +315,36 @@ static bool parse_rules_text(const char* text, RetroRules* out_rules) {
 }
 
 static void backup_external_rules(void) {
-    u8* data = NULL;
-    size_t size = 0;
-    if (!read_file(RETRO_RULES_PATH, &data, &size) || !data || size == 0) {
-        if (data) free(data);
+    FILE* fsrc = fopen(RETRO_RULES_PATH, "rb");
+    if (!fsrc) return;
+    if (fseek(fsrc, 0, SEEK_END) != 0) {
+        fclose(fsrc);
+        return;
+    }
+    long size = ftell(fsrc);
+    if (size <= 0 || size > RETRO_RULES_MAX_BYTES) {
+        fclose(fsrc);
+        return;
+    }
+    if (fseek(fsrc, 0, SEEK_SET) != 0) {
+        fclose(fsrc);
+        return;
+    }
+    char* data = (char*)malloc((size_t)size);
+    if (!data) {
+        fclose(fsrc);
+        return;
+    }
+    size_t got = fread(data, 1, (size_t)size, fsrc);
+    fclose(fsrc);
+    if (got != (size_t)size) {
+        free(data);
         return;
     }
     ensure_dirs();
     FILE* f = fopen(RETRO_RULES_BAK_PATH, "wb");
     if (f) {
-        fwrite(data, 1, size, f);
+        fwrite(data, 1, (size_t)size, f);
         fclose(f);
     }
     free(data);
@@ -343,22 +365,41 @@ bool load_or_create_retro_rules(RetroRules* rules, bool* regenerated) {
         if (regenerated) *regenerated = true;
     }
 
-    u8* data = NULL;
-    size_t size = 0;
-    if (!read_file(RETRO_RULES_PATH, &data, &size) || !data || size == 0) {
+    FILE* f = fopen(RETRO_RULES_PATH, "rb");
+    if (!f) {
         rules_set_defaults(rules);
         return false;
     }
-
-    char* text = (char*)malloc(size + 1);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        rules_set_defaults(rules);
+        return false;
+    }
+    long size = ftell(f);
+    if (size <= 0 || size > RETRO_RULES_MAX_BYTES) {
+        fclose(f);
+        rules_set_defaults(rules);
+        return false;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        rules_set_defaults(rules);
+        return false;
+    }
+    char* text = (char*)malloc((size_t)size + 1);
     if (!text) {
-        free(data);
+        fclose(f);
         rules_set_defaults(rules);
         return false;
     }
-    memcpy(text, data, size);
+    size_t got = fread(text, 1, (size_t)size, f);
+    fclose(f);
+    if (got != (size_t)size) {
+        free(text);
+        rules_set_defaults(rules);
+        return false;
+    }
     text[size] = 0;
-    free(data);
 
     if (!parse_rules_text(text, rules)) {
         free(text);

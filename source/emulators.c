@@ -5,6 +5,8 @@
 #include <strings.h>
 #include <ctype.h>
 
+#define EMULATORS_JSON_MAX_BYTES (1024 * 1024)
+
 typedef struct {
     const char* key;
     const char* display;
@@ -221,16 +223,36 @@ static bool parse_emulators_text(const char* text, EmuConfig* out_cfg) {
 }
 
 static void backup_external_emulators(void) {
-    u8* data = NULL;
-    size_t size = 0;
-    if (!read_file(RETRO_EMULATORS_PATH, &data, &size) || !data || size == 0) {
-        if (data) free(data);
+    FILE* fsrc = fopen(RETRO_EMULATORS_PATH, "rb");
+    if (!fsrc) return;
+    if (fseek(fsrc, 0, SEEK_END) != 0) {
+        fclose(fsrc);
+        return;
+    }
+    long size = ftell(fsrc);
+    if (size <= 0 || size > EMULATORS_JSON_MAX_BYTES) {
+        fclose(fsrc);
+        return;
+    }
+    if (fseek(fsrc, 0, SEEK_SET) != 0) {
+        fclose(fsrc);
+        return;
+    }
+    char* data = (char*)malloc((size_t)size);
+    if (!data) {
+        fclose(fsrc);
+        return;
+    }
+    size_t got = fread(data, 1, (size_t)size, fsrc);
+    fclose(fsrc);
+    if (got != (size_t)size) {
+        free(data);
         return;
     }
     ensure_dirs();
     FILE* f = fopen(RETRO_EMULATORS_BAK_PATH, "wb");
     if (f) {
-        fwrite(data, 1, size, f);
+        fwrite(data, 1, (size_t)size, f);
         fclose(f);
     }
     free(data);
@@ -251,22 +273,41 @@ bool load_or_create_emulators(EmuConfig* cfg, bool* regenerated) {
         return true;
     }
 
-    u8* data = NULL;
-    size_t size = 0;
-    if (!read_file(RETRO_EMULATORS_PATH, &data, &size) || !data || size == 0) {
+    FILE* f = fopen(RETRO_EMULATORS_PATH, "rb");
+    if (!f) {
         emu_set_defaults(cfg);
         return false;
     }
-
-    char* text = (char*)malloc(size + 1);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        emu_set_defaults(cfg);
+        return false;
+    }
+    long size = ftell(f);
+    if (size <= 0 || size > EMULATORS_JSON_MAX_BYTES) {
+        fclose(f);
+        emu_set_defaults(cfg);
+        return false;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        emu_set_defaults(cfg);
+        return false;
+    }
+    char* text = (char*)malloc((size_t)size + 1);
     if (!text) {
-        free(data);
+        fclose(f);
         emu_set_defaults(cfg);
         return false;
     }
-    memcpy(text, data, size);
+    size_t got = fread(text, 1, (size_t)size, f);
+    fclose(f);
+    if (got != (size_t)size) {
+        free(text);
+        emu_set_defaults(cfg);
+        return false;
+    }
     text[size] = 0;
-    free(data);
 
     if (!parse_emulators_text(text, cfg)) {
         free(text);

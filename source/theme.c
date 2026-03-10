@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include "stb_image.h"
 
+#define THEME_TEXT_MAX_BYTES (1024 * 1024)
+
 static void reorder_channels(u8* data, int count, const char* order);
 
 static bool parse_color_value(const char* v, u32* out) {
@@ -267,18 +269,40 @@ bool load_theme(Theme* t, const char* name) {
     copy_str(t->name, sizeof(t->name), name);
     char path[256];
     snprintf(path, sizeof(path), "sdmc:/3ds/FirmMux/themes/%s/theme.yaml", name);
-    u8* data = NULL;
-    size_t size = 0;
-    if (!read_file(path, &data, &size) || !data || size == 0) {
-        if (data) free(data);
+    FILE* f = fopen(path, "rb");
+    if (!f) {
         if (debug_log_enabled()) debug_log("theme: missing %s", path);
         return false;
     }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        if (debug_log_enabled()) debug_log("theme: seek failed %s", path);
+        return false;
+    }
+    long size = ftell(f);
+    if (size <= 0 || size > THEME_TEXT_MAX_BYTES) {
+        fclose(f);
+        if (debug_log_enabled()) debug_log("theme: size invalid %s (%ld)", path, size);
+        return false;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        if (debug_log_enabled()) debug_log("theme: seek reset failed %s", path);
+        return false;
+    }
     char* text = (char*)malloc(size + 1);
-    if (!text) { free(data); return false; }
-    memcpy(text, data, size);
+    if (!text) {
+        fclose(f);
+        return false;
+    }
+    size_t got = fread(text, 1, (size_t)size, f);
+    fclose(f);
+    if (got != (size_t)size) {
+        free(text);
+        if (debug_log_enabled()) debug_log("theme: read failed %s", path);
+        return false;
+    }
     text[size] = 0;
-    free(data);
     char* p = text;
     while (*p) {
         char* end = strchr(p, '\n');

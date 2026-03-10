@@ -2,6 +2,20 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define STATE_MAX_BYTES (1024 * 1024)
+
+static void state_set_defaults(State* state) {
+    if (!state) return;
+    memset(state, 0, sizeof(*state));
+    state->background_visibility_top = 50;
+    state->background_visibility_bottom = 50;
+    state->retro_log_enabled = false;
+    state->retro_chainload_enabled = true;
+    state->nds_launcher_mode = 0;
+    state->bgm_enabled = 1;
+    state->autoboot_enabled = false;
+}
+
 static bool json_find_string(const char* text, const char* key, char* out, size_t out_size) {
     char pattern[64];
     snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
@@ -28,14 +42,8 @@ static bool json_find_int(const char* text, const char* key, int* out) {
 }
 
 bool parse_state(const char* text, State* state) {
-    memset(state, 0, sizeof(*state));
-    state->background_visibility_top = 50;
-    state->background_visibility_bottom = 50;
-    state->retro_log_enabled = false;
-    state->retro_chainload_enabled = true;
-    state->nds_launcher_mode = 0;
-    state->bgm_enabled = 1;
-    state->autoboot_enabled = false;
+    if (!text || !state) return false;
+    state_set_defaults(state);
     if (!json_find_string(text, "last_target", state->last_target, sizeof(state->last_target))) {
         state->last_target[0] = 0;
     }
@@ -106,29 +114,45 @@ bool parse_state(const char* text, State* state) {
 }
 
 bool load_state(State* state) {
+    if (!state) return false;
     ensure_dirs();
     if (!file_exists(STATE_PATH) && file_exists(STATE_PATH_OLD)) {
         rename(STATE_PATH_OLD, STATE_PATH);
     }
     if (!file_exists(STATE_PATH)) {
-        memset(state, 0, sizeof(*state));
-        state->background_visibility_top = 50;
-        state->background_visibility_bottom = 50;
-        state->retro_log_enabled = false;
-        state->retro_chainload_enabled = true;
-        state->nds_launcher_mode = 0;
-        state->bgm_enabled = 1;
-        state->autoboot_enabled = false;
+        state_set_defaults(state);
         return true;
     }
-    FILE* f = fopen(STATE_PATH, "r");
+    FILE* f = fopen(STATE_PATH, "rb");
     if (!f) return false;
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        state_set_defaults(state);
+        return true;
+    }
     long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (size < 0 || size > STATE_MAX_BYTES) {
+        fclose(f);
+        state_set_defaults(state);
+        return true;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        state_set_defaults(state);
+        return true;
+    }
     char* data = (char*)malloc(size + 1);
-    if (!data) { fclose(f); return false; }
-    fread(data, 1, size, f);
+    if (!data) { fclose(f); state_set_defaults(state); return true; }
+    size_t got = 0;
+    if (size > 0) {
+        got = fread(data, 1, (size_t)size, f);
+        if (got != (size_t)size) {
+            free(data);
+            fclose(f);
+            state_set_defaults(state);
+            return true;
+        }
+    }
     data[size] = 0;
     fclose(f);
     bool ok = parse_state(data, state);
@@ -136,14 +160,7 @@ bool load_state(State* state) {
     if (ok) return true;
     rename(STATE_PATH, STATE_BAK_PATH);
     if (file_exists(STATE_PATH_OLD)) rename(STATE_PATH_OLD, STATE_BAK_PATH_OLD);
-    memset(state, 0, sizeof(*state));
-    state->background_visibility_top = 50;
-    state->background_visibility_bottom = 50;
-    state->retro_log_enabled = false;
-    state->retro_chainload_enabled = true;
-    state->nds_launcher_mode = 0;
-    state->bgm_enabled = 1;
-    state->autoboot_enabled = false;
+    state_set_defaults(state);
     return true;
 }
 
