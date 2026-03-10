@@ -57,6 +57,14 @@ TargetRuntime* runtime_get(const char* target_id) {
     }
 
     RuntimeSlot* slot = &g_slots[victim];
+    if (slot->in_use && strcmp(slot->target_id, target_id) != 0) {
+        dir_cache_release(&slot->runtime.cache);
+        slot->runtime.cache.entries = NULL;
+        slot->runtime.cache.capacity = 0;
+        slot->runtime.cache.count = 0;
+        slot->runtime.cache.valid = false;
+        slot->runtime.cache.path[0] = 0;
+    }
     slot->in_use = true;
     slot->use_tick = ++g_tick;
     copy_str(slot->target_id, sizeof(slot->target_id), target_id);

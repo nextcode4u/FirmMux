@@ -3732,7 +3732,13 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
     if (can_chainload) {
         if (retro_chainload(g_retro.retroarch_entry, status_message, status_size)) {
             retro_log_line("launch mode: chainload");
-            save_emulators(&g_emu);
+            if (!save_emulators(&g_emu)) {
+                retro_log_line("save emulators failed");
+                if (status_message && status_size > 0 && status_message[0] == 0) {
+                    snprintf(status_message, status_size, "Warning: emulator settings not saved");
+                }
+                if (status_timer && *status_timer < 120) *status_timer = 120;
+            }
             if (state_dirty) *state_dirty = false;
             if (status_message && status_size > 0) snprintf(status_message, status_size, "Launching RetroArch...");
             if (status_timer) *status_timer = 60;
@@ -3746,7 +3752,13 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
     }
 
     retro_log_line("launch mode: hbmenu");
-    save_emulators(&g_emu);
+    if (!save_emulators(&g_emu)) {
+        retro_log_line("save emulators failed");
+        if (status_message && status_size > 0 && status_message[0] == 0) {
+            snprintf(status_message, status_size, "Warning: emulator settings not saved");
+        }
+        if (status_timer && *status_timer < 120) *status_timer = 120;
+    }
     if (state_dirty) *state_dirty = false;
     g_exit_after_status = true;
     if (!known) snprintf(status_message, status_size, "Core unknown. Launch RetroArch from hbmenu");
@@ -3758,15 +3770,17 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
 static void rebuild_targets_from_backend(Config* cfg, State* state, int* current_target, bool* state_dirty, char* status_message, size_t status_size, int* status_timer) {
     bool regen_rules = false;
     bool regen_emu = false;
-    load_or_create_retro_rules(&g_retro, &regen_rules);
-    load_or_create_emulators(&g_emu, &regen_emu);
+    bool rules_ok = load_or_create_retro_rules(&g_retro, &regen_rules);
+    bool emu_ok = load_or_create_emulators(&g_emu, &regen_emu);
     if (regen_rules) retro_log_line("retroarch_rules.json regenerated");
     if (regen_emu) retro_log_line("emulators.json regenerated");
+    if (!rules_ok) retro_log_line("retroarch_rules.json load failed (defaults/fallback active)");
+    if (!emu_ok) retro_log_line("emulators.json load failed (defaults/fallback active)");
     capture_base_targets(cfg);
     apply_emulator_targets(cfg);
     prune_state_targets(state, cfg);
     refresh_options_menu(cfg);
-    if (regen_rules || regen_emu) {
+    if (regen_rules || regen_emu || !rules_ok || !emu_ok) {
         snprintf(status_message, status_size, "Retro defaults regenerated");
         if (status_timer) *status_timer = 120;
     }
@@ -4681,7 +4695,11 @@ int main(int argc, char** argv) {
                     } else if (options_selection == 1) {
                         EmuSystem* sys = &g_emu.systems[g_emu_detail_index];
                         sys->enabled = !sys->enabled;
-                        save_emulators(&g_emu);
+                        if (!save_emulators(&g_emu)) {
+                            snprintf(status_message, sizeof(status_message), "Failed to save emulators.json");
+                            status_timer = 120;
+                            retro_log_line("save emulators failed");
+                        }
                         rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
                         build_emulator_options();
                         build_emulator_detail_options(g_emu_detail_index);
@@ -4694,7 +4712,11 @@ int main(int argc, char** argv) {
                     } else if (options_selection == 2) {
                         EmuSystem* sys = &g_emu.systems[g_emu_detail_index];
                         emu_cycle_rom_folder(sys);
-                        save_emulators(&g_emu);
+                        if (!save_emulators(&g_emu)) {
+                            snprintf(status_message, sizeof(status_message), "Failed to save emulators.json");
+                            status_timer = 120;
+                            retro_log_line("save emulators failed");
+                        }
                         rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
                         build_emulator_options();
                         build_emulator_detail_options(g_emu_detail_index);
@@ -5334,6 +5356,10 @@ int main(int argc, char** argv) {
                     next_state_save_ms = 0;
                     last_save_ms = now;
                 } else {
+                    if (status_message[0] == 0) {
+                        snprintf(status_message, sizeof(status_message), "Warning: state save failed");
+                        status_timer = 120;
+                    }
                     next_state_save_ms = now + 2000;
                 }
             }
@@ -5572,7 +5598,7 @@ int main(int argc, char** argv) {
                     const u8* rgba = NULL;
                     int pw = 0;
                     int ph = 0;
-                    if (preview_get_ready_texture(0, &rgba, &pw, &ph) && rgba && pw > 0 && ph > 0) {
+                    if (preview_get_ready_texture(g_cover_preview_generation, &rgba, &pw, &ph) && rgba && pw > 0 && ph > 0) {
                         float scale = 1.0f;
                         float px = 8.0f;
                         float py = banner_y;
