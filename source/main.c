@@ -4197,24 +4197,38 @@ int main(int argc, char** argv) {
     aptJumpToHomeMenu();
     return 0;
 #endif
+    bool gfx_inited = false;
+    bool c3d_inited = false;
+    bool c2d_inited = false;
+    bool fs_inited = false;
+    bool ptmu_inited = false;
+    bool ptmsysm_inited = false;
+    bool ac_inited = false;
+    bool cfgu_inited = false;
+    bool mcu_inited = false;
+    bool audio_inited = false;
+    int rc = 1;
+
     gfxInitDefault();
+    gfx_inited = true;
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
-        gfxExit();
-        return 1;
+        goto cleanup;
     }
+    c3d_inited = true;
     if (!C2D_Init(8192)) {
-        C3D_Fini();
-        gfxExit();
-        return 1;
+        goto cleanup;
     }
+    c2d_inited = true;
     C2D_Prepare();
     C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
-    ptmuInit();
-    ptmSysmInit();
-    acInit();
-    cfguInit();
+    if (R_FAILED(fsInit())) goto cleanup;
+    fs_inited = true;
+    if (R_SUCCEEDED(ptmuInit())) ptmu_inited = true;
+    if (R_SUCCEEDED(ptmSysmInit())) ptmsysm_inited = true;
+    if (R_SUCCEEDED(acInit())) ac_inited = true;
+    if (R_SUCCEEDED(cfguInit())) cfgu_inited = true;
     load_time_format();
-    mcuHwcInit();
+    if (R_SUCCEEDED(mcuHwcInit())) mcu_inited = true;
     aptSetHomeAllowed(true);
     {
         bool is_new = false;
@@ -4229,40 +4243,12 @@ int main(int argc, char** argv) {
     g_top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     g_bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
     if (!g_textbuf || !g_top || !g_bottom) {
-        icon_free(&g_title_preview_icon);
-        icon_free(&g_hb_preview_icon);
-        free_fonts();
-        if (g_textbuf) C2D_TextBufDelete(g_textbuf);
-        C2D_Fini();
-        C3D_Fini();
-        mcuHwcExit();
-        cfguExit();
-        ptmSysmExit();
-        ptmuExit();
-        acExit();
-        ndspExit();
-        fsExit();
-        gfxExit();
-        return 1;
+        goto cleanup;
     }
 
     Config* cfg = &g_cfg;
     if (!load_or_create_config(cfg)) {
-        icon_free(&g_title_preview_icon);
-        icon_free(&g_hb_preview_icon);
-        free_fonts();
-        C2D_TextBufDelete(g_textbuf);
-        C2D_Fini();
-        C3D_Fini();
-        mcuHwcExit();
-        cfguExit();
-        ptmSysmExit();
-        ptmuExit();
-        acExit();
-        ndspExit();
-        fsExit();
-        gfxExit();
-        return 1;
+        goto cleanup;
     }
     for (int i = 0; i < cfg->target_count; i++) {
         Target* t = &cfg->targets[i];
@@ -4295,21 +4281,7 @@ int main(int argc, char** argv) {
 
     State* state = &g_state;
     if (!load_state(state)) {
-        icon_free(&g_title_preview_icon);
-        icon_free(&g_hb_preview_icon);
-        free_fonts();
-        C2D_TextBufDelete(g_textbuf);
-        C2D_Fini();
-        C3D_Fini();
-        mcuHwcExit();
-        cfguExit();
-        ptmSysmExit();
-        ptmuExit();
-        acExit();
-        ndspExit();
-        fsExit();
-        gfxExit();
-        return 1;
+        goto cleanup;
     }
 
     if (!cfg->remember_last_position) {
@@ -4362,7 +4334,11 @@ int main(int argc, char** argv) {
     rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
 
     apply_theme_from_state_or_config(cfg, state);
-    audio_init();
+    audio_inited = audio_init();
+    if (!audio_inited) {
+        snprintf(status_message, sizeof(status_message), "Audio init failed");
+        status_timer = 180;
+    }
     audio_set_bgm_enabled(state->bgm_enabled);
 
     if (state->last_target[0] == 0) copy_str(state->last_target, sizeof(state->last_target), cfg->default_target);
@@ -6091,6 +6067,9 @@ int main(int argc, char** argv) {
         }
     }
 
+    rc = 0;
+
+cleanup:
     preview_manager_shutdown();
     runtime_cache_shutdown();
     icon_free(&g_top_bg_tex);
@@ -6098,16 +6077,16 @@ int main(int argc, char** argv) {
     icon_free(&g_title_preview_icon);
     icon_free(&g_hb_preview_icon);
     free_fonts();
-    C2D_TextBufDelete(g_textbuf);
-    C2D_Fini();
-    C3D_Fini();
-    mcuHwcExit();
-    cfguExit();
-    ptmSysmExit();
-    ptmuExit();
-    acExit();
-    ndspExit();
-    fsExit();
-    gfxExit();
-    return 0;
+    if (g_textbuf) C2D_TextBufDelete(g_textbuf);
+    if (c2d_inited) C2D_Fini();
+    if (c3d_inited) C3D_Fini();
+    if (mcu_inited) mcuHwcExit();
+    if (cfgu_inited) cfguExit();
+    if (ptmsysm_inited) ptmSysmExit();
+    if (ptmu_inited) ptmuExit();
+    if (ac_inited) acExit();
+    if (audio_inited) ndspExit();
+    if (fs_inited) fsExit();
+    if (gfx_inited) gfxExit();
+    return rc;
 }
