@@ -11,6 +11,19 @@
 
 static bool g_debug_log_enabled = false;
 
+bool format_to_buf(char* dst, size_t dst_size, const char* fmt, ...) {
+    if (!dst || dst_size == 0 || !fmt) return false;
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(dst, dst_size, fmt, ap);
+    va_end(ap);
+    if (n < 0 || (size_t)n >= dst_size) {
+        dst[0] = 0;
+        return false;
+    }
+    return true;
+}
+
 void trim(char* s) {
     size_t len = strlen(s);
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r' || isspace((unsigned char)s[len - 1]))) {

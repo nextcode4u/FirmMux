@@ -475,6 +475,7 @@ void copy_str(char* dst, size_t dst_size, const char* src);
 bool parse_bool(const char* v, bool* out);
 void strip_quotes(char* s);
 bool parse_value(const char* line, char* out, size_t out_size);
+bool format_to_buf(char* dst, size_t dst_size, const char* fmt, ...);
 void normalize_path(char* path);
 void normalize_path_sd(char* path, size_t path_size);
 void normalize_path_to_sd_colon(char* path, size_t path_size);

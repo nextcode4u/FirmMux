@@ -151,11 +151,17 @@ bool homebrew_launch_3dsx(const char* sd_path, char* status_message, size_t stat
     if (status_message && status_size > 0) status_message[0] = 0;
     if (!sd_path || !sd_path[0]) return false;
     char norm[512];
-    snprintf(norm, sizeof(norm), "%s", sd_path);
+    if (!format_to_buf(norm, sizeof(norm), "%s", sd_path)) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "3DSX path too long");
+        return false;
+    }
     normalize_path_sd(norm, sizeof(norm));
     if (!strncmp(norm, "sd:/", 4)) {
         char tmp[512];
-        snprintf(tmp, sizeof(tmp), "sdmc:/%s", norm + 4);
+        if (!format_to_buf(tmp, sizeof(tmp), "sdmc:/%s", norm + 4)) {
+            if (status_message && status_size > 0) snprintf(status_message, status_size, "3DSX path too long");
+            return false;
+        }
         copy_str(norm, sizeof(norm), tmp);
     }
     const char* target = norm;

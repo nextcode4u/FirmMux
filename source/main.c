@@ -3228,23 +3228,21 @@ static bool standalone_app_installed(const char* app_sdmc) {
     return app_sdmc && app_sdmc[0] && file_exists(app_sdmc);
 }
 
-static void sd_path_to_sdmc(const char* in, char* out, size_t out_size) {
-    if (!out || out_size == 0) return;
+static bool sd_path_to_sdmc(const char* in, char* out, size_t out_size) {
+    if (!out || out_size == 0) return false;
     out[0] = 0;
-    if (!in || !in[0]) return;
+    if (!in || !in[0]) return false;
     if (!strncasecmp(in, "sdmc:/", 6)) {
         copy_str(out, out_size, in);
-        return;
+        return out[0] != 0;
     }
     if (!strncasecmp(in, "sd:/", 4)) {
-        snprintf(out, out_size, "sdmc:/%s", in + 4);
-        return;
+        return format_to_buf(out, out_size, "sdmc:/%s", in + 4);
     }
     if (in[0] == '/') {
-        snprintf(out, out_size, "sdmc:%s", in);
-        return;
+        return format_to_buf(out, out_size, "sdmc:%s", in);
     }
-    snprintf(out, out_size, "sdmc:/%s", in);
+    return format_to_buf(out, out_size, "sdmc:/%s", in);
 }
 
 static bool write_pathfile_atomic(const char* path_sdmc, const char* rom_path_sd) {
@@ -3252,16 +3250,25 @@ static bool write_pathfile_atomic(const char* path_sdmc, const char* rom_path_sd
     mkdir(STANDALONE_PATHFILE_DIR, 0777);
 
     char rom_sdmc[512];
-    sd_path_to_sdmc(rom_path_sd, rom_sdmc, sizeof(rom_sdmc));
+    if (!sd_path_to_sdmc(rom_path_sd, rom_sdmc, sizeof(rom_sdmc))) {
+        retro_log_line("standalone pathfile invalid rom path: %s", rom_path_sd ? rom_path_sd : "(null)");
+        return false;
+    }
     normalize_path_sd(rom_sdmc, sizeof(rom_sdmc));
     if (!strncasecmp(rom_sdmc, "sd:/", 4)) {
         char forced[512];
-        snprintf(forced, sizeof(forced), "sdmc:/%s", rom_sdmc + 4);
+        if (!format_to_buf(forced, sizeof(forced), "sdmc:/%s", rom_sdmc + 4)) {
+            retro_log_line("standalone pathfile rom path too long");
+            return false;
+        }
         copy_str(rom_sdmc, sizeof(rom_sdmc), forced);
     }
 
     char tmp[640];
-    snprintf(tmp, sizeof(tmp), "%s.tmp", path_sdmc);
+    if (!format_to_buf(tmp, sizeof(tmp), "%s.tmp", path_sdmc)) {
+        retro_log_line("standalone pathfile temp path too long: %s", path_sdmc);
+        return false;
+    }
 
     FILE* f = fopen(tmp, "w");
     if (!f) {

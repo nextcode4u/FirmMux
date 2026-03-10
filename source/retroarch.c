@@ -511,51 +511,47 @@ int retro_extensions_for_system(const RetroRules* rules, const char* system_key,
     return count;
 }
 
-static void sd_to_sdmc_path(const char* in, char* out, size_t out_size) {
-    if (!out || out_size == 0) return;
+static bool sd_to_sdmc_path(const char* in, char* out, size_t out_size) {
+    if (!out || out_size == 0) return false;
     out[0] = 0;
-    if (!in || !in[0]) return;
+    if (!in || !in[0]) return false;
     if (!strncasecmp(in, "sdmc:/", 6)) {
         copy_str(out, out_size, in);
-        return;
+        return out[0] != 0;
     }
     if (!strncasecmp(in, "sd:/", 4)) {
-        snprintf(out, out_size, "sdmc:/%s", in + 4);
-        return;
+        return format_to_buf(out, out_size, "sdmc:/%s", in + 4);
     }
     if (in[0] == '/') {
-        snprintf(out, out_size, "sdmc:%s", in);
-        return;
+        return format_to_buf(out, out_size, "sdmc:%s", in);
     }
-    snprintf(out, out_size, "sdmc:/%s", in);
+    return format_to_buf(out, out_size, "sdmc:/%s", in);
 }
 
-static void sd_to_hbldr_path(const char* in, char* out, size_t out_size) {
-    if (!out || out_size == 0) return;
+static bool sd_to_hbldr_path(const char* in, char* out, size_t out_size) {
+    if (!out || out_size == 0) return false;
     out[0] = 0;
-    if (!in || !in[0]) return;
+    if (!in || !in[0]) return false;
     char tmp[512];
     copy_str(tmp, sizeof(tmp), in);
     normalize_path_sd(tmp, sizeof(tmp));
     if (!strncasecmp(tmp, "sdmc:/", 6)) {
-        snprintf(out, out_size, "%s", tmp + 5);
-        return;
+        return format_to_buf(out, out_size, "%s", tmp + 5);
     }
     if (!strncasecmp(tmp, "sd:/", 4)) {
-        snprintf(out, out_size, "/%s", tmp + 4);
-        return;
+        return format_to_buf(out, out_size, "/%s", tmp + 4);
     }
     if (tmp[0] == '/') {
         copy_str(out, out_size, tmp);
-        return;
+        return out[0] != 0;
     }
-    snprintf(out, out_size, "/%s", tmp);
+    return format_to_buf(out, out_size, "/%s", tmp);
 }
 
 bool retro_retroarch_exists(const RetroRules* rules) {
     char path[512];
     const char* entry = (rules && rules->retroarch_entry[0]) ? rules->retroarch_entry : RETRO_ENTRY_DEFAULT;
-    sd_to_sdmc_path(entry, path, sizeof(path));
+    if (!sd_to_sdmc_path(entry, path, sizeof(path))) return false;
     return file_exists(path);
 }
 
@@ -616,7 +612,11 @@ static Result hbldr_set_argv(Handle hbldr, const char* arg0) {
 bool retro_chainload(const char* retroarch_sd_path, char* status_message, size_t status_size) {
     if (status_message && status_size > 0) status_message[0] = 0;
     char target[512];
-    sd_to_hbldr_path(retroarch_sd_path, target, sizeof(target));
+    if (!sd_to_hbldr_path(retroarch_sd_path, target, sizeof(target))) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "RetroArch path too long");
+        retro_log_line("chainload: invalid target path");
+        return false;
+    }
     Handle hbldr = 0;
     Result rc = svcConnectToPort(&hbldr, "hb:ldr");
     retro_log_line("chainload: connect rc=%08lX", (unsigned long)rc);
@@ -656,7 +656,11 @@ static bool write_handoff_file(const char* handoff_sd_path, const char* rom_sd_p
     normalize_path_sd(handoff_sd_norm, sizeof(handoff_sd_norm));
 
     char handoff_sdmc[512];
-    sd_to_sdmc_path(handoff_sd_norm, handoff_sdmc, sizeof(handoff_sdmc));
+    if (!sd_to_sdmc_path(handoff_sd_norm, handoff_sdmc, sizeof(handoff_sdmc))) {
+        if (is_primary && status_message && status_size > 0) snprintf(status_message, status_size, "launch path too long");
+        retro_log_line("handoff path invalid: %s", handoff_sd_norm);
+        return false;
+    }
 
     char handoff_dir[512];
     copy_str(handoff_dir, sizeof(handoff_dir), handoff_sdmc);

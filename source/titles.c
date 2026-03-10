@@ -39,8 +39,7 @@ static void load_sys_blacklist(void) {
         if (!*p) continue;
         if (*p == '#') continue;
         if (g_sys_blacklist_count >= 64) break;
-        strncpy(g_sys_blacklist[g_sys_blacklist_count], p, sizeof(g_sys_blacklist[0]) - 1);
-        g_sys_blacklist[g_sys_blacklist_count][sizeof(g_sys_blacklist[0]) - 1] = 0;
+        copy_str(g_sys_blacklist[g_sys_blacklist_count], sizeof(g_sys_blacklist[0]), p);
         g_sys_blacklist_count++;
     }
     fclose(f);
