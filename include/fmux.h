@@ -469,6 +469,7 @@ void audio_play(int id);
 void audio_set_bgm_enabled(bool enabled);
 void audio_set_theme_paths(const char* ui_sounds_dir, const char* bgm_path);
 void audio_update(void);
+void audio_shutdown(void);
 
 void trim(char* s);
 void copy_str(char* dst, size_t dst_size, const char* src);

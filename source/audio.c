@@ -173,10 +173,10 @@ bool audio_init(void) {
     ndspSetOutputMode(NDSP_OUTPUT_STEREO);
     ndspSetMasterVol(0.8f);
     const char* names[SOUND_MAX] = {
-        "tap_01.wav",
+        "tap.wav",
         "select.wav",
         "toggle_off.wav",
-        "swipe_01.wav",
+        "swipe.wav",
         "toggle_on.wav",
         "caution.wav"
     };
@@ -187,8 +187,8 @@ bool audio_init(void) {
         ok = load_wav(path, &g_sounds[i]);
         if (!ok) {
             const char* alt = NULL;
-            if (!strcasecmp(names[i], "tap_01.wav")) alt = "tap.wav";
-            else if (!strcasecmp(names[i], "swipe_01.wav")) alt = "swipe.wav";
+            if (!strcasecmp(names[i], "tap.wav")) alt = "tap_01.wav";
+            else if (!strcasecmp(names[i], "swipe.wav")) alt = "swipe_01.wav";
             if (alt) {
                 build_sound_path(path, sizeof(path), g_ui_sounds_dir, alt);
                 ok = load_wav(path, &g_sounds[i]);
@@ -199,8 +199,8 @@ bool audio_init(void) {
             ok = load_wav(path, &g_sounds[i]);
             if (!ok) {
                 const char* alt = NULL;
-                if (!strcasecmp(names[i], "tap_01.wav")) alt = "tap.wav";
-                else if (!strcasecmp(names[i], "swipe_01.wav")) alt = "swipe.wav";
+                if (!strcasecmp(names[i], "tap.wav")) alt = "tap_01.wav";
+                else if (!strcasecmp(names[i], "swipe.wav")) alt = "swipe_01.wav";
                 if (alt) {
                     build_sound_path(path, sizeof(path), "sdmc:/3ds/FirmMux/ui sounds", alt);
                     load_wav(path, &g_sounds[i]);
@@ -382,4 +382,20 @@ void audio_update(void) {
     bgm_start_on_channel(g_bgm_channel, &g_bgm, 0.5f);
     g_bgm_playing = true;
     g_bgm_pending_start = false;
+}
+
+void audio_shutdown(void) {
+    for (int i = 0; i < SOUND_MAX; i++) {
+        sound_free(&g_sounds[i]);
+    }
+    sound_free(&g_bgm);
+    g_bgm_playing = false;
+    g_bgm_pending_start = false;
+    if (g_audio_ready) {
+        for (int ch = 0; ch <= 7; ch++) {
+            ndspChnWaveBufClear(ch);
+            ndspChnReset(ch);
+        }
+    }
+    g_audio_ready = false;
 }

@@ -6105,6 +6105,10 @@ int main(int argc, char** argv) {
 cleanup:
     preview_manager_shutdown();
     runtime_cache_shutdown();
+    if (g_easter_rgba) {
+        free(g_easter_rgba);
+        g_easter_rgba = NULL;
+    }
     icon_free(&g_top_bg_tex);
     icon_free(&g_bottom_bg_tex);
     icon_free(&g_title_preview_icon);
@@ -6118,7 +6122,10 @@ cleanup:
     if (ptmsysm_inited) ptmSysmExit();
     if (ptmu_inited) ptmuExit();
     if (ac_inited) acExit();
-    if (audio_inited) ndspExit();
+    if (audio_inited) {
+        audio_shutdown();
+        ndspExit();
+    }
     if (fs_inited) fsExit();
     if (gfx_inited) gfxExit();
     return rc;
