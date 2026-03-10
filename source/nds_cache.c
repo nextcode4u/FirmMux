@@ -71,7 +71,10 @@ bool icon_from_rgba(IconTexture* icon, const u8* data, int w, int h) {
     C3D_TexSetWrap(&icon->tex, GPU_CLAMP_TO_BORDER, GPU_CLAMP_TO_BORDER);
     size_t buf_size = (size_t)tw * (size_t)th * 4;
     u8* buf = (u8*)linearAlloc(buf_size);
-    if (!buf) return false;
+    if (!buf) {
+        C3D_TexDelete(&icon->tex);
+        return false;
+    }
     memset(buf, 0, buf_size);
     for (int y = 0; y < h; y++) {
         memcpy(buf + (size_t)y * (size_t)tw * 4, data + (size_t)y * (size_t)w * 4, (size_t)w * 4);
