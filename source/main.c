@@ -73,6 +73,11 @@ static IconTexture g_hb_preview_icon;
 static u16 g_hb_preview_raw[48 * 48];
 static u32 g_cover_preview_generation = 1;
 static bool g_cover_preview_request_active = false;
+static char g_cover_preview_last_target_id[32];
+static char g_cover_preview_last_path[256];
+static char g_cover_preview_last_name[256];
+static bool g_cover_preview_last_has_cover = false;
+static char g_cover_preview_last_cover_path[640];
 static bool g_is_new_3ds = false;
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
@@ -2551,21 +2556,28 @@ static bool resolve_cover_preview_path(const Target* target, const FileEntry* fe
     return out_path[0] != 0;
 }
 
+static void cover_preview_reset_state(bool clear_selection_cache) {
+    if (g_cover_preview_request_active) {
+        g_cover_preview_generation++;
+        preview_cancel(g_cover_preview_generation);
+        g_cover_preview_request_active = false;
+    }
+    if (clear_selection_cache) {
+        g_cover_preview_last_target_id[0] = 0;
+        g_cover_preview_last_path[0] = 0;
+        g_cover_preview_last_name[0] = 0;
+        g_cover_preview_last_cover_path[0] = 0;
+        g_cover_preview_last_has_cover = false;
+    }
+}
+
 static void request_cover_preview_for_selection(const Target* target, const TargetState* ts, const TargetRuntime* runtime, bool emu_root_exists) {
     if (!target || !ts || !runtime || !is_emulator_target(target)) {
-        if (g_cover_preview_request_active) {
-            g_cover_preview_generation++;
-            preview_cancel(g_cover_preview_generation);
-            g_cover_preview_request_active = false;
-        }
+        cover_preview_reset_state(true);
         return;
     }
     if (!emu_root_exists || runtime->cache.count <= 0) {
-        if (g_cover_preview_request_active) {
-            g_cover_preview_generation++;
-            preview_cancel(g_cover_preview_generation);
-            g_cover_preview_request_active = false;
-        }
+        cover_preview_reset_state(true);
         return;
     }
 
@@ -2574,13 +2586,22 @@ static void request_cover_preview_for_selection(const Target* target, const Targ
     if (entry_idx >= runtime->cache.count) entry_idx = runtime->cache.count - 1;
     const FileEntry* fe = &runtime->cache.entries[entry_idx];
     if (!fe || fe->is_dir) {
-        if (g_cover_preview_request_active) {
-            g_cover_preview_generation++;
-            preview_cancel(g_cover_preview_generation);
-            g_cover_preview_request_active = false;
+        cover_preview_reset_state(true);
+        return;
+    }
+
+    if (!strcmp(g_cover_preview_last_target_id, target->id)
+        && !strcmp(g_cover_preview_last_path, ts->path)
+        && !strcmp(g_cover_preview_last_name, fe->name)) {
+        if (g_cover_preview_last_has_cover && g_cover_preview_last_cover_path[0]) {
+            g_cover_preview_request_active = true;
+            preview_request(g_cover_preview_last_cover_path, g_cover_preview_generation);
         }
         return;
     }
+    copy_str(g_cover_preview_last_target_id, sizeof(g_cover_preview_last_target_id), target->id);
+    copy_str(g_cover_preview_last_path, sizeof(g_cover_preview_last_path), ts->path);
+    copy_str(g_cover_preview_last_name, sizeof(g_cover_preview_last_name), fe->name);
 
     char joined[512];
     path_join(ts->path, fe->name, joined, sizeof(joined));
@@ -2588,14 +2609,14 @@ static void request_cover_preview_for_selection(const Target* target, const Targ
     make_sd_path(joined, sdpath, sizeof(sdpath));
     char cover_path[640];
     if (!resolve_cover_preview_path(target, fe, sdpath, cover_path, sizeof(cover_path))) {
-        if (g_cover_preview_request_active) {
-            g_cover_preview_generation++;
-            preview_cancel(g_cover_preview_generation);
-            g_cover_preview_request_active = false;
-        }
+        g_cover_preview_last_has_cover = false;
+        g_cover_preview_last_cover_path[0] = 0;
+        cover_preview_reset_state(false);
         return;
     }
 
+    g_cover_preview_last_has_cover = true;
+    copy_str(g_cover_preview_last_cover_path, sizeof(g_cover_preview_last_cover_path), cover_path);
     g_cover_preview_request_active = true;
     preview_request(cover_path, g_cover_preview_generation);
 }
