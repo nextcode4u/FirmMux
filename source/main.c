@@ -252,6 +252,7 @@ enum {
     RETRO_OPT_ACTION_REWIND,
     RETRO_OPT_ACTION_SAVE,
     RETRO_OPT_ACTION_RESET,
+    RETRO_OPT_ACTION_PATHFILE_TOGGLE,
     RETRO_OPT_ACTION_CORE_PICK,
     RETRO_OPT_ACTION_CPU_PICK,
     RETRO_OPT_ACTION_FRAMESKIP_PICK,
@@ -303,6 +304,7 @@ enum {
 static int clamp_pct(int v);
 static void refresh_options_menu(const Config* cfg);
 static bool is_emulator_target(const Target* target);
+static bool pathfile_toggle_available_for_system(const char* system_key);
 
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
@@ -1334,6 +1336,17 @@ static void build_retro_rom_options(const char* sd_path) {
 
     g_retro_video_filter_count = retro_shader_favorites_load(g_retro_video_filters, (int)(sizeof(g_retro_video_filters) / sizeof(g_retro_video_filters[0])));
     g_retro_audio_filter_count = retro_filter_list_load(RETRO_AUDIO_FILTERS_DIR, g_retro_audio_filters, (int)(sizeof(g_retro_audio_filters) / sizeof(g_retro_audio_filters[0])));
+
+    bool has_pathfile_toggle = pathfile_toggle_available_for_system(g_retro_opt_system);
+    bool pathfile_enabled = false;
+    if (has_pathfile_toggle) {
+        const EmuSystem* sys = emu_find_by_key(&g_emu, g_retro_opt_system);
+        pathfile_enabled = (sys && sys->pathfile_enabled);
+        o = &g_retro_opt_options[g_retro_opt_option_count++];
+        snprintf(o->label, sizeof(o->label), "Pathfile: %s", pathfile_enabled ? "On" : "Off");
+        o->action = RETRO_OPT_ACTION_PATHFILE_TOGGLE;
+        if (pathfile_enabled) return;
+    }
 
     const char* core_label = g_retro_opt.core_override[0] ? g_retro_opt.core_override : "Default";
     o = &g_retro_opt_options[g_retro_opt_option_count++];
@@ -3256,6 +3269,18 @@ static bool standalone_app_installed(const char* app_sdmc) {
     return app_sdmc && app_sdmc[0] && file_exists(app_sdmc);
 }
 
+static bool pathfile_toggle_available_for_system(const char* system_key) {
+    if (!system_key || !system_key[0]) return false;
+    if (!emu_pathfile_supported_key(system_key)) return false;
+    return standalone_package_installed();
+}
+
+static bool pathfile_mode_enabled_for_system(const char* system_key) {
+    if (!pathfile_toggle_available_for_system(system_key)) return false;
+    const EmuSystem* sys = emu_find_by_key(&g_emu, system_key);
+    return (sys && sys->pathfile_enabled);
+}
+
 static bool sd_path_to_sdmc(const char* in, char* out, size_t out_size) {
     if (!out || out_size == 0) return false;
     out[0] = 0;
@@ -3469,13 +3494,15 @@ static void apply_emulator_targets(Config* cfg) {
     for (int i = 0; i < emu_count && cfg->target_count < MAX_TARGETS; i++) {
         const EmuSystem* sys = &g_emu.systems[i];
         if (!sys->enabled) continue;
-        if (!g_is_new_3ds &&
-            (!strcasecmp(sys->key, "n64") ||
-             !strcasecmp(sys->key, "psx") ||
-             !strcasecmp(sys->key, "cps3") ||
-             !strcasecmp(sys->key, "pc98") ||
-             !strcasecmp(sys->key, "dos"))) {
-            continue;
+        if (!g_is_new_3ds) {
+            if (!strcasecmp(sys->key, "n64")) {
+                if (!pathfile_mode_enabled_for_system(sys->key)) continue;
+            } else if (!strcasecmp(sys->key, "psx") ||
+                       !strcasecmp(sys->key, "cps3") ||
+                       !strcasecmp(sys->key, "pc98") ||
+                       !strcasecmp(sys->key, "dos")) {
+                continue;
+            }
         }
         if (emu_added >= emu_safe_boot_cap) break;
         Target* t = &cfg->targets[cfg->target_count];
@@ -3577,6 +3604,11 @@ static void build_emulator_detail_options(int index) {
     o = &g_emu_detail_options[g_emu_detail_count++];
     snprintf(o->label, sizeof(o->label), "Enabled: %s", sys->enabled ? "On" : "Off");
     o->action = OPTION_ACTION_NONE;
+    if (pathfile_toggle_available_for_system(sys->key) && g_emu_detail_count < (int)(sizeof(g_emu_detail_options) / sizeof(g_emu_detail_options[0]))) {
+        o = &g_emu_detail_options[g_emu_detail_count++];
+        snprintf(o->label, sizeof(o->label), "Pathfile: %s", sys->pathfile_enabled ? "On" : "Off");
+        o->action = OPTION_ACTION_NONE;
+    }
     o = &g_emu_detail_options[g_emu_detail_count++];
     bool missing = !emulator_folder_exists(sys);
     if (missing) snprintf(o->label, sizeof(o->label), "ROM folder: %s (Missing)", sys->rom_folder);
@@ -3654,14 +3686,9 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
     file_ext_lower(fe->name, ext_lower, sizeof(ext_lower));
     bool matched_rule = false;
 
-    bool standalone_installed = standalone_package_installed();
-    if (!strcasecmp(system_key, "n64")) {
-        if (!g_is_new_3ds) {
-            snprintf(status_message, status_size, "N64 is New 3DS only");
-            if (status_timer) *status_timer = 120;
-            return false;
-        }
-        if (standalone_installed && standalone_app_installed(STANDALONE_N64_APP_SDMC)) {
+    bool pathfile_mode = pathfile_mode_enabled_for_system(system_key);
+    if (pathfile_mode && !strcasecmp(system_key, "n64")) {
+        if (standalone_app_installed(STANDALONE_N64_APP_SDMC)) {
             retro_log_line("standalone route: system=n64 app=DaedalusX64");
             return launch_standalone_pathfile(
                 STANDALONE_N64_APP_SD,
@@ -3675,11 +3702,11 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
                 status_timer,
                 state_dirty);
         }
-        retro_log_line("standalone route skipped: system=n64 installed=%d app=%d", standalone_installed ? 1 : 0, standalone_app_installed(STANDALONE_N64_APP_SDMC) ? 1 : 0);
+        retro_log_line("standalone route skipped: system=n64 app=%d", standalone_app_installed(STANDALONE_N64_APP_SDMC) ? 1 : 0);
     }
 
-    if (!strcasecmp(system_key, "gba")) {
-        if (g_is_new_3ds && standalone_installed && standalone_app_installed(STANDALONE_GBA_APP_SDMC)) {
+    if (pathfile_mode && !strcasecmp(system_key, "gba")) {
+        if (standalone_app_installed(STANDALONE_GBA_APP_SDMC)) {
             retro_log_line("standalone route: system=gba app=mGBA");
             return launch_standalone_pathfile(
                 STANDALONE_GBA_APP_SD,
@@ -3693,11 +3720,11 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
                 status_timer,
                 state_dirty);
         }
-        retro_log_line("standalone route skipped: system=gba new3ds=%d installed=%d app=%d", g_is_new_3ds ? 1 : 0, standalone_installed ? 1 : 0, standalone_app_installed(STANDALONE_GBA_APP_SDMC) ? 1 : 0);
+        retro_log_line("standalone route skipped: system=gba app=%d", standalone_app_installed(STANDALONE_GBA_APP_SDMC) ? 1 : 0);
     }
 
-    if (!strcasecmp(system_key, "snes")) {
-        if (standalone_installed && standalone_app_installed(STANDALONE_SNES_APP_SDMC)) {
+    if (pathfile_mode && !strcasecmp(system_key, "snes")) {
+        if (standalone_app_installed(STANDALONE_SNES_APP_SDMC)) {
             retro_log_line("standalone route: system=snes app=snes9x_3ds");
             return launch_standalone_pathfile(
                 STANDALONE_SNES_APP_SD,
@@ -3711,7 +3738,7 @@ static bool retro_launch_selected(const Target* target, TargetState* ts, const F
                 status_timer,
                 state_dirty);
         }
-        retro_log_line("standalone route skipped: system=snes installed=%d app=%d", standalone_installed ? 1 : 0, standalone_app_installed(STANDALONE_SNES_APP_SDMC) ? 1 : 0);
+        retro_log_line("standalone route skipped: system=snes app=%d", standalone_app_installed(STANDALONE_SNES_APP_SDMC) ? 1 : 0);
     }
 
     RetroRomOptions opt;
@@ -4745,23 +4772,44 @@ int main(int argc, char** argv) {
                         snprintf(status_message, sizeof(status_message), "%s %s", sys->display_name, sys->enabled ? "enabled" : "disabled");
                         status_timer = 90;
                         audio_play(SOUND_TOGGLE);
-                    } else if (options_selection == 2) {
+                    } else {
                         EmuSystem* sys = &g_emu.systems[g_emu_detail_index];
-                        emu_cycle_rom_folder(sys);
-                        if (!save_emulators(&g_emu)) {
-                            snprintf(status_message, sizeof(status_message), "Failed to save emulators.json");
-                            status_timer = 120;
-                            retro_log_line("save emulators failed");
+                        bool has_pathfile_toggle = pathfile_toggle_available_for_system(sys->key);
+                        int pathfile_row = has_pathfile_toggle ? 2 : -1;
+                        int rom_folder_row = has_pathfile_toggle ? 3 : 2;
+                        if (options_selection == pathfile_row) {
+                            sys->pathfile_enabled = !sys->pathfile_enabled;
+                            if (!save_emulators(&g_emu)) {
+                                snprintf(status_message, sizeof(status_message), "Failed to save emulators.json");
+                                status_timer = 120;
+                                retro_log_line("save emulators failed");
+                            }
+                            rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
+                            build_emulator_options();
+                            build_emulator_detail_options(g_emu_detail_index);
+                            g_options_mode = OPT_MODE_EMULATOR_DETAIL;
+                            options_selection = pathfile_row;
+                            options_scroll = 0;
+                            snprintf(status_message, sizeof(status_message), "Pathfile: %s", sys->pathfile_enabled ? "On" : "Off");
+                            status_timer = 90;
+                            audio_play(SOUND_TOGGLE);
+                        } else if (options_selection == rom_folder_row) {
+                            emu_cycle_rom_folder(sys);
+                            if (!save_emulators(&g_emu)) {
+                                snprintf(status_message, sizeof(status_message), "Failed to save emulators.json");
+                                status_timer = 120;
+                                retro_log_line("save emulators failed");
+                            }
+                            rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
+                            build_emulator_options();
+                            build_emulator_detail_options(g_emu_detail_index);
+                            g_options_mode = OPT_MODE_EMULATOR_DETAIL;
+                            options_selection = rom_folder_row;
+                            options_scroll = 0;
+                            snprintf(status_message, sizeof(status_message), "ROM folder: %s", sys->rom_folder);
+                            status_timer = 90;
+                            audio_play(SOUND_SELECT);
                         }
-                        rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
-                        build_emulator_options();
-                        build_emulator_detail_options(g_emu_detail_index);
-                        g_options_mode = OPT_MODE_EMULATOR_DETAIL;
-                        options_selection = 2;
-                        options_scroll = 0;
-                        snprintf(status_message, sizeof(status_message), "ROM folder: %s", sys->rom_folder);
-                        status_timer = 90;
-                        audio_play(SOUND_SELECT);
                     }
                 } else if (g_options_mode == OPT_MODE_RETRO_INFO) {
                     if (options_selection == 0) {
@@ -4860,7 +4908,24 @@ int main(int argc, char** argv) {
                         audio_play(SOUND_BACK);
                     } else if (options_selection >= 0 && options_selection < g_retro_opt_option_count) {
                         int action = g_retro_opt_options[options_selection].action;
-                        if (action == RETRO_OPT_ACTION_CORE_PICK) {
+                        if (action == RETRO_OPT_ACTION_PATHFILE_TOGGLE) {
+                            EmuSystem* sys = emu_find_by_key_mut(&g_emu, g_retro_opt_system);
+                            if (sys && pathfile_toggle_available_for_system(sys->key)) {
+                                sys->pathfile_enabled = !sys->pathfile_enabled;
+                                if (!save_emulators(&g_emu)) {
+                                    snprintf(status_message, sizeof(status_message), "Failed to save emulators.json");
+                                    status_timer = 120;
+                                    retro_log_line("save emulators failed");
+                                }
+                                rebuild_targets_from_backend(cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer);
+                                build_retro_rom_options(g_retro_opt_rom);
+                                options_selection = 1;
+                                options_scroll = 0;
+                                snprintf(status_message, sizeof(status_message), "Pathfile: %s", sys->pathfile_enabled ? "On" : "Off");
+                                status_timer = 60;
+                                audio_play(SOUND_TOGGLE);
+                            }
+                        } else if (action == RETRO_OPT_ACTION_CORE_PICK) {
                             copy_str(g_retro_core_rom, sizeof(g_retro_core_rom), g_retro_opt_rom);
                             build_retro_core_options();
                             g_options_mode = OPT_MODE_RETRO_CORE;

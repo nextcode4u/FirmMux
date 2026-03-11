@@ -203,6 +203,7 @@ typedef struct {
     char key[16];
     char display_name[48];
     bool enabled;
+    bool pathfile_enabled;
     char rom_folder[256];
 } EmuSystem;
 
@@ -538,6 +539,7 @@ EmuSystem* emu_find_by_key_mut(EmuConfig* cfg, const char* key);
 const EmuSystem* emu_find_by_path(const EmuConfig* cfg, const char* rom_sd_path);
 bool emu_resolve_system(const EmuConfig* cfg, const char* rom_sd_path, const char* fallback_key, char* out_key, size_t out_size);
 int emu_known_system_keys(const char** out_keys, int max_keys);
+bool emu_pathfile_supported_key(const char* key);
 
 bool load_or_create_config(Config* cfg);
 void theme_default(Theme* t);

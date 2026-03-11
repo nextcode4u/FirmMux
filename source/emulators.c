@@ -60,6 +60,30 @@ static const KnownSystem g_known_systems[] = {
 
 static const int g_known_system_count = (int)(sizeof(g_known_systems) / sizeof(g_known_systems[0]));
 
+static bool pathfile_supported_key(const char* key) {
+    if (!key || !key[0]) return false;
+    if (!strcasecmp(key, "gba")) return true;
+    if (!strcasecmp(key, "snes")) return true;
+    if (!strcasecmp(key, "n64")) return true;
+    return false;
+}
+
+static bool running_on_new_3ds(void) {
+    bool is_new = false;
+    if (R_SUCCEEDED(APT_CheckNew3DS(&is_new)) && is_new) return true;
+    return false;
+}
+
+static bool default_pathfile_enabled_for_key(const char* key) {
+    if (!file_exists(STANDALONE_MARKER_PATH)) return false;
+    if (!pathfile_supported_key(key)) return false;
+    if (!key) return false;
+    if (!strcasecmp(key, "snes")) return true;
+    if (!strcasecmp(key, "gba")) return running_on_new_3ds();
+    if (!strcasecmp(key, "n64")) return running_on_new_3ds();
+    return false;
+}
+
 static bool default_enabled_for_key(const char* key) {
     if (!key || !key[0]) return false;
     static const char* enabled_keys[] = {
@@ -139,6 +163,7 @@ static void set_system_defaults(EmuSystem* sys, const char* key, const char* dis
     lower_copy(sys->key, sizeof(sys->key), key);
     copy_str(sys->display_name, sizeof(sys->display_name), display);
     sys->enabled = default_enabled_for_key(key);
+    sys->pathfile_enabled = default_pathfile_enabled_for_key(key);
     snprintf(sys->rom_folder, sizeof(sys->rom_folder), "sd:/roms/%s", key);
 }
 
@@ -162,12 +187,22 @@ static bool write_default_emulators_file(const EmuConfig* cfg) {
     fprintf(f, "  \"systems\": {\n");
     for (int i = 0; i < cfg->count; i++) {
         const EmuSystem* s = &cfg->systems[i];
-        fprintf(f, "    \"%s\": {\"displayName\":\"%s\",\"enabled\":%s,\"romFolder\":\"%s\"}%s\n",
-            s->key,
-            s->display_name,
-            s->enabled ? "true" : "false",
-            s->rom_folder,
-            (i + 1 < cfg->count) ? "," : "");
+        if (pathfile_supported_key(s->key)) {
+            fprintf(f, "    \"%s\": {\"displayName\":\"%s\",\"enabled\":%s,\"romFolder\":\"%s\",\"pathfileEnabled\":%s}%s\n",
+                s->key,
+                s->display_name,
+                s->enabled ? "true" : "false",
+                s->rom_folder[0] ? s->rom_folder : "",
+                s->pathfile_enabled ? "true" : "false",
+                (i + 1 < cfg->count) ? "," : "");
+        } else {
+            fprintf(f, "    \"%s\": {\"displayName\":\"%s\",\"enabled\":%s,\"romFolder\":\"%s\"}%s\n",
+                s->key,
+                s->display_name,
+                s->enabled ? "true" : "false",
+                s->rom_folder[0] ? s->rom_folder : "",
+                (i + 1 < cfg->count) ? "," : "");
+        }
     }
     fprintf(f, "  }\n");
     fprintf(f, "}\n");
@@ -216,6 +251,11 @@ static bool parse_emulators_text(const char* text, EmuConfig* out_cfg) {
         char folder[256] = {0};
         if (parse_json_string_limited(block, limit, "romFolder", folder, sizeof(folder)) && folder[0]) {
             copy_str(sys->rom_folder, sizeof(sys->rom_folder), folder);
+        }
+
+        bool pathfile_enabled = sys->pathfile_enabled;
+        if (parse_json_bool_limited(block, limit, "pathfileEnabled", &pathfile_enabled)) {
+            sys->pathfile_enabled = pathfile_enabled;
         }
     }
 
@@ -419,4 +459,8 @@ int emu_known_system_keys(const char** out_keys, int max_keys) {
         out_keys[count++] = g_known_systems[i].key;
     }
     return count;
+}
+
+bool emu_pathfile_supported_key(const char* key) {
+    return pathfile_supported_key(key);
 }
