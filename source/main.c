@@ -281,6 +281,8 @@ static int g_base_target_count = 0;
 static Target g_target_scratch[MAX_TARGETS];
 static bool g_target_used[MAX_TARGETS];
 static TargetState g_state_scratch[MAX_TARGETS];
+static bool g_clear_cache_confirm_armed = false;
+static int g_clear_cache_confirm_timer = 0;
 
 enum {
     OPT_MODE_MAIN = 0,
@@ -305,6 +307,11 @@ static int clamp_pct(int v);
 static void refresh_options_menu(const Config* cfg);
 static bool is_emulator_target(const Target* target);
 static bool pathfile_toggle_available_for_system(const char* system_key);
+
+static bool main_option_is_clear_cache(int idx) {
+    if (idx < 0 || idx >= g_option_count) return false;
+    return g_options[idx].action == OPTION_ACTION_CLEAR_CACHE;
+}
 
 static C2D_TextBuf g_textbuf;
 static C3D_RenderTarget* g_top;
@@ -2122,9 +2129,17 @@ static float text_width(float scale, const char* str) {
     C2D_Text text;
     if (g_font) C2D_TextFontParse(&text, g_font, g_textbuf, str);
     else C2D_TextParse(&text, g_textbuf, str);
+    C2D_TextOptimize(&text);
     float w = 0.0f;
     C2D_TextGetDimensions(&text, scale, scale, &w, NULL);
     return w;
+}
+
+static float text_width_safe(float scale, const char* str) {
+    if (!str || !str[0]) return 0.0f;
+    float measured = text_width(scale, str);
+    float approx = (float)strlen(str) * (6.5f * scale);
+    return (measured > approx) ? measured : approx;
 }
 
 static int wrap_text_lines(const char* str, float scale, float max_w, char lines[][96], int max_lines) {
@@ -2150,6 +2165,33 @@ static int wrap_text_lines(const char* str, float scale, float max_w, char lines
                     copy_str(lines[line_count++], 96, line);
                     copy_str(line, sizeof(line), word);
                     line_len = (int)strlen(line);
+                    if (line_count >= max_lines) break;
+                } else if (line_len == 0 && text_width(scale * g_text_scale, word) > max_w) {
+                    int wlen = (int)strlen(word);
+                    int pos = 0;
+                    while (pos < wlen && line_count < max_lines) {
+                        char chunk[96];
+                        int clen = 0;
+                        chunk[0] = 0;
+                        while (pos + clen < wlen && clen < (int)sizeof(chunk) - 1) {
+                            chunk[clen] = word[pos + clen];
+                            chunk[clen + 1] = 0;
+                            if (text_width(scale * g_text_scale, chunk) > max_w) {
+                                chunk[clen] = 0;
+                                break;
+                            }
+                            clen++;
+                        }
+                        if (clen <= 0) {
+                            chunk[0] = word[pos];
+                            chunk[1] = 0;
+                            clen = 1;
+                        }
+                        copy_str(lines[line_count++], 96, chunk);
+                        pos += clen;
+                    }
+                    line[0] = 0;
+                    line_len = 0;
                     if (line_count >= max_lines) break;
                 } else {
                     copy_str(line, sizeof(line), candidate);
@@ -2180,6 +2222,32 @@ static int wrap_text_lines(const char* str, float scale, float max_w, char lines
             copy_str(lines[line_count++], 96, line);
             copy_str(line, sizeof(line), word);
             line_len = (int)strlen(line);
+        } else if (line_len == 0 && text_width(scale * g_text_scale, word) > max_w) {
+            int wlen = (int)strlen(word);
+            int pos = 0;
+            while (pos < wlen && line_count < max_lines) {
+                char chunk[96];
+                int clen = 0;
+                chunk[0] = 0;
+                while (pos + clen < wlen && clen < (int)sizeof(chunk) - 1) {
+                    chunk[clen] = word[pos + clen];
+                    chunk[clen + 1] = 0;
+                    if (text_width(scale * g_text_scale, chunk) > max_w) {
+                        chunk[clen] = 0;
+                        break;
+                    }
+                    clen++;
+                }
+                if (clen <= 0) {
+                    chunk[0] = word[pos];
+                    chunk[1] = 0;
+                    clen = 1;
+                }
+                copy_str(lines[line_count++], 96, chunk);
+                pos += clen;
+            }
+            line[0] = 0;
+            line_len = 0;
         } else {
             copy_str(line, sizeof(line), candidate);
             line_len = (int)strlen(line);
@@ -2189,6 +2257,34 @@ static int wrap_text_lines(const char* str, float scale, float max_w, char lines
         copy_str(lines[line_count++], 96, line);
     }
     return line_count;
+}
+
+static void clamp_toast_line(char* line, float scale, float max_w) {
+    if (!line) return;
+    if (text_width_safe(scale * g_text_scale, line) <= max_w) return;
+
+    char trimmed[96];
+    copy_str(trimmed, sizeof(trimmed), line);
+    int len = (int)strlen(trimmed);
+    while (len > 0) {
+        trimmed[len - 1] = 0;
+        char candidate[96];
+        snprintf(candidate, sizeof(candidate), "%s...", trimmed);
+        if (text_width_safe(scale * g_text_scale, candidate) <= max_w) {
+            copy_str(line, 96, candidate);
+            return;
+        }
+        len--;
+    }
+    copy_str(line, 96, "...");
+}
+
+static void clamp_toast_lines(char lines[][96], int* line_count, float scale, float max_w, int max_lines) {
+    if (!lines || !line_count || *line_count <= 0 || max_lines <= 0) return;
+    if (*line_count > max_lines) *line_count = max_lines;
+    for (int i = 0; i < *line_count; i++) {
+        clamp_toast_line(lines[i], scale, max_w);
+    }
 }
 
 static bool show_nds_card(const Target* target, const TargetState* ts) {
@@ -3924,7 +4020,8 @@ static void refresh_options_menu(const Config* cfg) {
     o->action = OPTION_ACTION_REBUILD_NDS_CACHE;
 
     o = &g_options[g_option_count++];
-    snprintf(o->label, sizeof(o->label), "Clear cache");
+    if (g_clear_cache_confirm_armed) snprintf(o->label, sizeof(o->label), "Clear cache (all system covers, press A again)");
+    else snprintf(o->label, sizeof(o->label), "Clear cache");
     o->action = OPTION_ACTION_CLEAR_CACHE;
 
     o = &g_options[g_option_count++];
@@ -4022,17 +4119,38 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
         *current_target = 0;
     }
     OptionAction action = g_options[idx].action;
+    if (g_clear_cache_confirm_armed && action != OPTION_ACTION_CLEAR_CACHE) {
+        g_clear_cache_confirm_armed = false;
+        g_clear_cache_confirm_timer = 0;
+        refresh_options_menu(cfg);
+    }
     if (action == OPTION_ACTION_REBUILD_NDS_CACHE) {
         clear_dir_recursive(CACHE_NDS_DIR, false);
         mkdir(CACHE_NDS_DIR, 0777);
         g_nds_cache.count = 0;
         snprintf(status_message, status_size, "Rebuilding NDS cache");
     } else if (action == OPTION_ACTION_CLEAR_CACHE) {
+        if (!g_clear_cache_confirm_armed) {
+            g_clear_cache_confirm_armed = true;
+            g_clear_cache_confirm_timer = 300;
+            refresh_options_menu(cfg);
+            snprintf(status_message, status_size, "Warning:\nClears all system cover art cache.\nPress A again");
+            if (status_timer) *status_timer = 120;
+            return;
+        }
+        g_clear_cache_confirm_armed = false;
+        g_clear_cache_confirm_timer = 0;
+        refresh_options_menu(cfg);
         clear_dir_recursive(CACHE_DIR, false);
         ensure_dirs();
         g_nds_cache.count = 0;
-        snprintf(status_message, status_size, "Cache cleared");
+        snprintf(status_message, status_size, "Cache cleared (including all system covers)");
     } else if (action == OPTION_ACTION_RELOAD_CONFIG) {
+        if (g_clear_cache_confirm_armed) {
+            g_clear_cache_confirm_armed = false;
+            g_clear_cache_confirm_timer = 0;
+            refresh_options_menu(cfg);
+        }
         Config* oldcfg = (Config*)malloc(sizeof(Config));
         Config* newcfg = (Config*)malloc(sizeof(Config));
         if (!oldcfg || !newcfg) {
@@ -4633,6 +4751,13 @@ int main(int argc, char** argv) {
         preview_update(1);
 
         if (options_open) {
+            if (g_clear_cache_confirm_armed) {
+                if (g_clear_cache_confirm_timer > 0) g_clear_cache_confirm_timer--;
+                if (g_clear_cache_confirm_timer <= 0 && g_options_mode == OPT_MODE_MAIN) {
+                    g_clear_cache_confirm_armed = false;
+                    refresh_options_menu(cfg);
+                }
+            }
             int visible = (BOTTOM_H - HELP_BAR_H - 10) / g_list_item_h;
             int active_count = g_option_count;
             if (g_options_mode == OPT_MODE_THEME) active_count = g_theme_option_count;
@@ -4662,6 +4787,11 @@ int main(int argc, char** argv) {
             if (options_selection >= active_count) options_selection = active_count - 1;
             clamp_scroll_list(&options_scroll, options_selection, visible, active_count);
             if (options_selection != prev) audio_play(SOUND_MOVE);
+            if (g_options_mode == OPT_MODE_MAIN && g_clear_cache_confirm_armed && !main_option_is_clear_cache(options_selection)) {
+                g_clear_cache_confirm_armed = false;
+                g_clear_cache_confirm_timer = 0;
+                refresh_options_menu(cfg);
+            }
             if (kDown & KEY_A) {
                 if (g_options_mode == OPT_MODE_MAIN) {
                     handle_option_action(options_selection, cfg, state, &current_target, &state_dirty, status_message, sizeof(status_message), &status_timer, &g_options_mode, &options_selection, &options_scroll);
@@ -6160,31 +6290,51 @@ int main(int argc, char** argv) {
         }
 
         if (status_message[0]) {
+            C2D_Font prev_font = g_font;
+            bool prev_font_is_default = g_font_is_default;
+            float prev_text_scale = g_text_scale;
+            if (g_font_default) {
+                g_font = g_font_default;
+                g_font_is_default = true;
+            }
+            g_text_scale = 1.0f;
+
             float scale = 0.6f;
-            float max_w = BOTTOM_W - 24.0f;
-            char lines[4][96];
-            int line_count = wrap_text_lines(status_message, scale, max_w - 16.0f, lines, 4);
+            float max_w = BOTTOM_W - 4.0f;
+            float inner_pad = 10.0f;
+            float layout_w = max_w - inner_pad * 2.0f - 20.0f;
+            if (layout_w < 120.0f) layout_w = 120.0f;
+            char lines[6][96];
+            int line_count = wrap_text_lines(status_message, scale, layout_w, lines, 6);
             if (line_count < 1) line_count = 1;
+            clamp_toast_lines(lines, &line_count, scale, layout_w, 6);
             float line_h = 12.0f * scale * g_text_scale + 2.0f;
             float line_gap = 6.0f;
             float box_h = line_h * line_count + line_gap * (line_count - 1) + 12.0f;
             float box_w = 0.0f;
             for (int i = 0; i < line_count; i++) {
-                float w = text_width(scale * g_text_scale, lines[i]);
+                float w = text_width_safe(scale * g_text_scale, lines[i]);
                 if (w > box_w) box_w = w;
             }
-            box_w += 16.0f;
+            box_w += inner_pad * 2.0f + 4.0f;
             if (box_w < 120.0f) box_w = 120.0f;
             if (box_w > max_w) box_w = max_w;
             float x = (BOTTOM_W - box_w) * 0.5f;
             float y = (BOTTOM_H - HELP_BAR_H - box_h) * 0.5f;
+            if (y < 4.0f) y = 4.0f;
             float r_toast = theme_radius(g_theme.radius_options);
             draw_round_rect(x, y, box_w, box_h, g_theme.toast_bg, r_toast);
-            float ty = y;
+            float ty = y + 6.0f;
             for (int i = 0; i < line_count; i++) {
-                draw_text(x + 8.0f, ty, scale, g_theme.toast_text, lines[i]);
+                float lw = text_width_safe(scale * g_text_scale, lines[i]);
+                float tx = x + (box_w - lw) * 0.5f;
+                draw_text(tx, ty, scale, g_theme.toast_text, lines[i]);
                 ty += line_h + line_gap;
             }
+
+            g_font = prev_font;
+            g_font_is_default = prev_font_is_default;
+            g_text_scale = prev_text_scale;
         }
 
         C3D_FrameEnd(0);
