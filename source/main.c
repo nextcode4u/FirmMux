@@ -4360,7 +4360,398 @@ static void handle_option_action(int idx, Config* cfg, State* state, int* curren
     if (status_timer && status_message && status_message[0]) *status_timer = 150;
 }
 
+#ifdef FIRMUX_DL_HELPER
+static PrintConsole g_dl_top;
+static PrintConsole g_dl_bottom;
+static char g_dl_last_error[192];
+
+static void dl_draw_menu(int sel) {
+    consoleSelect(&g_dl_top);
+    printf("\x1b[2J\x1b[H");
+    printf("FirmMux Updater\n");
+    printf("-----------------\n\n");
+    printf("%c Update FirmMux\n", sel == 0 ? '>' : ' ');
+    printf("%c Exit\n", sel == 1 ? '>' : ' ');
+
+    consoleSelect(&g_dl_bottom);
+    printf("\x1b[2J\x1b[H");
+    printf("A Select   D-Pad Navigate\n");
+    printf("B/START Exit\n\n");
+    printf("Updates FirmMux from latest release.\n");
+    printf("Autoboot files are synced if active.\n");
+}
+
+static void dl_mkdir_tree(void) {
+    mkdir("sdmc:/3ds", 0777);
+    mkdir("sdmc:/3ds/FirmMux", 0777);
+    mkdir("sdmc:/3ds/FirmMux/deps", 0777);
+    mkdir("sdmc:/cias", 0777);
+}
+
+static bool dl_files_equal(const char* a, const char* b) {
+    FILE* fa = fopen(a, "rb");
+    if (!fa) return false;
+    FILE* fb = fopen(b, "rb");
+    if (!fb) {
+        fclose(fa);
+        return false;
+    }
+    fseek(fa, 0, SEEK_END);
+    fseek(fb, 0, SEEK_END);
+    long sa = ftell(fa);
+    long sb = ftell(fb);
+    if (sa < 0 || sb < 0 || sa != sb) {
+        fclose(fa);
+        fclose(fb);
+        return false;
+    }
+    rewind(fa);
+    rewind(fb);
+    bool same = true;
+    u8 ba[4096];
+    u8 bb[4096];
+    while (same) {
+        size_t ra = fread(ba, 1, sizeof(ba), fa);
+        size_t rb = fread(bb, 1, sizeof(bb), fb);
+        if (ra != rb || memcmp(ba, bb, ra) != 0) same = false;
+        if (ra == 0 || rb == 0) break;
+    }
+    fclose(fa);
+    fclose(fb);
+    return same;
+}
+
+static bool dl_ends_with(const char* s, const char* suffix) {
+    if (!s || !suffix) return false;
+    size_t ls = strlen(s);
+    size_t lf = strlen(suffix);
+    if (lf > ls) return false;
+    return strcmp(s + (ls - lf), suffix) == 0;
+}
+
+// Returns: 1=updated, 0=unchanged, -1=failed
+static int dl_download_to_path(const char* url, const char* out_path) {
+    if (!url || !url[0] || !out_path || !out_path[0]) return -1;
+    char current_url[1024];
+    if (!format_to_buf(current_url, sizeof(current_url), "%s", url)) return -1;
+    int redirects = 0;
+
+retry_request:
+    char tmp[768];
+    if (!format_to_buf(tmp, sizeof(tmp), "%s.tmp", out_path)) return -1;
+
+    FILE* f = fopen(tmp, "wb");
+    if (!f) {
+        snprintf(g_dl_last_error, sizeof(g_dl_last_error), "open temp failed");
+        return -1;
+    }
+
+    httpcContext ctx;
+    Result rc = httpcOpenContext(&ctx, HTTPC_METHOD_GET, current_url, 0);
+    if (R_FAILED(rc)) {
+        snprintf(g_dl_last_error, sizeof(g_dl_last_error), "http open failed: %08lX", (unsigned long)rc);
+        fclose(f);
+        remove(tmp);
+        return -1;
+    }
+
+    httpcAddRequestHeaderField(&ctx, "User-Agent", "FirmMux-Downloader/1.0");
+    httpcAddRequestHeaderField(&ctx, "Accept", "*/*");
+    httpcSetKeepAlive(&ctx, HTTPC_KEEPALIVE_ENABLED);
+    httpcAddRequestHeaderField(&ctx, "Connection", "Keep-Alive");
+    httpcSetSSLOpt(&ctx, SSLCOPT_DisableVerify);
+    rc = httpcBeginRequest(&ctx);
+    if (R_FAILED(rc)) {
+        snprintf(g_dl_last_error, sizeof(g_dl_last_error), "request begin failed: %08lX", (unsigned long)rc);
+        httpcCloseContext(&ctx);
+        fclose(f);
+        remove(tmp);
+        return -1;
+    }
+
+    u32 code = 0;
+    bool status_known = false;
+    Result status_rc = httpcGetResponseStatusCodeTimeout(&ctx, &code, 30000000000ULL);
+    if (R_SUCCEEDED(status_rc)) {
+        status_known = true;
+        if (code >= 300 && code <= 399) {
+            char location[1024];
+            location[0] = '\0';
+            Result lrc = httpcGetResponseHeader(&ctx, "Location", location, (u32)sizeof(location));
+            httpcCloseContext(&ctx);
+            fclose(f);
+            remove(tmp);
+            if (R_SUCCEEDED(lrc) && location[0] && redirects < 6) {
+                if (!format_to_buf(current_url, sizeof(current_url), "%s", location)) {
+                    snprintf(g_dl_last_error, sizeof(g_dl_last_error), "redirect url too long");
+                    return -1;
+                }
+                redirects++;
+                goto retry_request;
+            }
+            if (R_FAILED(lrc) || !location[0]) snprintf(g_dl_last_error, sizeof(g_dl_last_error), "redirect missing location");
+            else snprintf(g_dl_last_error, sizeof(g_dl_last_error), "too many redirects");
+            return -1;
+        }
+        if (code < 200 || code >= 300) {
+            snprintf(g_dl_last_error, sizeof(g_dl_last_error), "http status %lu", (unsigned long)code);
+            httpcCloseContext(&ctx);
+            fclose(f);
+            remove(tmp);
+            return -1;
+        }
+    }
+
+    u32 content_size = 0;
+    (void)httpcGetDownloadSizeState(&ctx, NULL, &content_size);
+
+    u8 buf[4 * 1024];
+    u32 total = 0;
+    u64 not_ready_start_ms = 0;
+    if (content_size > 0) {
+        while (total < content_size) {
+            u32 remain = content_size - total;
+            u32 want = remain > sizeof(buf) ? (u32)sizeof(buf) : remain;
+            rc = httpcReceiveDataTimeout(&ctx, buf, want, 30000000000ULL);
+            if (R_FAILED(rc)) {
+                if (rc == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING || rc == (Result)HTTPC_RESULTCODE_TIMEDOUT) {
+                    if (not_ready_start_ms == 0) not_ready_start_ms = osGetTime();
+                    if ((osGetTime() - not_ready_start_ms) < 30000ULL) {
+                        svcSleepThread(50 * 1000 * 1000ULL);
+                        continue;
+                    }
+                }
+                snprintf(g_dl_last_error, sizeof(g_dl_last_error), "receive failed: %08lX", (unsigned long)rc);
+                httpcCloseContext(&ctx);
+                fclose(f);
+                remove(tmp);
+                return -1;
+            }
+            size_t wrote = fwrite(buf, 1, want, f);
+            if (wrote != want) {
+                snprintf(g_dl_last_error, sizeof(g_dl_last_error), "write failed");
+                httpcCloseContext(&ctx);
+                fclose(f);
+                remove(tmp);
+                return -1;
+            }
+            total += want;
+            unsigned pct = (unsigned)((total * 100ULL) / content_size);
+            if (pct > 100) pct = 100;
+            printf("\r  %lu / %lu bytes (%u%%)", (unsigned long)total, (unsigned long)content_size, pct);
+            fflush(stdout);
+        }
+    } else {
+        while (true) {
+            u32 got = 0;
+            rc = httpcDownloadData(&ctx, buf, sizeof(buf), &got);
+            if (R_FAILED(rc) && rc == (Result)0xD8A0A016 && got == 0) {
+                if (not_ready_start_ms == 0) not_ready_start_ms = osGetTime();
+                if ((osGetTime() - not_ready_start_ms) < 30000ULL) {
+                    svcSleepThread(50 * 1000 * 1000ULL);
+                    continue;
+                }
+            }
+            if (got > 0) {
+                total += got;
+                size_t wrote = fwrite(buf, 1, got, f);
+                if (wrote != got) {
+                    snprintf(g_dl_last_error, sizeof(g_dl_last_error), "write failed");
+                    httpcCloseContext(&ctx);
+                    fclose(f);
+                    remove(tmp);
+                    return -1;
+                }
+                printf("\r  %lu bytes", (unsigned long)total);
+                fflush(stdout);
+            }
+            if (rc == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING) continue;
+            if (R_FAILED(rc)) {
+                snprintf(g_dl_last_error, sizeof(g_dl_last_error), "download failed: %08lX", (unsigned long)rc);
+                httpcCloseContext(&ctx);
+                fclose(f);
+                remove(tmp);
+                return -1;
+            }
+            break;
+        }
+    }
+    printf("\n");
+
+    httpcCloseContext(&ctx);
+    fclose(f);
+    if (total == 0) {
+        if (!status_known) snprintf(g_dl_last_error, sizeof(g_dl_last_error), "status failed: %08lX", (unsigned long)status_rc);
+        else snprintf(g_dl_last_error, sizeof(g_dl_last_error), "empty download");
+        remove(tmp);
+        return -1;
+    }
+    if (dl_ends_with(out_path, ".3dsx")) {
+        FILE* tf = fopen(tmp, "rb");
+        if (!tf) {
+            snprintf(g_dl_last_error, sizeof(g_dl_last_error), "verify open failed");
+            remove(tmp);
+            return -1;
+        }
+        char magic[4] = {0};
+        size_t rd = fread(magic, 1, sizeof(magic), tf);
+        fclose(tf);
+        if (rd != 4 || memcmp(magic, "3DSX", 4) != 0) {
+            snprintf(g_dl_last_error, sizeof(g_dl_last_error), "invalid 3dsx payload");
+            remove(tmp);
+            return -1;
+        }
+    }
+    if (access(out_path, F_OK) == 0 && dl_files_equal(tmp, out_path)) {
+        remove(tmp);
+        return 0;
+    }
+    if (rename(tmp, out_path) != 0) {
+        remove(out_path);
+        if (rename(tmp, out_path) != 0) {
+            snprintf(g_dl_last_error, sizeof(g_dl_last_error), "rename failed");
+            remove(tmp);
+            return -1;
+        }
+    }
+    return 1;
+}
+
+typedef struct {
+    const char* label;
+    const char* url;
+    const char* url_fallback;
+    const char* path;
+} DlItem;
+
+static bool dl_run_items(const DlItem* items, int count) {
+    if (!items || count <= 0) return false;
+    for (int i = 0; i < count; i++) {
+        printf("[%d/%d] %s\n", i + 1, count, items[i].label);
+        int rc = dl_download_to_path(items[i].url, items[i].path);
+        if (rc < 0 && items[i].url_fallback && items[i].url_fallback[0]) {
+            printf("  retry mirror...\n");
+            rc = dl_download_to_path(items[i].url_fallback, items[i].path);
+        }
+        if (rc < 0) {
+            printf("  FAILED\n");
+            if (g_dl_last_error[0]) printf("  %s\n", g_dl_last_error);
+            return false;
+        }
+        printf("  %s\n", rc == 0 ? "UP-TO-DATE" : "UPDATED");
+    }
+    return true;
+}
+
+static bool dl_install_or_update_firmmux(void) {
+    const DlItem items[] = {
+        { "FirmMux.3dsx",
+          "https://cdn.jsdelivr.net/gh/nextcode4u/FirmMux@main/SD/3ds/FirmMux.3dsx",
+          "https://raw.githubusercontent.com/nextcode4u/FirmMux/main/SD/3ds/FirmMux.3dsx",
+          "sdmc:/3ds/FirmMux.3dsx" },
+        { "FirmMux.smdh",
+          "https://cdn.jsdelivr.net/gh/nextcode4u/FirmMux@main/SD/3ds/FirmMux.smdh",
+          "https://raw.githubusercontent.com/nextcode4u/FirmMux/main/SD/3ds/FirmMux.smdh",
+          "sdmc:/3ds/FirmMux.smdh" },
+        { "boot.3dsx",
+          "https://cdn.jsdelivr.net/gh/nextcode4u/FirmMux@main/SD/3ds/FirmMux/boot.3dsx",
+          "https://raw.githubusercontent.com/nextcode4u/FirmMux/main/SD/3ds/FirmMux/boot.3dsx",
+          "sdmc:/3ds/FirmMux/boot.3dsx" },
+        { "boot.smdh",
+          "https://cdn.jsdelivr.net/gh/nextcode4u/FirmMux@main/SD/3ds/FirmMux/boot.smdh",
+          "https://raw.githubusercontent.com/nextcode4u/FirmMux/main/SD/3ds/FirmMux/boot.smdh",
+          "sdmc:/3ds/FirmMux/boot.smdh" }
+    };
+    return dl_run_items(items, (int)(sizeof(items) / sizeof(items[0])));
+}
+
+static void dl_sync_autoboot_active_if_enabled(void) {
+    const char* bak = "sdmc:/boot.3dsx.bak";
+    const char* bak_smdh = "sdmc:/boot.smdh.bak";
+    if (!file_exists(bak) && !file_exists(bak_smdh)) return;
+
+    if (file_exists("sdmc:/3ds/FirmMux/boot.3dsx")) {
+        copy_file_binary("sdmc:/3ds/FirmMux/boot.3dsx", "sdmc:/boot.3dsx");
+    }
+    if (file_exists("sdmc:/3ds/FirmMux/boot.smdh")) {
+        copy_file_binary("sdmc:/3ds/FirmMux/boot.smdh", "sdmc:/boot.smdh");
+    }
+}
+
+#endif
+
 int main(int argc, char** argv) {
+#ifdef FIRMUX_DL_HELPER
+    gfxInitDefault();
+    consoleInit(GFX_TOP, &g_dl_top);
+    consoleInit(GFX_BOTTOM, &g_dl_bottom);
+    consoleSelect(&g_dl_top);
+    bool fs_inited_dl = false;
+    bool httpc_inited = false;
+    if (R_SUCCEEDED(fsInit())) fs_inited_dl = true;
+    if (R_SUCCEEDED(httpcInit(0x100000))) httpc_inited = true;
+    aptSetHomeAllowed(true);
+    dl_mkdir_tree();
+
+    int sel = 0;
+    const int item_count = 2;
+    bool redraw = true;
+    while (aptMainLoop()) {
+        hidScanInput();
+        u32 kDown = hidKeysDown();
+        if (kDown & KEY_UP) {
+            sel = (sel - 1 + item_count) % item_count;
+            redraw = true;
+        }
+        if (kDown & KEY_DOWN) {
+            sel = (sel + 1) % item_count;
+            redraw = true;
+        }
+        if (kDown & (KEY_B | KEY_START)) break;
+
+        if (kDown & KEY_A) {
+            consoleSelect(&g_dl_bottom);
+            printf("\x1b[2J\x1b[H");
+            printf("FirmMux Updater\n\n");
+            bool ok = false;
+            if (sel == 0) {
+                printf("Updating FirmMux...\n\n");
+                ok = dl_install_or_update_firmmux();
+                if (ok) dl_sync_autoboot_active_if_enabled();
+            } else {
+                break;
+            }
+            printf("\n%s\n", ok ? "Done." : "Failed.");
+            printf("Press A to continue...");
+            while (aptMainLoop()) {
+                hidScanInput();
+                u32 kk = hidKeysDown();
+                if (kk & KEY_A) break;
+                if (kk & (KEY_B | KEY_START)) {
+                    sel = 1;
+                    break;
+                }
+                gfxFlushBuffers();
+                gfxSwapBuffers();
+                gspWaitForVBlank();
+            }
+            redraw = true;
+        }
+
+        if (redraw) {
+            dl_draw_menu(sel);
+            redraw = false;
+        }
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+
+    if (httpc_inited) httpcExit();
+    if (fs_inited_dl) fsExit();
+    gfxExit();
+    return 0;
+#endif
 #ifdef FIRMUX_CIA_FORWARDER
     gfxInitDefault();
     consoleInit(GFX_TOP, NULL);

@@ -239,7 +239,31 @@ def suggested_mode_from_health(sd_root: Path) -> str:
     return "full"
 
 
-def download(url: str, out_path: Path) -> None:
+def files_equal(a: Path, b: Path) -> bool:
+    try:
+        if a.stat().st_size != b.stat().st_size:
+            return False
+        with a.open("rb") as fa, b.open("rb") as fb:
+            while True:
+                ba = fa.read(65536)
+                bb = fb.read(65536)
+                if ba != bb:
+                    return False
+                if not ba:
+                    return True
+    except OSError:
+        return False
+
+
+def copy_file_if_changed(src: Path, dst: Path) -> bool:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if safe_exists(dst) and files_equal(src, dst):
+        return False
+    shutil.copy2(src, dst)
+    return True
+
+
+def download(url: str, out_path: Path) -> bool:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": "FirmMux-Setup-PC/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
@@ -249,7 +273,11 @@ def download(url: str, out_path: Path) -> None:
         tmp = out_path.with_suffix(out_path.suffix + ".tmp")
         with tmp.open("wb") as f:
             shutil.copyfileobj(r, f)
+        if safe_exists(out_path) and files_equal(tmp, out_path):
+            tmp.unlink(missing_ok=True)
+            return False
         tmp.replace(out_path)
+        return True
 
 
 def fetch_latest_firmux_asset_url() -> Tuple[str, str]:
@@ -328,8 +356,7 @@ def copy_tree_contents(src: Path, dst: Path) -> None:
             else:
                 shutil.copytree(item, target)
         else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, target)
+            copy_file_if_changed(item, target)
 
 
 def apply_extracted_sd_layout(extract_root: Path, sd_root: Path) -> None:
@@ -370,7 +397,7 @@ def stage_retroarch_dependencies_only(extract_root: Path, sd_root: Path) -> Dict
     if not ra_3dsx:
         raise RuntimeError("RetroArch package missing retroarch.3dsx")
     dst_3dsx = three_ds / "retroarch.3dsx"
-    shutil.copy2(ra_3dsx, dst_3dsx)
+    copy_file_if_changed(ra_3dsx, dst_3dsx)
     out["retroarch_3dsx"] = str(dst_3dsx)
 
     ra_smdh = find_first_file_case_insensitive(extract_root, "retroarch.smdh")
@@ -378,7 +405,7 @@ def stage_retroarch_dependencies_only(extract_root: Path, sd_root: Path) -> Dict
         ra_smdh = find_first_file_case_insensitive(extract_root, "retroarch.smds")
     if ra_smdh:
         dst_smdh = three_ds / "retroarch.smdh"
-        shutil.copy2(ra_smdh, dst_smdh)
+        copy_file_if_changed(ra_smdh, dst_smdh)
         out["retroarch_smdh"] = str(dst_smdh)
 
     ra_data = find_dir_named_case_insensitive(extract_root, "retroarch")
@@ -432,8 +459,8 @@ def stage_pathfile_standalone_package(sd_root: Path) -> Dict[str, str]:
     url, tag = fetch_latest_release_asset_url(PATHFILE_REPO_API, preferred_name_substr="sd")
     asset_name = Path(url).name
     pkg_out = sd_root / "3ds" / "FirmMux" / "deps" / asset_name
-    download(url, pkg_out)
-    print_line(f"- Downloaded standalone package: {asset_name} ({tag})")
+    updated = download(url, pkg_out)
+    print_line(f"- Standalone package: {asset_name} ({tag}) [{ 'updated' if updated else 'up-to-date' }]")
 
     with tempfile.TemporaryDirectory(prefix="firmmux_pathfile_") as td:
         tmp = Path(td)
@@ -452,8 +479,13 @@ def extract_zip_cia(zip_path: Path, out_cia: Path) -> bool:
         for n in zf.namelist():
             if n.lower().endswith("ntr_launcher.cia"):
                 out_cia.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(n) as src, out_cia.open("wb") as dst:
+                tmp = out_cia.with_suffix(out_cia.suffix + ".tmp")
+                with zf.open(n) as src, tmp.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
+                if safe_exists(out_cia) and files_equal(tmp, out_cia):
+                    tmp.unlink(missing_ok=True)
+                    return True
+                tmp.replace(out_cia)
                 return True
     return False
 
@@ -535,10 +567,28 @@ def install_or_update_firmux(sd_root: Path) -> Dict[str, str]:
     url, tag = fetch_latest_firmux_asset_url()
     print_line(f"- Latest tag: {tag}")
     print_line(f"- Downloading: {Path(url).name}")
-    download(url, out_zip)
+    updated = download(url, out_zip)
+    print_line(f"- SD package is {'updated' if updated else 'up-to-date'}")
     print_line("- Applying FirmMux SD package...")
     extract_zip_to_sd(out_zip, sd_root)
+    sync_autoboot_active_if_enabled(sd_root)
     return {"firmmux_release": tag, "firmmux_zip": str(out_zip)}
+
+
+def sync_autoboot_active_if_enabled(sd_root: Path) -> None:
+    backup_boot = sd_root / "boot.3dsx.bak"
+    backup_smdh = sd_root / "boot.smdh.bak"
+    if not safe_exists(backup_boot) and not safe_exists(backup_smdh):
+        return
+
+    tpl_boot = sd_root / "3ds" / "FirmMux" / "boot.3dsx"
+    tpl_smdh = sd_root / "3ds" / "FirmMux" / "boot.smdh"
+    dst_boot = sd_root / "boot.3dsx"
+    dst_smdh = sd_root / "boot.smdh"
+    if safe_exists(tpl_boot):
+        copy_file_if_changed(tpl_boot, dst_boot)
+    if safe_exists(tpl_smdh):
+        copy_file_if_changed(tpl_smdh, dst_smdh)
 
 
 def stage_dependencies(sd_root: Path) -> Dict[str, str]:
@@ -552,7 +602,8 @@ def stage_dependencies(sd_root: Path) -> Dict[str, str]:
     for key, (name, url, rel) in DEP_TASKS.items():
         out = sd_root / rel
         print_line(f"- {name}")
-        download(url, out)
+        updated = download(url, out)
+        print_line(f"  {'updated' if updated else 'up-to-date'}")
         downloaded[key] = out
 
     print_line("- Extracting NTR_Launcher.cia...")

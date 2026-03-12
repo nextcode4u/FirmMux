@@ -27,6 +27,7 @@ The script will:
 - Stage dependencies (RetroArch data, NTR Forwarder, CIAs)
 - Stage optional standalone pathfile package (mGBA/snes9x_3ds/DaedalusX64)
 - Show DSP firmware reminder (`sd:/3ds/dspfirm.cdc`)
+- On-device updater app is included at `sd:/3ds/firmmux-updater.3dsx` (FirmMux update only).
 
 Autoboot toggle (Settings):
 - OFF by default.
@@ -79,6 +80,11 @@ Run the PC setup script:
 
 - `python3 tools/firmmux_setup_pc.py`
 - Or: `python3 tools/firmmux_setup_pc.py --sd-root <SD_ROOT>`
+
+On-device updater note:
+
+- `sd:/3ds/firmmux-updater.3dsx` updates FirmMux files only.
+- Dependency staging remains PC-side via `tools/FirmMux_Setup.bat` or `tools/firmmux_setup_pc.py`.
 
 Health check also verifies:
 

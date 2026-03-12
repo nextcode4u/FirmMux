@@ -37,6 +37,9 @@ What it stages:
 - RetroArch 3DSX package files
 - Optional standalone pathfile package files (latest release)
 - Latest FirmMux release SD package (`FirmMux-SD.zip`) when using install/update modes
+- On-device updater app:
+  - `sd:/3ds/firmmux-updater.3dsx`
+  - `sd:/3ds/firmmux-updater.smdh`
 
 RetroArch staging note:
 
@@ -60,6 +63,11 @@ After script completes:
 3. If `sd:/3ds/dspfirm.cdc` is missing, open Rosalina and dump DSP firmware:
 - `L + D-Pad Down + Select` -> `Miscellaneous options` -> `Dump DSP firmware`
 4. Launch FirmMux and run Health check.
+
+On-device updater scope:
+
+- `firmmux-updater` updates FirmMux files only.
+- Use PC setup for dependency staging.
 
 CIA note:
 
