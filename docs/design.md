@@ -139,6 +139,7 @@ Invalid or missing JSON is regenerated automatically.
 ## Custom RetroArch Build
 
 - Custom RetroArch 3DSX is built from source in `retroarch_src/RetroArch-master/`
+- Upstream sync helper: `tools/update_retroarch_src.sh`
 - Build script: `tools/build_retroarch_with_firmux.sh`
 - Output: `SD/3ds/FirmMux/emulators/retroarch.3dsx`
 

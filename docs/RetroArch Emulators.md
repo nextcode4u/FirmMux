@@ -154,10 +154,15 @@ Expected package files (when installed):
 ## Custom RetroArch Build (FirmMux)
 
 Source:
-- https://github.com/libretro/RetroArch/tree/master
+- https://github.com/nextcode4u/RetroArch-Pathfile-mod
 
 Place source in:
 - `retroarch_src/RetroArch-master/`
+
+Update upstream source:
+```bash
+tools/update_retroarch_src.sh
+```
 
 Build:
 ```

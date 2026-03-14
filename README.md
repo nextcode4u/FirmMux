@@ -61,6 +61,14 @@ Tool placement:
   - `tools/bin/bannertool`
   - `tools/bin/makerom`
 
+RetroArch source maintenance:
+
+- Upstream source lives in `retroarch_src/RetroArch-master/`
+- Pull upstream changes with:
+  - `tools/update_retroarch_src.sh`
+- Build the custom FirmMux RetroArch binary with:
+  - `tools/build_retroarch_with_firmux.sh`
+
 ## Run
 
 Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.

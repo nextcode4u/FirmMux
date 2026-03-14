@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ZIP="$ROOT/Refrences/RetroArch-master.zip"
 BUILD_DIR="/tmp/retroarch_build_firmux"
+SRC_TREE="$ROOT/retroarch_src/RetroArch-master"
 SRC_DIR="$BUILD_DIR/RetroArch-master"
 OUT_DIR="$ROOT/SD/3ds/FirmMux/emulators"
 RULES1="$ROOT/SD/3ds/emulators/retroarch_rules.json"
@@ -10,13 +10,13 @@ RULES2="$ROOT/SD/3ds/Emulators/retroarch_rules.json"
 ENTRY="sd:/3ds/FirmMux/emulators/retroarch.3dsx"
 export PATH="/opt/devkitpro/tools/bin:$PATH"
 export DEVKITTOOLS="/opt/devkitpro/tools"
-if [ ! -f "$ZIP" ]; then
-  echo "Missing zip: $ZIP" >&2
+if [ ! -d "$SRC_TREE" ]; then
+  echo "Missing source tree: $SRC_TREE" >&2
   exit 1
 fi
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$OUT_DIR"
-unzip -q "$ZIP" -d "$BUILD_DIR"
+cp -a "$SRC_TREE" "$SRC_DIR"
 python3 - << 'PY'
 from pathlib import Path
 p = Path("/tmp/retroarch_build_firmux/RetroArch-master/Makefile.ctr")
