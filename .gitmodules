@@ -1,0 +1,4 @@
+[submodule "retroarch_src/RetroArch-master"]
+	path = retroarch_src/RetroArch-master
+	url = https://github.com/nextcode4u/RetroArch-Pathfile-mod.git
+	branch = master

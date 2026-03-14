@@ -158,6 +158,7 @@ Source:
 
 Place source in:
 - `retroarch_src/RetroArch-master/`
+- This path is tracked as a git submodule.
 
 Update upstream source:
 ```bash

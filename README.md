@@ -64,6 +64,7 @@ Tool placement:
 RetroArch source maintenance:
 
 - Upstream source lives in `retroarch_src/RetroArch-master/`
+- It is tracked as a git submodule to your RetroArch fork.
 - Pull upstream changes with:
   - `tools/update_retroarch_src.sh`
 - Build the custom FirmMux RetroArch binary with:

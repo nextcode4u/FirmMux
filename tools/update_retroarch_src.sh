@@ -12,10 +12,7 @@ usage() {
   cat <<EOF
 Usage: $0 [branch-or-tag]
 
-Initial import:
-  git subtree add --prefix=${PREFIX} ${UPSTREAM_URL} <ref> --squash
-
-Update existing source:
+Sync submodule to latest upstream:
   $0 [branch-or-tag]
 EOF
 }
@@ -25,14 +22,16 @@ if [ "${UPSTREAM_REF}" = "-h" ] || [ "${UPSTREAM_REF}" = "--help" ]; then
   exit 0
 fi
 
-if [ ! -d "${PREFIX}" ] || [ -z "$(find "${PREFIX}" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
+if [ ! -d "${PREFIX}" ]; then
   echo "RetroArch source tree missing at ${PREFIX}."
   echo "Run this once instead:"
-  echo "  git subtree add --prefix=${PREFIX} ${UPSTREAM_URL} ${UPSTREAM_REF} --squash"
+  echo "  git submodule update --init --remote ${PREFIX}"
   exit 1
 fi
 
-git subtree pull --prefix="${PREFIX}" "${UPSTREAM_URL}" "${UPSTREAM_REF}" --squash
+git submodule sync -- "${PREFIX}"
+git -C "${PREFIX}" fetch origin "${UPSTREAM_REF}"
+git -C "${PREFIX}" checkout FETCH_HEAD
 
 echo "Updated ${PREFIX} from ${UPSTREAM_URL} (${UPSTREAM_REF})."
 echo "Next:"
