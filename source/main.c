@@ -78,6 +78,9 @@ static char g_cover_preview_last_path[256];
 static char g_cover_preview_last_name[256];
 static bool g_cover_preview_last_has_cover = false;
 static char g_cover_preview_last_cover_path[640];
+static IconTexture g_cover_preview_icon;
+static u32 g_cover_preview_icon_generation = 0;
+static char g_cover_preview_icon_path[640];
 static bool g_is_new_3ds = false;
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
@@ -1655,6 +1658,19 @@ static void preview_icon_layout(int iw, int ih, float banner_y, float* out_x, fl
     if (out_scale) *out_scale = scale;
 }
 
+static void preview_cover_layout(int iw, int ih, float banner_y, float* out_x, float* out_y, float* out_scale) {
+    float inset = 2.0f;
+    float inner = 96.0f - inset * 2.0f;
+    float maxd = (iw > ih) ? (float)iw : (float)ih;
+    if (maxd <= 0.0f) maxd = 1.0f;
+    float scale = inner / maxd;
+    float px = 8.0f + inset + (inner - iw * scale) * 0.5f;
+    float py = banner_y + inset + (inner - ih * scale) * 0.5f;
+    if (out_x) *out_x = px;
+    if (out_y) *out_y = py;
+    if (out_scale) *out_scale = scale;
+}
+
 static void draw_theme_image_scaled_alpha(const IconTexture* icon, float x, float y, float w, float h, u8 alpha) {
     if (!icon || !icon->loaded) return;
     float iw = icon->subtex.width > 0 ? icon->subtex.width : 1.0f;
@@ -2671,6 +2687,9 @@ static void cover_preview_reset_state(bool clear_selection_cache) {
         preview_cancel(g_cover_preview_generation);
         g_cover_preview_request_active = false;
     }
+    icon_free(&g_cover_preview_icon);
+    g_cover_preview_icon_generation = 0;
+    g_cover_preview_icon_path[0] = 0;
     if (clear_selection_cache) {
         g_cover_preview_last_target_id[0] = 0;
         g_cover_preview_last_path[0] = 0;
@@ -6228,9 +6247,27 @@ int main(int argc, char** argv) {
                         float scale = 1.0f;
                         float px = 8.0f;
                         float py = banner_y;
-                        preview_icon_layout(pw, ph, banner_y, &px, &py, &scale);
-                        draw_rgba_icon(px + g_preview_offset_x, py + g_preview_offset_y, scale, rgba, pw, ph);
-                        drew_icon = true;
+                        preview_cover_layout(pw, ph, banner_y, &px, &py, &scale);
+                        if (g_cover_preview_icon_generation != g_cover_preview_generation
+                            || strcmp(g_cover_preview_icon_path, g_cover_preview_last_cover_path) != 0) {
+                            icon_free(&g_cover_preview_icon);
+                            g_cover_preview_icon_generation = 0;
+                            g_cover_preview_icon_path[0] = 0;
+                            if (icon_from_rgba_tiled(&g_cover_preview_icon, rgba, pw, ph)) {
+                                g_cover_preview_icon_generation = g_cover_preview_generation;
+                                copy_str(g_cover_preview_icon_path, sizeof(g_cover_preview_icon_path), g_cover_preview_last_cover_path);
+                                if (debug_log_enabled()) debug_log("cover: preview texture ready path=%s %dx%d", g_cover_preview_last_cover_path, pw, ph);
+                            } else if (debug_log_enabled()) {
+                                debug_log("cover: preview texture build failed path=%s %dx%d", g_cover_preview_last_cover_path, pw, ph);
+                            }
+                        }
+                        if (!drew_icon && g_cover_preview_icon.loaded) {
+                            C2D_DrawImageAt(g_cover_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
+                            drew_icon = true;
+                        } else if (!drew_icon) {
+                            draw_rgba_icon(px + g_preview_offset_x, py + g_preview_offset_y, scale, rgba, pw, ph);
+                            drew_icon = true;
+                        }
                     }
                 }
             }
@@ -6743,6 +6780,7 @@ int main(int argc, char** argv) {
 
 cleanup:
     preview_manager_shutdown();
+    icon_free(&g_cover_preview_icon);
     runtime_cache_shutdown();
     if (g_easter_rgba) {
         free(g_easter_rgba);

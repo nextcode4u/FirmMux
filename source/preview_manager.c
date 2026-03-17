@@ -23,19 +23,22 @@ static bool load_png_preview_rgba(const char* path, u8* out_rgba, size_t out_rgb
     if (!path || !path[0] || !out_rgba || out_rgba_size < (PREVIEW_MAX_W * PREVIEW_MAX_H * 4)) return false;
     u8* file = NULL;
     size_t fsize = 0;
+    if (debug_log_enabled()) debug_log("cover: preview load start path=%s", path);
     if (!read_file(path, &file, &fsize) || !file || fsize == 0) {
-        if (debug_log_enabled()) debug_log("cover: read fail %s", path ? path : "(null)");
+        if (debug_log_enabled()) debug_log("cover: read fail path=%s size=%lu", path ? path : "(null)", (unsigned long)fsize);
         if (file) free(file);
         return false;
     }
+    if (debug_log_enabled()) debug_log("cover: preview read ok path=%s size=%lu", path, (unsigned long)fsize);
     int w = 0, h = 0, comp = 0;
     unsigned char* data = stbi_load_from_memory(file, (int)fsize, &w, &h, &comp, 4);
     free(file);
     if (!data || w <= 0 || h <= 0) {
-        if (debug_log_enabled()) debug_log("cover: decode fail %s", path);
+        if (debug_log_enabled()) debug_log("cover: decode fail path=%s decoded=%p w=%d h=%d comp=%d", path, (void*)data, w, h, comp);
         if (data) stbi_image_free(data);
         return false;
     }
+    if (debug_log_enabled()) debug_log("cover: decode ok path=%s src=%dx%d comp=%d", path, w, h, comp);
 
     int tw = w;
     int th = h;
@@ -71,7 +74,7 @@ static bool load_png_preview_rgba(const char* path, u8* out_rgba, size_t out_rgb
         }
     }
     stbi_image_free(data);
-    if (debug_log_enabled()) debug_log("cover: ready %s %dx%d", path, tw, th);
+    if (debug_log_enabled()) debug_log("cover: ready path=%s out=%dx%d", path, tw, th);
     if (out_w) *out_w = tw;
     if (out_h) *out_h = th;
     return true;
@@ -95,6 +98,7 @@ void preview_manager_shutdown(void) {
 void preview_request(const char* path, u32 generation) {
     if (!path || !path[0]) return;
     if (g_ready_valid && g_ready_generation == generation && !strcmp(g_ready_path, path)) return;
+    if (debug_log_enabled()) debug_log("cover: preview request path=%s gen=%lu", path, (unsigned long)generation);
 
     int w = 0, h = 0;
     if (!load_png_preview_rgba(path, g_ready_rgba, sizeof(g_ready_rgba), &w, &h)) {

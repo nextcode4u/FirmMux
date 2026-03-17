@@ -18,6 +18,7 @@ from pathlib import Path
 
 try:
     from PIL import Image
+    from PIL import ImageOps
 except ImportError:
     print("Error: Pillow is required. Install with: pip install pillow", file=sys.stderr)
     sys.exit(2)
@@ -128,7 +129,7 @@ ROMAN_VARIANTS = [
     (re.compile(r"\bIV\b"), "4"),
 ]
 
-CATEGORIES = ["Named_Titles", "Named_Boxarts", "Named_Snaps"]
+CATEGORIES = ["Named_Boxarts"]
 IMAGE_EXTS = ["png", "jpg", "jpeg"]
 LOCK = threading.Lock()
 
@@ -160,6 +161,14 @@ def normalize_spaces(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
+def normalize_punctuation(text):
+    text = text.replace("’", "'")
+    text = text.replace("&", "and")
+    text = re.sub(r"\s*-\s*", " - ", text)
+    text = re.sub(r"\s*:\s*", ": ", text)
+    return normalize_spaces(text)
+
+
 def strip_after_token(text, token):
     pos = text.find(token)
     if pos >= 0:
@@ -186,7 +195,7 @@ def generate_candidates(base_name, mode):
     names = []
 
     def add(value):
-        value = normalize_spaces(value)
+        value = normalize_punctuation(value)
         if value and value not in names:
             names.append(value)
 
@@ -199,15 +208,23 @@ def generate_candidates(base_name, mode):
         for pattern in TAG_PATTERNS:
             cleaned = pattern.sub("", cleaned)
         add(cleaned)
-        add(cleaned.replace("&", "and"))
+        add(re.sub(r"\([^)]*\)", "", cleaned))
+        add(re.sub(r"\[[^\]]*\]", "", cleaned))
         add(cleaned.replace("'", ""))
         add(cleaned.replace("’", ""))
         add(cleaned.replace(" and ", " & "))
+        add(re.sub(r"\s+", " ", re.sub(r"[\[\]()]"," ", cleaned)))
+        add(re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9&'!:,+.-]+", " ", cleaned)))
+        add(re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9]+", " ", cleaned)))
 
     if mode == "aggressive":
         for name in list(names):
             for variant in with_roman_variants(name):
                 add(variant)
+            add(name.replace("-", " "))
+            add(name.replace(" - ", ": "))
+            add(name.replace(": ", " - "))
+            add(re.sub(r"\bThe\b", "", name, flags=re.IGNORECASE))
 
     if mode == "fast":
         return names[:2]
@@ -245,8 +262,24 @@ def write_json_atomic(path, data):
     os.replace(tmp_path, path)
 
 
+def verify_compatible_png(path, expected_size):
+    try:
+        with Image.open(path) as image:
+            image.load()
+            if image.format != "PNG":
+                return False, "not_png"
+            if image.size != (expected_size, expected_size):
+                return False, f"wrong_size:{image.size[0]}x{image.size[1]}"
+            if image.mode != "RGBA":
+                return False, f"wrong_mode:{image.mode}"
+        return True, ""
+    except Exception as ex:
+        return False, f"verify_failed:{ex}"
+
+
 def resize_to_square_png(src_bytes, out_path, size):
     with Image.open(io.BytesIO(src_bytes)) as image:
+        image = ImageOps.exif_transpose(image)
         image = image.convert("RGBA")
         image.thumbnail((size, size), Image.Resampling.LANCZOS)
         canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -255,8 +288,20 @@ def resize_to_square_png(src_bytes, out_path, size):
         canvas.paste(image, (x, y))
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile("wb", dir=str(out_path.parent), delete=False) as tmp:
-            canvas.save(tmp, format="PNG")
+            canvas.save(
+                tmp,
+                format="PNG",
+                optimize=False,
+                compress_level=6,
+            )
             tmp_path = Path(tmp.name)
+        ok, reason = verify_compatible_png(tmp_path, size)
+        if not ok:
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+            raise RuntimeError(f"incompatible output png: {reason}")
         os.replace(tmp_path, out_path)
 
 
@@ -310,6 +355,8 @@ class SyncContext:
             "network_fail": 0,
             "skipped_negative": 0,
             "errors": 0,
+            "audit_checked": 0,
+            "audit_bad": 0,
         }
         self.index = read_json(self.index_path, {})
         self.negative = read_json(self.neg_path, {})
@@ -326,6 +373,15 @@ class SyncContext:
 
     def close(self):
         self._log_handle.close()
+
+    def clear_negative_cache(self):
+        self.negative = {}
+        if self.neg_path.exists():
+            try:
+                self.neg_path.unlink()
+            except Exception as ex:
+                self.log(f"warn negative-cache delete-failed err={ex}")
+        self.log("negative-cache cleared")
 
     def should_scan_system(self, system_key):
         if not self.system_filter:
@@ -490,6 +546,27 @@ def resolve_target_path(ctx: SyncContext, system_key, rom_path):
     return ctx.cache_root / system_key / f"{rom_stem}.png"
 
 
+def audit_existing_covers(ctx: SyncContext):
+    issues = []
+    if not ctx.cache_root.exists():
+        ctx.log(f"audit cache-root missing path={ctx.cache_root}")
+        return issues
+
+    for system_dir in sorted(ctx.cache_root.iterdir()):
+        if not system_dir.is_dir():
+            continue
+        if system_dir.name.startswith("_"):
+            continue
+        for png in sorted(system_dir.glob("*.png")):
+            ctx.stats["audit_checked"] += 1
+            ok, reason = verify_compatible_png(png, ctx.args.size)
+            if not ok:
+                ctx.stats["audit_bad"] += 1
+                issues.append((png, reason))
+                ctx.log(f"audit bad path={png} reason={reason}")
+    return issues
+
+
 def check_user_override(ctx: SyncContext, playlist, candidates, out_path, size):
     for candidate in candidates:
         p = ctx.user_override_root / safe_name(playlist) / f"{safe_name(candidate)}.png"
@@ -616,6 +693,19 @@ def run(args):
     ctx = SyncContext(args)
     started = time.time()
     try:
+        if args.clear_negative_cache:
+            ctx.clear_negative_cache()
+        if args.audit_cache:
+            issues = audit_existing_covers(ctx)
+            print("\n================ Cover Cache Audit ================")
+            print(f"Checked: {ctx.stats['audit_checked']}")
+            print(f"Bad:     {ctx.stats['audit_bad']}")
+            if issues:
+                print("\nBad files:")
+                for path, reason in issues:
+                    print(f"- {path} :: {reason}")
+            print("==================================================\n")
+            return
         roms = parse_roms(ctx)
         ctx.log(f"scan roms={len(roms)} mode={args.mode} providers={','.join(ctx.providers)} size={args.size}")
         if args.limit > 0:
@@ -670,6 +760,8 @@ def build_parser():
     parser.add_argument("--retries", type=int, default=1, help="Retry count for transient errors")
     parser.add_argument("--size", type=int, default=92, help="Square output size (default: 92)")
     parser.add_argument("--force", action="store_true", help="Ignore existing and negative cache")
+    parser.add_argument("--clear-negative-cache", action="store_true", help="Delete negative_cache.json before scanning")
+    parser.add_argument("--audit-cache", action="store_true", help="Validate existing cached cover PNGs and exit")
     parser.add_argument("--dry-run", action="store_true", help="Do not write images or index files")
     parser.add_argument("--limit", type=int, default=0, help="Process only first N ROMs (0 = all)")
     return parser
@@ -817,6 +909,8 @@ def interactive_args():
     workers = 6
     systems = ""
     force = False
+    clear_negative_cache = False
+    audit_cache = False
     dry_run = False
     limit = 0
     timeout = 10.0
@@ -895,7 +989,9 @@ def interactive_args():
         except Exception:
             size = 92
 
-    force = prompt_bool("Force refresh existing covers", False)
+    audit_cache = prompt_bool("Audit existing cached covers only", False)
+    clear_negative_cache = False if audit_cache else prompt_bool("Clear negative cache before scan", False)
+    force = False if audit_cache else prompt_bool("Force refresh existing covers", False)
 
     print("\nRun summary:")
     print(f"  SD root: {sd_root}")
@@ -904,6 +1000,8 @@ def interactive_args():
     print(f"  Providers: {providers}")
     print(f"  Workers: {workers}")
     print(f"  Systems filter: {systems or 'all'}")
+    print(f"  Audit cache only: {'yes' if audit_cache else 'no'}")
+    print(f"  Clear negative cache: {'yes' if clear_negative_cache else 'no'}")
     print(f"  Force refresh: {'yes' if force else 'no'}")
     print(f"  Dry run: {'yes' if dry_run else 'no'}")
     print(f"  Limit: {limit}")
@@ -924,6 +1022,8 @@ def interactive_args():
         retries=retries,
         size=size,
         force=force,
+        clear_negative_cache=clear_negative_cache,
+        audit_cache=audit_cache,
         dry_run=dry_run,
         limit=limit,
     )

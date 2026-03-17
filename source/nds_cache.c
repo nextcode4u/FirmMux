@@ -104,6 +104,55 @@ bool icon_from_rgba(IconTexture* icon, const u8* data, int w, int h) {
     return true;
 }
 
+static inline int morton_index_8x8(int x, int y) {
+    return (x & 1)
+        | ((y & 1) << 1)
+        | ((x & 2) << 1)
+        | ((y & 2) << 2)
+        | ((x & 4) << 2)
+        | ((y & 4) << 3);
+}
+
+bool icon_from_rgba_tiled(IconTexture* icon, const u8* data, int w, int h) {
+    icon_free(icon);
+    if (!data || w <= 0 || h <= 0) return false;
+    int tw = 1;
+    while (tw < w) tw <<= 1;
+    int th = 1;
+    while (th < h) th <<= 1;
+    if (!C3D_TexInit(&icon->tex, tw, th, GPU_RGBA8)) return false;
+    C3D_TexSetFilter(&icon->tex, GPU_NEAREST, GPU_NEAREST);
+    C3D_TexSetWrap(&icon->tex, GPU_CLAMP_TO_BORDER, GPU_CLAMP_TO_BORDER);
+    memset(icon->tex.data, 0, icon->tex.size);
+    int tiles_per_row = tw >> 3;
+    int y_base = th - h;
+    u8* dst = (u8*)icon->tex.data;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            int dy = y + y_base;
+            int tile = (dy >> 3) * tiles_per_row + (x >> 3);
+            int pixel = morton_index_8x8(x & 7, dy & 7);
+            u8* d = dst + ((tile << 6) + pixel) * 4;
+            const u8* s = data + ((size_t)y * (size_t)w + (size_t)x) * 4;
+            d[0] = s[3];
+            d[1] = s[2];
+            d[2] = s[1];
+            d[3] = s[0];
+        }
+    }
+    GSPGPU_FlushDataCache(icon->tex.data, icon->tex.size);
+    icon->image.tex = &icon->tex;
+    icon->image.subtex = &icon->subtex;
+    icon->subtex.width = w;
+    icon->subtex.height = h;
+    icon->subtex.left = 0.0f;
+    icon->subtex.top = (float)h / (float)th;
+    icon->subtex.right = (float)w / (float)tw;
+    icon->subtex.bottom = 0.0f;
+    icon->loaded = true;
+    return true;
+}
+
 static u64 path_hash(const char* s) {
     u64 h = 1469598103934665603ULL;
     while (*s) {

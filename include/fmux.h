@@ -553,6 +553,7 @@ NdsCacheEntry* nds_cache_entry(const char* path);
 bool load_nds_icon_direct(const char* full_path, NdsCacheEntry* e);
 void build_nds_entry(const char* full_path);
 bool icon_from_rgba(IconTexture* icon, const u8* data, int w, int h);
+bool icon_from_rgba_tiled(IconTexture* icon, const u8* data, int w, int h);
 void icon_free(IconTexture* icon);
 
 bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache);

@@ -9,6 +9,9 @@ Output path:
 Output size:
 
 - `92x92`
+- normalized `RGBA` PNG
+- metadata stripped
+- verified after write for FirmMux compatibility
 
 ## Requirements
 
@@ -29,6 +32,10 @@ pip install pillow
 - Start scan
 
 The script will show a summary at the end (scanned, found, unresolved, errors).
+
+It also now supports clearing the negative cache before a scan so previously missed ROMs can be retried immediately.
+
+It also supports auditing existing cached covers to catch incompatible PNGs before copying them to the SD card.
 
 ## Supported RetroArch Systems
 
@@ -69,20 +76,31 @@ py tools/firmmux_boxart_sync.py --sd-root E:\
 
 - Match mode: `balanced`
 - Hash mode: `missing`
+- Clear negative cache: `yes` when testing new matching changes
 
 ## Data Source and Matching
 
 - Provider fallback:
   1. `https://thumbnails.libretro.com`
   2. `https://raw.githubusercontent.com/libretro-thumbnails/...`
-- Art priority:
-  1. `Named_Titles`
-  2. `Named_Boxarts`
-  3. `Named_Snaps`
-- Matching uses filename variants and optional SHA1 name matching via Libretro No-Intro DAT files.
+- Art source:
+  - `Named_Boxarts` only
+- Matching uses stronger filename normalization plus optional SHA1 name matching via Libretro No-Intro DAT files.
 
 ## Cache/Logs
 
 - Index: `sd:/3ds/FirmMux/cache/covers/index.json`
 - Negative cache: `sd:/3ds/FirmMux/cache/covers/negative_cache.json`
 - Log: `sd:/3ds/FirmMux/logs/cover_sync.log`
+
+CLI example to retry old misses immediately:
+
+```bash
+python3 tools/firmmux_boxart_sync.py --sd-root /media/<user>/<SDCARD> --clear-negative-cache
+```
+
+CLI example to audit cached covers only:
+
+```bash
+python3 tools/firmmux_boxart_sync.py --sd-root /media/<user>/<SDCARD> --audit-cache
+```
