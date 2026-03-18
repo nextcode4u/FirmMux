@@ -65,6 +65,16 @@ Per-element values override `radius_global`.
 If a background is selected in Options, it overrides the theme wallpaper for that screen.
 Older saved background visibility values are safe and ignored.
 
+Recommended format:
+
+- `PNG`
+- `RGBA`
+
+Recommended sizes:
+
+- `top_image`: `400x240`
+- `bottom_image`: `320x240`
+
 ## Theme image assets (optional)
 
 Supported image keys:
@@ -85,6 +95,32 @@ Notes:
 - These assets are optional.
 - If an asset is missing, FirmMux falls back to the normal color-based UI for that element.
 - Wallpapers and UI assets use the same safe texture upload path used for stable cover preview handling.
+
+Recommended format:
+
+- `PNG`
+- `RGBA`
+
+Recommended sizes:
+
+- `status_strip`: `256x16`
+- `help_strip`: `256x16`
+- `preview_frame`: `96x96`
+- `sprite_icon`: `32x32`
+- `tab_item_image`: `128x24`
+- `tab_sel_image`: `128x24`
+- `list_item_image`: `128x24`
+- `list_sel_image`: `128x24`
+- `option_item_image`: `128x24`
+- `option_sel_image`: `128x24`
+
+Authoring notes:
+
+- `top_image` and `bottom_image` are drawn full-screen.
+- `preview_frame` is drawn into the `96x96` preview box.
+- `status_strip` and `help_strip` are stretched horizontally to fit the screen width while keeping their bar height.
+- Row assets (`tab_*`, `list_*`, `option_*`) are stretched horizontally to fit the row width and vertically to the current row height.
+- Keep important borders/details away from the outermost 1–2 pixels if you want them to survive scaling cleanly.
 
 ## Theme options debug menu
 
