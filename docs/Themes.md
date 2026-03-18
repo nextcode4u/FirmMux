@@ -1,6 +1,6 @@
 # Themes
 
-Themes control colors, roundness, and optional per-theme audio.
+Themes control colors, roundness, alpha, optional per-theme audio, and optional image assets.
 
 Theme file:
 
@@ -65,13 +65,42 @@ Per-element values override `radius_global`.
 If a background is selected in Options, it overrides the theme wallpaper for that screen.
 Older saved background visibility values are safe and ignored.
 
+## Theme image assets (optional)
+
+Supported image keys:
+
+- `status_strip`
+- `sprite_icon`
+- `list_item_image`
+- `list_sel_image`
+- `tab_item_image`
+- `tab_sel_image`
+- `option_item_image`
+- `option_sel_image`
+- `preview_frame`
+- `help_strip`
+
+Notes:
+
+- These assets are optional.
+- If an asset is missing, FirmMux falls back to the normal color-based UI for that element.
+- Wallpapers and UI assets use the same safe texture upload path used for stable cover preview handling.
+
 ## Theme options debug menu
 
 Options → Theme options…
 
-- Adjusts panel alpha and corner radii live.
+- Adjusts panel alpha and per-element alpha live.
 - Also adjusts row padding and tab padding.
 - Debug menu overlays show bounds for panels/tabs/lists/preview/help/status.
+
+Current alpha controls:
+
+- `Preview alpha`
+- `Tab alpha`
+- `List alpha`
+- `Overlay alpha`
+- `Toast alpha`
 
 ## Colors
 
@@ -115,3 +144,7 @@ All colors are hex RGB or ARGB:
 - velvet_gruv
 - orbit_dreams
 - golden_drizzle
+
+Repo-side example/test theme:
+
+- `themes/test_assets`
