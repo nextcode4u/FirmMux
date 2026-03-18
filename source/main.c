@@ -3192,7 +3192,7 @@ static void draw_help_bar(const char* label) {
         float r_status2 = theme_radius(g_theme.radius_status);
         draw_round_rect(0, y, BOTTOM_W, HELP_BAR_H, help_bg, r_status2);
     }
-    draw_text(6, y + 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
+    draw_text(6, y - 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
 }
 
 static void build_help_label_for_target(const Target* target, char* out, size_t out_size) {
@@ -6299,6 +6299,14 @@ int main(int argc, char** argv) {
             u8 alpha = overlay_alpha(top_has_bg, true);
             draw_theme_image_scaled_alpha(&g_theme.preview_frame_tex, 8.0f, banner_y + off, 96.0f, 96.0f, alpha);
         }
+        if (!show_system_info && !drew_icon && g_theme.preview_image_loaded && g_theme.preview_image_w > 0 && g_theme.preview_image_h > 0) {
+            float scale = 1.0f;
+            float px = 8.0f;
+            float py = banner_y;
+            preview_icon_layout(g_theme.preview_image_w, g_theme.preview_image_h, banner_y, &px, &py, &scale);
+            draw_theme_image(&g_theme.preview_image_tex, px + g_preview_offset_x, py + g_preview_offset_y, scale);
+            drew_icon = true;
+        }
         if (!show_system_info && !drew_icon) {
             draw_text(12, banner_y + 36, 0.6f, g_theme.text_muted, "Preview");
         }
@@ -6344,7 +6352,7 @@ int main(int argc, char** argv) {
             if (sel && g_theme.tab_sel_loaded) tab_bias = align_offset_from_center(g_theme.tab_sel_center_y, row_h);
             else if (!sel && g_theme.tab_item_loaded) tab_bias = align_offset_from_center(g_theme.tab_item_center_y, row_h);
             float tab_text_w = (float)(TARGET_LIST_W - 12);
-            draw_text_scroll_box(PREVIEW_W + 6, row_y + g_theme.tab_text_offset_y - 2.0f, 0.7f, g_theme.tab_text, tab_text_w, row_h, cfg->targets[idx].label, tab_bias, sel);
+            draw_text_scroll_box(PREVIEW_W + 6, row_y + g_theme.tab_text_offset_y - 3.0f, 0.7f, g_theme.tab_text, tab_text_w, row_h, cfg->targets[idx].label, tab_bias, sel);
         }
 
         draw_status_bar();
@@ -6500,7 +6508,7 @@ int main(int argc, char** argv) {
                 float opt_bias = -2.0f;
                 if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, row_h);
                 else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, row_h);
-                draw_text_centered_bias(10, row_y + g_theme.option_text_offset_y, 0.6f, g_theme.option_text, row_h, list[idx].label, opt_bias);
+                draw_text_centered_bias(10, row_y + g_theme.option_text_offset_y - 2.0f, 0.6f, g_theme.option_text, row_h, list[idx].label, opt_bias);
             }
             if (kDown & KEY_SELECT) {
                 if (!g_select_last) g_select_hits++;
@@ -6561,7 +6569,7 @@ int main(int argc, char** argv) {
                 if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                 else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                 float text_w = (float)(BOTTOM_W - 24);
-                draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 2.0f, 0.6f, g_theme.list_text, text_w, row_h, shortname, list_bias, sel);
+                draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, shortname, list_bias, sel);
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
@@ -6592,13 +6600,13 @@ int main(int argc, char** argv) {
                     if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                     float text_w = (float)(BOTTOM_W - 24);
-                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 2.0f, 0.6f, g_theme.list_text, text_w, row_h, "Return to HOME", list_bias, sel);
+                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, "Return to HOME", list_bias, sel);
                 } else if (idx == 1) {
                     float list_bias = -2.0f;
                     if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                     float text_w = (float)(BOTTOM_W - 24);
-                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 2.0f, 0.6f, g_theme.list_text, text_w, row_h, "Turn Off Console", list_bias, sel);
+                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, "Turn Off Console", list_bias, sel);
                 } else {
                     TitleInfo3ds* t = title_system_at_sorted(idx - 2, ts->sort_mode);
                     if (!t) continue;
@@ -6614,7 +6622,7 @@ int main(int argc, char** argv) {
                     if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                     float text_w = (float)(BOTTOM_W - 24);
-                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 2.0f, 0.6f, g_theme.list_text, text_w, row_h, shortname, list_bias, sel);
+                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, shortname, list_bias, sel);
                 }
             }
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
@@ -6677,7 +6685,7 @@ int main(int argc, char** argv) {
                 if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                 else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                 float text_w = (float)(BOTTOM_W - 24);
-                draw_text_scroll_box(text_x, row_y + g_theme.list_text_offset_y - 2.0f, 0.6f, g_theme.list_text, text_w, row_h, label_buf, list_bias, sel);
+                draw_text_scroll_box(text_x, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, label_buf, list_bias, sel);
             }
             }
         } else {
@@ -6745,7 +6753,7 @@ int main(int argc, char** argv) {
             if (y < 4.0f) y = 4.0f;
             float r_toast = theme_radius(g_theme.radius_options);
             draw_round_rect(x, y, box_w, box_h, g_theme.toast_bg, r_toast);
-            float ty = y + 6.0f;
+            float ty = y + 1.0f;
             for (int i = 0; i < line_count; i++) {
                 float lw = text_width_safe(scale * g_text_scale, lines[i]);
                 float tx = x + (box_w - lw) * 0.5f;

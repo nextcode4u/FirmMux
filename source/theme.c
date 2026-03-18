@@ -75,6 +75,7 @@ static void theme_free_images(Theme* t) {
     icon_free(&t->option_item_tex);
     icon_free(&t->option_sel_tex);
     icon_free(&t->preview_frame_tex);
+    icon_free(&t->preview_image_tex);
     icon_free(&t->help_tex);
     t->top_loaded = false;
     t->bottom_loaded = false;
@@ -87,6 +88,7 @@ static void theme_free_images(Theme* t) {
     t->option_item_loaded = false;
     t->option_sel_loaded = false;
     t->preview_frame_loaded = false;
+    t->preview_image_loaded = false;
     t->help_loaded = false;
 }
 
@@ -367,6 +369,8 @@ bool load_theme(Theme* t, const char* name) {
                     copy_str(t->option_sel_image, sizeof(t->option_sel_image), val);
                 } else if (!strncmp(p, "preview_frame:", 14)) {
                     copy_str(t->preview_frame, sizeof(t->preview_frame), val);
+                } else if (!strncmp(p, "preview_image:", 14)) {
+                    copy_str(t->preview_image, sizeof(t->preview_image), val);
                 } else if (!strncmp(p, "help_strip:", 11)) {
                     copy_str(t->help_strip, sizeof(t->help_strip), val);
                 } else if (!strncmp(p, "list_item_offset_y:", 19)) {
@@ -466,6 +470,9 @@ bool load_theme(Theme* t, const char* name) {
     }
     if (t->preview_frame[0]) {
         load_theme_image(t->folder[0] ? t->folder : name, t->preview_frame, &t->preview_frame_tex, NULL, NULL, &t->preview_frame_loaded, t->image_channel_order, t->image_swap_rb, &t->preview_frame_center_y);
+    }
+    if (t->preview_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->preview_image, &t->preview_image_tex, &t->preview_image_w, &t->preview_image_h, &t->preview_image_loaded, t->image_channel_order, t->image_swap_rb, NULL);
     }
     if (t->help_strip[0]) {
         load_theme_image(t->folder[0] ? t->folder : name, t->help_strip, &t->help_tex, &t->help_w, &t->help_h, &t->help_loaded, t->image_channel_order, t->image_swap_rb, &t->help_strip_center_y);

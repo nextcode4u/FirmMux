@@ -1,0 +1,64 @@
+name: Royale
+
+panel_alpha: 100
+row_padding: 1
+tab_padding: 1
+
+radius_global: 6.0
+radius_tabs: 6.0
+radius_list: 6.0
+radius_options: 6.0
+radius_panels: 8.0
+radius_preview: 8.0
+radius_status: 4.0
+radius_picker: 8.0
+
+
+accent: 0xFFF1CF78
+top_bg: 0xFF203247
+bottom_bg: 0xFF2B4260
+panel_left: 0xCC1F3148
+panel_right: 0xCC152437
+preview_bg: 0x5A20344C
+text_primary: 0xFFF7FBFF
+text_secondary: 0xFFD8E7F4
+text_muted: 0xFFAAC0D8
+tab_bg: 0xCC354D68
+tab_sel: 0xFFC79A42
+tab_text: 0xFFF8FBFF
+list_bg: 0xCC5A90B8
+list_sel: 0xFFD7B25A
+list_text: 0xFFF9FDFF
+option_bg: 0xCC3C5570
+option_sel: 0xFF6F9CC7
+option_text: 0xFFF8FBFF
+option_header: 0xFFF1E3AC
+overlay_bg: 0xCC142233
+help_bg: 0xE0121C2C
+help_line: 0xFF8FB6D7
+help_text: 0xFFF6FBFF
+status_bg: 0xE0121C2C
+status_text: 0xFFF6FBFF
+status_icon: 0xFFF6FBFF
+status_dim: 0xFFAEBDD0
+status_bolt: 0xFFF0D06B
+toast_bg: 0xE01A2533
+toast_text: 0xFFF7FBFF
+
+ui_sounds_dir: sounds
+bgm_path: sounds/bgm.wav
+
+top_image: topbg.png
+bottom_image: botbg.png
+tab_item_image: tab_item.png
+tab_sel_image: tab_sel.png
+list_item_image: list_item.png
+list_sel_image: list_sel.png
+option_item_image: option_item.png
+option_sel_image: option_sel.png
+preview_frame: preview_frame.png
+preview_image: preview.png
+status_strip: status_strip.png
+help_strip: help_strip.png
+sprite_icon: sprite.png
+image_channel_order: rgba

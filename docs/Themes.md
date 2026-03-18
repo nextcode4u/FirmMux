@@ -88,6 +88,7 @@ Supported image keys:
 - `option_item_image`
 - `option_sel_image`
 - `preview_frame`
+- `preview_image`
 - `help_strip`
 
 Notes:
@@ -106,6 +107,7 @@ Recommended sizes:
 - `status_strip`: `256x16`
 - `help_strip`: `256x16`
 - `preview_frame`: `96x96`
+- `preview_image`: `96x96`
 - `sprite_icon`: `32x32`
 - `tab_item_image`: `128x24`
 - `tab_sel_image`: `128x24`
@@ -118,6 +120,7 @@ Authoring notes:
 
 - `top_image` and `bottom_image` are drawn full-screen.
 - `preview_frame` is drawn into the `96x96` preview box.
+- `preview_image` is drawn inside the preview box only when no ROM banner, title icon, or cover art is available.
 - `status_strip` and `help_strip` are stretched horizontally to fit the screen width while keeping their bar height.
 - Row assets (`tab_*`, `list_*`, `option_*`) are stretched horizontally to fit the row width and vertically to the current row height.
 - Keep important borders/details away from the outermost 1–2 pixels if you want them to survive scaling cleanly.

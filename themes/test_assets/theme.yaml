@@ -53,6 +53,7 @@ list_sel_image: list_sel.png
 option_item_image: option_item.png
 option_sel_image: option_sel.png
 preview_frame: preview_frame.png
+preview_image: preview.png
 status_strip: status_strip.png
 help_strip: help_strip.png
 sprite_icon: sprite.png

@@ -331,6 +331,7 @@ typedef struct {
     char option_item_image[64];
     char option_sel_image[64];
     char preview_frame[64];
+    char preview_image[64];
     char help_strip[64];
     int list_item_offset_y;
     int list_text_offset_y;
@@ -362,6 +363,7 @@ typedef struct {
     IconTexture option_item_tex;
     IconTexture option_sel_tex;
     IconTexture preview_frame_tex;
+    IconTexture preview_image_tex;
     IconTexture help_tex;
     int top_w;
     int top_h;
@@ -385,6 +387,8 @@ typedef struct {
     int option_sel_h_img;
     int preview_frame_w;
     int preview_frame_h;
+    int preview_image_w;
+    int preview_image_h;
     int help_w;
     int help_h;
     bool top_loaded;
@@ -398,6 +402,7 @@ typedef struct {
     bool option_item_loaded;
     bool option_sel_loaded;
     bool preview_frame_loaded;
+    bool preview_image_loaded;
     bool help_loaded;
 } Theme;
 
