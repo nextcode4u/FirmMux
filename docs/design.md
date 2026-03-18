@@ -13,6 +13,7 @@ Bottom screen
 - Primary navigation area
 - Scrollable content lists and grids
 - Options overlay appears on the bottom screen when START is pressed
+- Stats / Favorites overlay appears on the bottom screen when SELECT is pressed from launchable browser views
 - Optional bottom background image is drawn behind the UI
 
 ## Input
@@ -22,6 +23,8 @@ Bottom screen
 - A: launch/open selected entry
 - B: back (directory up or previous screen)
 - START: open options overlay
+- SELECT: open Stats / Favorites from launchable browser views
+- Hold SELECT: add highlighted launchable entry to Favorites
 - While options open: L/R page options list, B closes
 
 ## Target Types and Behavior
@@ -61,23 +64,42 @@ States
 - Boot
 - Main (per-target content)
 - OptionsOverlay
+- StatsOverlay
 - Exit
 
 Transitions
 - Boot -> Main after config/state load
 - Main -> OptionsOverlay on START
 - OptionsOverlay -> Main on B
+- Main -> StatsOverlay on SELECT from launchable browser views
+- StatsOverlay -> Main on A/B/SELECT
 - Main -> Exit on system_menu A select
 
 ## Persistence
 
 - Config at /3ds/FirmMux/config.yaml
 - State at /3ds/FirmMux/state.json
+- Stats / Favorites at /3ds/FirmMux/stats.json
 - On missing config, create default
 - On malformed config, rename to .bak and regenerate
 - State stores last target, per-target directory path + selection + scroll, selected theme, selected backgrounds, and per-screen background visibility
 - State writes are atomic (`state.json.tmp` -> `state.json`) with backup rollover to `state.json.bak`
+- Stats / Favorites writes are atomic (`stats.json.tmp` -> `stats.json`) with backup rollover to `stats.json.bak`
 - Runtime persistence is deferred and idle-only to avoid launch-time stalls
+
+## Stats / Favorites
+
+- Applies to launchable content in:
+  - system_menu title rows
+  - installed_titles
+  - homebrew_browser `.3dsx` entries
+  - rom_browser `.nds` entries
+  - retroarch_system file entries
+- Favorites are keyed by launch identifier:
+  - 3DS titles: `titleId:media`
+  - homebrew: canonical `sdmc:` path
+  - ROMs: canonical `sdmc:` path
+- Last Played updates on actual successful launch, not highlight
 
 ## RetroArch Backend Files
 

@@ -56,6 +56,13 @@ static bool g_exit_after_status = false;
 static bool g_title_launch_home_init_done = false;
 static bool g_title_launch_home_init_pending = false;
 static int g_title_launch_home_init_delay = 0;
+static StatsData g_stats;
+static bool g_stats_open = false;
+static int g_stats_selection = 0;
+static int g_stats_scroll = 0;
+static int g_select_hold_frames = 0;
+static bool g_select_hold_armed = false;
+static bool g_select_hold_consumed = false;
 
 static void cancel_title_home_init_pending(void) {
     g_title_launch_home_init_pending = false;
@@ -92,6 +99,13 @@ static bool g_time_24 = true;
 static void draw_rect(float x, float y, float w, float h, u32 color);
 static int color_alpha_pct(u32 c);
 static u32 color_with_alpha_pct(u32 c, int pct);
+static bool parse_title_id(const char* s, u64* out);
+static FS_MediaType media_from_string(const char* s);
+static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
+static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size);
+static void sd_path_to_internal_root(const char* sd_path, char* out, size_t out_size);
+static TargetState* ensure_target_state(State* state, const Config* cfg, const Target* target);
+static bool retro_launch_selected(const Target* target, TargetState* ts, const FileEntry* fe, const char* joined, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty);
 
 static Config g_cfg;
 static State g_state;
@@ -217,6 +231,300 @@ static const RetroSystemCoreList g_retro_core_lists[] = {
 };
 
 static const int g_retro_core_list_count = (int)(sizeof(g_retro_core_lists) / sizeof(g_retro_core_lists[0]));
+static bool is_emulator_target(const Target* target);
+static const char* media_to_string(FS_MediaType m);
+static bool show_nds_card(const Target* target, const TargetState* ts);
+
+static bool stats_menu_target_supported(const Target* target) {
+    if (!target) return false;
+    return !strcmp(target->type, "installed_titles")
+        || !strcmp(target->type, "system_menu")
+        || !strcmp(target->type, "homebrew_browser")
+        || !strcmp(target->type, "rom_browser")
+        || is_emulator_target(target);
+}
+
+static bool stats_menu_allowed_now(const Target* target, const TargetState* ts) {
+    if (!stats_menu_target_supported(target) || !ts) return false;
+    if (!strcmp(target->type, "system_menu") && ts->selection <= 1) return false;
+    return true;
+}
+
+static void stats_reset_select_hold(void) {
+    g_select_hold_frames = 0;
+    g_select_hold_armed = false;
+    g_select_hold_consumed = false;
+}
+
+static void stats_make_title_key(u64 title_id, FS_MediaType media, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    snprintf(out, out_size, "%016llX:%s", (unsigned long long)title_id, media_to_string(media));
+}
+
+static void stats_make_rom_label(const char* name, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    base_name_no_ext(name ? name : "", out, out_size);
+    if (out[0] == 0 && name) copy_str(out, out_size, name);
+}
+
+static bool stats_get_current_launchable(const Target* target, const TargetState* ts, TargetRuntime* runtime, bool emu_root_exists, int* out_kind, char* out_key, size_t out_key_size, char* out_label, size_t out_label_size) {
+    if (out_kind) *out_kind = STATS_KIND_NONE;
+    if (out_key && out_key_size > 0) out_key[0] = 0;
+    if (out_label && out_label_size > 0) out_label[0] = 0;
+    if (!target || !ts) return false;
+
+    if (!strcmp(target->type, "system_menu")) {
+        if (ts->selection <= 1) return false;
+        ensure_titles_loaded(&g_cfg);
+        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
+        if (!tinfo) return false;
+        if (out_kind) *out_kind = STATS_KIND_TITLE;
+        if (out_key) stats_make_title_key(tinfo->titleId, tinfo->media, out_key, out_key_size);
+        if (out_label) copy_str(out_label, out_label_size, tinfo->name);
+        return true;
+    }
+    if (!strcmp(target->type, "installed_titles")) {
+        ensure_titles_loaded(&g_cfg);
+        TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
+        if (!tinfo) return false;
+        if (out_kind) *out_kind = STATS_KIND_TITLE;
+        if (out_key) stats_make_title_key(tinfo->titleId, tinfo->media, out_key, out_key_size);
+        if (out_label) copy_str(out_label, out_label_size, tinfo->name);
+        return true;
+    }
+    if (!strcmp(target->type, "homebrew_browser")) {
+        if (!runtime) return false;
+        DirCache* cache = &runtime->cache;
+        int entry_idx = ts->selection;
+        if (entry_idx < 0 || entry_idx >= cache->count) return false;
+        FileEntry* fe = &cache->entries[entry_idx];
+        if (fe->is_dir || !is_3dsx_name(fe->name)) return false;
+        char joined[512];
+        path_join(ts->path, fe->name, joined, sizeof(joined));
+        if (out_kind) *out_kind = STATS_KIND_HOMEBREW;
+        if (out_key) {
+            make_sd_path(joined, out_key, out_key_size);
+            normalize_path_sd(out_key, out_key_size);
+        }
+        if (out_label) stats_make_rom_label(fe->name, out_label, out_label_size);
+        return true;
+    }
+    if (!strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
+        if (!runtime) return false;
+        if (is_emulator_target(target) && !emu_root_exists) return false;
+        DirCache* cache = &runtime->cache;
+        bool show_card = !strcmp(target->type, "rom_browser") ? show_nds_card(target, ts) : false;
+        int card_offset = show_card ? 1 : 0;
+        if (show_card && ts->selection == 0) return false;
+        int entry_idx = ts->selection - card_offset;
+        if (entry_idx < 0 || entry_idx >= cache->count) return false;
+        FileEntry* fe = &cache->entries[entry_idx];
+        if (fe->is_dir) return false;
+        char joined[512];
+        path_join(ts->path, fe->name, joined, sizeof(joined));
+        if (out_kind) *out_kind = STATS_KIND_ROM;
+        if (out_key) {
+            make_sd_path(joined, out_key, out_key_size);
+            normalize_path_sd(out_key, out_key_size);
+        }
+        if (out_label) stats_make_rom_label(fe->name, out_label, out_label_size);
+        return true;
+    }
+    return false;
+}
+
+static void stats_record_last_played(int kind, const char* key, const char* label, char* status_message, size_t status_size, int* status_timer) {
+    if (kind == STATS_KIND_NONE || !key || !key[0] || !label || !label[0]) return;
+    stats_set_last_played(&g_stats, kind, key, label);
+    if (!save_stats_data(&g_stats)) {
+        if (status_message && status_size > 0 && status_message[0] == 0) snprintf(status_message, status_size, "Stats save failed");
+        if (status_timer && *status_timer < 120) *status_timer = 120;
+    }
+}
+
+static int stats_menu_count(void) {
+    return 2 + stats_favorite_count(&g_stats);
+}
+
+static int stats_menu_list_start_y(void) {
+    return 58;
+}
+
+static int stats_menu_visible_rows(void) {
+    int visible = (BOTTOM_H - HELP_BAR_H - stats_menu_list_start_y() - 4) / g_list_item_h;
+    if (visible < 1) visible = 1;
+    return visible;
+}
+
+static const Target* stats_find_rom_target_for_key(const Config* cfg, const char* key) {
+    if (!cfg || !key || !key[0]) return NULL;
+    const char* roms = strstr(key, "/roms/");
+    if (!roms) return NULL;
+    roms += 6;
+    const char* end = strchr(roms, '/');
+    if (!end || end == roms) return NULL;
+    char folder[32];
+    size_t len = (size_t)(end - roms);
+    if (len >= sizeof(folder)) len = sizeof(folder) - 1;
+    memcpy(folder, roms, len);
+    folder[len] = 0;
+    if (!strcmp(folder, "nds")) {
+        for (int i = 0; i < cfg->target_count; i++) {
+            if (!strcmp(cfg->targets[i].type, "rom_browser")) return &cfg->targets[i];
+        }
+        return NULL;
+    }
+    for (int i = 0; i < cfg->target_count; i++) {
+        if (!strcmp(cfg->targets[i].id, folder)) return &cfg->targets[i];
+    }
+    return NULL;
+}
+
+static bool stats_launch_entry(const StatsEntry* entry, Config* cfg, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty) {
+    if (!entry || !cfg || !state) return false;
+    if (stats_entry_kind(entry) == STATS_KIND_TITLE) {
+        char keybuf[STATS_KEY_SIZE];
+        copy_str(keybuf, sizeof(keybuf), stats_entry_key(entry));
+        char* colon = strchr(keybuf, ':');
+        if (!colon) {
+            snprintf(status_message, status_size, "Favorite key invalid");
+            return false;
+        }
+        *colon = 0;
+        u64 tid = 0;
+        if (!parse_title_id(keybuf, &tid)) {
+            snprintf(status_message, status_size, "Favorite key invalid");
+            return false;
+        }
+        FS_MediaType media = media_from_string(colon + 1);
+        if (launch_3ds_title_with_home_init(tid, media, status_message, status_size)) {
+            stats_record_last_played(STATS_KIND_TITLE, stats_entry_key(entry), stats_entry_label(entry), status_message, status_size, status_timer);
+            snprintf(status_message, status_size, "Launching...");
+            if (status_timer) *status_timer = 120;
+            return true;
+        }
+        return false;
+    }
+    if (stats_entry_kind(entry) == STATS_KIND_HOMEBREW) {
+        if (homebrew_launch_3dsx(stats_entry_key(entry), status_message, status_size)) {
+            stats_record_last_played(STATS_KIND_HOMEBREW, stats_entry_key(entry), stats_entry_label(entry), status_message, status_size, status_timer);
+            snprintf(status_message, status_size, "Launching...");
+            if (status_timer) *status_timer = 120;
+            g_exit_requested = true;
+            return true;
+        }
+        return false;
+    }
+    if (stats_entry_kind(entry) == STATS_KIND_ROM) {
+        const Target* target = stats_find_rom_target_for_key(cfg, stats_entry_key(entry));
+        if (!target) {
+            snprintf(status_message, status_size, "Target not found");
+            return false;
+        }
+        if (!strcmp(target->type, "rom_browser")) {
+            if (launch_nds_loader(target, stats_entry_key(entry), status_message, status_size)) {
+                stats_record_last_played(STATS_KIND_ROM, stats_entry_key(entry), stats_entry_label(entry), status_message, status_size, status_timer);
+                return true;
+            }
+            return false;
+        }
+        if (is_emulator_target(target)) {
+            TargetState* ts = ensure_target_state(state, cfg, target);
+            if (!ts) {
+                snprintf(status_message, status_size, "State full");
+                return false;
+            }
+            char joined[512];
+            sd_path_to_internal_root(stats_entry_key(entry), joined, sizeof(joined));
+            const char* slash = strrchr(joined, '/');
+            FileEntry fe;
+            memset(&fe, 0, sizeof(fe));
+            fe.is_dir = false;
+            copy_str(fe.name, sizeof(fe.name), slash ? slash + 1 : joined);
+            if (retro_launch_selected(target, ts, &fe, joined, state, status_message, status_size, status_timer, state_dirty)) {
+                stats_record_last_played(STATS_KIND_ROM, stats_entry_key(entry), stats_entry_label(entry), status_message, status_size, status_timer);
+                return true;
+            }
+            return false;
+        }
+    }
+    snprintf(status_message, status_size, "Unsupported favorite");
+    return false;
+}
+
+static void stats_menu_open(void) {
+    g_stats_open = true;
+    g_stats_selection = 0;
+    g_stats_scroll = 0;
+}
+
+static void stats_menu_close(void) {
+    g_stats_open = false;
+    g_stats_selection = 0;
+    g_stats_scroll = 0;
+}
+
+static const char* stats_system_short_label(const StatsEntry* entry) {
+    if (!entry) return "";
+    if (stats_entry_kind(entry) == STATS_KIND_TITLE) return "3DS";
+    if (stats_entry_kind(entry) == STATS_KIND_HOMEBREW) return "HB";
+    const char* key = stats_entry_key(entry);
+    if (!key || !key[0]) return "ROM";
+    const char* roms = strstr(key, "/roms/");
+    if (!roms) return "ROM";
+    roms += 6;
+    const char* end = strchr(roms, '/');
+    if (!end || end == roms) return "ROM";
+    size_t len = (size_t)(end - roms);
+    if (len == 3 && !strncmp(roms, "nds", 3)) return "NDS";
+    if (len == 2 && !strncmp(roms, "gb", 2)) return "GB";
+    if (len == 3 && !strncmp(roms, "gba", 3)) return "GBA";
+    if (len == 2 && !strncmp(roms, "gg", 2)) return "GG";
+    if (len == 3 && !strncmp(roms, "sms", 3)) return "SMS";
+    if (len == 4 && !strncmp(roms, "snes", 4)) return "SNES";
+    if (len == 3 && !strncmp(roms, "gen", 3)) return "GEN";
+    if (len == 3 && !strncmp(roms, "nes", 3)) return "NES";
+    if (len == 3 && !strncmp(roms, "a26", 3)) return "A26";
+    if (len == 3 && !strncmp(roms, "a52", 3)) return "A52";
+    if (len == 3 && !strncmp(roms, "a78", 3)) return "A78";
+    if (len == 3 && !strncmp(roms, "col", 3)) return "COL";
+    if (len == 3 && !strncmp(roms, "tg16", 4)) return "TG16";
+    if (len == 2 && !strncmp(roms, "ws", 2)) return "WS";
+    if (len == 3 && !strncmp(roms, "ngp", 3)) return "NGP";
+    if (len == 2 && !strncmp(roms, "vb", 2)) return "VB";
+    if (len == 4 && !strncmp(roms, "lynx", 4)) return "Lynx";
+    if (len == 3 && !strncmp(roms, "n64", 3)) return "N64";
+    if (len == 3 && !strncmp(roms, "psx", 3)) return "PS1";
+    if (len == 6 && !strncmp(roms, "arcade", 6)) return "Arc";
+    if (len == 4 && !strncmp(roms, "cps1", 4)) return "CPS1";
+    if (len == 4 && !strncmp(roms, "cps2", 4)) return "CPS2";
+    if (len == 4 && !strncmp(roms, "cps3", 4)) return "CPS3";
+    if (len == 7 && !strncmp(roms, "neogeo", 7)) return "NG";
+    if (len == 2 && !strncmp(roms, "sg", 2)) return "SG";
+    return "ROM";
+}
+
+static void stats_menu_label(int idx, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = 0;
+    if (idx == 0) {
+        copy_str(out, out_size, "Close");
+        return;
+    }
+    if (idx == 1) {
+        const StatsEntry* entry = stats_get_last_played(&g_stats);
+        if (!entry) {
+            copy_str(out, out_size, "Last played: None");
+            return;
+        }
+        snprintf(out, out_size, "Last played: %s: %s", stats_system_short_label(entry), stats_entry_label(entry));
+        return;
+    }
+    const StatsEntry* entry = stats_get_favorite(&g_stats, idx - 2);
+    if (!entry) return;
+    snprintf(out, out_size, "%s: %s", stats_system_short_label(entry), stats_entry_label(entry));
+}
+
 static const char* nds_launcher_mode_label(int mode) {
     switch (mode) {
         case 1: return "CIA";
@@ -312,6 +620,14 @@ static int clamp_pct(int v);
 static void refresh_options_menu(const Config* cfg);
 static bool is_emulator_target(const Target* target);
 static bool pathfile_toggle_available_for_system(const char* system_key);
+static bool show_nds_card(const Target* target, const TargetState* ts);
+static bool parse_title_id(const char* s, u64* out);
+static FS_MediaType media_from_string(const char* s);
+static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
+static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size);
+static void sd_path_to_internal_root(const char* sd_path, char* out, size_t out_size);
+static TargetState* ensure_target_state(State* state, const Config* cfg, const Target* target);
+static bool retro_launch_selected(const Target* target, TargetState* ts, const FileEntry* fe, const char* joined, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty);
 
 static bool main_option_is_clear_cache(int idx) {
     if (idx < 0 || idx >= g_option_count) return false;
@@ -4882,6 +5198,7 @@ int main(int argc, char** argv) {
     if (!load_state(state)) {
         goto cleanup;
     }
+    load_stats_data(&g_stats);
 
     if (!cfg->remember_last_position) {
         char saved_theme[32];
@@ -5027,8 +5344,10 @@ int main(int argc, char** argv) {
         bool rep_down = (kDown & KEY_DOWN) || (hold_down > 10 && (hold_down % 2 == 0));
         if (move_cooldown > 0) move_cooldown--;
 
-        bool quick_system_jump = (kDown & KEY_START) && (kHeld & KEY_SELECT);
+        bool quick_system_jump = !options_open && !g_stats_open && (kDown & KEY_START) && (kHeld & KEY_SELECT);
         if (quick_system_jump) {
+            stats_menu_close();
+            stats_reset_select_hold();
             int sys_idx = find_target_index(cfg, "system");
             if (sys_idx < 0) {
                 for (int i = 0; i < cfg->target_count; i++) {
@@ -5050,7 +5369,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        if ((kDown & KEY_START) && !quick_system_jump) {
+        if ((kDown & KEY_START) && !quick_system_jump && !g_stats_open) {
             options_open = !options_open;
             if (options_open) {
                 g_options_mode = OPT_MODE_MAIN;
@@ -5151,7 +5470,93 @@ int main(int argc, char** argv) {
         request_cover_preview_for_selection(target, ts, runtime, emu_root_exists);
         preview_update(1);
 
-        if (options_open) {
+        bool stats_browser_active = stats_menu_allowed_now(target, ts);
+        if (options_open || g_stats_open || quick_system_jump || !stats_browser_active) {
+            stats_reset_select_hold();
+        } else {
+            if (kDown & KEY_SELECT) {
+                g_select_hold_armed = true;
+                g_select_hold_frames = 0;
+                g_select_hold_consumed = false;
+            }
+            if (g_select_hold_armed) {
+                if (kHeld & KEY_SELECT) {
+                    if (g_select_hold_frames < 60) g_select_hold_frames++;
+                    if (!g_select_hold_consumed && g_select_hold_frames >= 18) {
+                        int kind = STATS_KIND_NONE;
+                        char key[STATS_KEY_SIZE];
+                        char label[STATS_LABEL_SIZE];
+                        if (stats_get_current_launchable(target, ts, runtime, emu_root_exists, &kind, key, sizeof(key), label, sizeof(label))) {
+                            if (stats_is_favorite(&g_stats, kind, key)) {
+                                snprintf(status_message, sizeof(status_message), "Already in favorites");
+                            } else if (stats_add_favorite(&g_stats, kind, key, label)) {
+                                if (!save_stats_data(&g_stats)) snprintf(status_message, sizeof(status_message), "Favorites save failed");
+                                else snprintf(status_message, sizeof(status_message), "Added to favorites");
+                            } else {
+                                snprintf(status_message, sizeof(status_message), "Favorites full");
+                            }
+                        } else {
+                            snprintf(status_message, sizeof(status_message), "Only launchable items can be favorited");
+                        }
+                        status_timer = 120;
+                        audio_play(SOUND_SELECT);
+                        g_select_hold_consumed = true;
+                    }
+                } else {
+                    if (!g_select_hold_consumed) {
+                        stats_menu_open();
+                        audio_play(SOUND_TOGGLE);
+                    }
+                    stats_reset_select_hold();
+                }
+            }
+        }
+
+        if (g_stats_open) {
+            int count = stats_menu_count();
+            int visible = stats_menu_visible_rows();
+            int prev = g_stats_selection;
+            if (rep_up) g_stats_selection--;
+            if (rep_down) g_stats_selection++;
+            if (g_stats_selection < 0) g_stats_selection = 0;
+            if (g_stats_selection >= count) g_stats_selection = count - 1;
+            clamp_scroll_list(&g_stats_scroll, g_stats_selection, visible, count);
+            if (g_stats_selection != prev) audio_play(SOUND_MOVE);
+            if ((kDown & KEY_B) || (kDown & KEY_SELECT)) {
+                stats_menu_close();
+                audio_play(SOUND_BACK);
+            } else if (kDown & KEY_A) {
+                if (g_stats_selection == 0) {
+                    stats_menu_close();
+                    audio_play(SOUND_BACK);
+                } else {
+                    const StatsEntry* entry = (g_stats_selection == 1)
+                        ? stats_get_last_played(&g_stats)
+                        : stats_get_favorite(&g_stats, g_stats_selection - 2);
+                    if (entry) {
+                        stats_launch_entry(entry, cfg, state, status_message, sizeof(status_message), &status_timer, &state_dirty);
+                        audio_play(SOUND_SELECT);
+                    } else {
+                        snprintf(status_message, sizeof(status_message), "Nothing to launch");
+                        status_timer = 120;
+                        audio_play(SOUND_BACK);
+                    }
+                }
+            } else if ((kDown & KEY_X) && g_stats_selection > 1) {
+                const StatsEntry* entry = stats_get_favorite(&g_stats, g_stats_selection - 2);
+                char removed[STATS_LABEL_SIZE];
+                copy_str(removed, sizeof(removed), entry ? stats_entry_label(entry) : "Favorite");
+                if (stats_remove_favorite(&g_stats, g_stats_selection - 2)) {
+                    if (!save_stats_data(&g_stats)) snprintf(status_message, sizeof(status_message), "Favorites save failed");
+                    else snprintf(status_message, sizeof(status_message), "Removed: %s", removed);
+                    if (g_stats_selection >= stats_menu_count()) g_stats_selection = stats_menu_count() - 1;
+                    if (g_stats_selection < 0) g_stats_selection = 0;
+                    clamp_scroll_list(&g_stats_scroll, g_stats_selection, visible, stats_menu_count());
+                    status_timer = 120;
+                    audio_play(SOUND_SELECT);
+                }
+            }
+        } else if (options_open) {
             if (g_clear_cache_confirm_armed) {
                 if (g_clear_cache_confirm_timer > 0) g_clear_cache_confirm_timer--;
                 if (g_clear_cache_confirm_timer <= 0 && g_options_mode == OPT_MODE_MAIN) {
@@ -5775,6 +6180,9 @@ int main(int argc, char** argv) {
                         TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
                         if (tinfo) {
                             if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
+                                char stats_key[STATS_KEY_SIZE];
+                                stats_make_title_key(tinfo->titleId, tinfo->media, stats_key, sizeof(stats_key));
+                                stats_record_last_played(STATS_KIND_TITLE, stats_key, tinfo->name, status_message, sizeof(status_message), &status_timer);
                                 snprintf(status_message, sizeof(status_message), "Launching...");
                             } else if (status_message[0] == 0) {
                                 snprintf(status_message, sizeof(status_message), "Launch failed");
@@ -5810,6 +6218,9 @@ int main(int argc, char** argv) {
                     TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
                     if (tinfo) {
                         if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
+                            char stats_key[STATS_KEY_SIZE];
+                            stats_make_title_key(tinfo->titleId, tinfo->media, stats_key, sizeof(stats_key));
+                            stats_record_last_played(STATS_KIND_TITLE, stats_key, tinfo->name, status_message, sizeof(status_message), &status_timer);
                             snprintf(status_message, sizeof(status_message), "Launching...");
                         } else {
                             if (status_message[0] == 0) snprintf(status_message, sizeof(status_message), "Launch failed");
@@ -5946,18 +6357,32 @@ int main(int argc, char** argv) {
                             if (is_rom && is_nds_name(fe->name)) {
                                 char sdpath[512];
                                 make_sd_path(joined, sdpath, sizeof(sdpath));
-                                launch_nds_loader(target, sdpath, status_message, sizeof(status_message));
+                                if (launch_nds_loader(target, sdpath, status_message, sizeof(status_message))) {
+                                    char label[STATS_LABEL_SIZE];
+                                    stats_make_rom_label(fe->name, label, sizeof(label));
+                                    stats_record_last_played(STATS_KIND_ROM, sdpath, label, status_message, sizeof(status_message), &status_timer);
+                                }
                             } else if (is_hb && is_3dsx_name(fe->name)) {
                                 char sdpath[512];
                                 make_sd_path(joined, sdpath, sizeof(sdpath));
                                 if (homebrew_launch_3dsx(sdpath, status_message, sizeof(status_message))) {
+                                    char label[STATS_LABEL_SIZE];
+                                    stats_make_rom_label(fe->name, label, sizeof(label));
+                                    stats_record_last_played(STATS_KIND_HOMEBREW, sdpath, label, status_message, sizeof(status_message), &status_timer);
                                     snprintf(status_message, sizeof(status_message), "Launching...");
                                     g_exit_requested = true;
                                 } else if (status_message[0] == 0) {
                                     snprintf(status_message, sizeof(status_message), "Launch failed");
                                 }
                             } else if (is_emu) {
-                                retro_launch_selected(target, ts, fe, joined, state, status_message, sizeof(status_message), &status_timer, &state_dirty);
+                                if (retro_launch_selected(target, ts, fe, joined, state, status_message, sizeof(status_message), &status_timer, &state_dirty)) {
+                                    char sdpath[STATS_KEY_SIZE];
+                                    char label[STATS_LABEL_SIZE];
+                                    make_sd_path(joined, sdpath, sizeof(sdpath));
+                                    normalize_path_sd(sdpath, sizeof(sdpath));
+                                    stats_make_rom_label(fe->name, label, sizeof(label));
+                                    stats_record_last_played(STATS_KIND_ROM, sdpath, label, status_message, sizeof(status_message), &status_timer);
+                                }
                             } else {
                                 snprintf(status_message, sizeof(status_message), "Unsupported");
                             }
@@ -6407,7 +6832,48 @@ int main(int argc, char** argv) {
             draw_debug_outline(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, C2D_Color32(255, 255, 0, 180));
         }
 
-        if (options_open) {
+        if (g_stats_open) {
+            draw_rect(0, 0, BOTTOM_W, BOTTOM_H, overlay_color(g_theme.overlay_bg, bottom_has_bg, false));
+            draw_text(8, 6, 0.7f, g_theme.option_header, "Stats / Favorites");
+
+            char line[192];
+            draw_text(10, 24, 0.6f, g_theme.text_secondary, "Favorites");
+            snprintf(line, sizeof(line), "Count: %d", stats_favorite_count(&g_stats));
+            draw_text(10, 40, 0.55f, g_theme.text_primary, line);
+
+            int count = stats_menu_count();
+            int visible = stats_menu_visible_rows();
+            int list_start_y = stats_menu_list_start_y();
+            if (count <= 2) {
+                draw_text(12, list_start_y + 6, 0.6f, g_theme.text_muted, "No favorites yet");
+            }
+            for (int i = 0; i < visible; i++) {
+                int idx = g_stats_scroll + i;
+                if (idx >= count) break;
+                int y = list_start_y + i * g_list_item_h;
+                int pad = g_row_padding;
+                int row_y = y + pad;
+                int row_h = g_list_item_h - pad * 2;
+                if (row_h < 1) row_h = 1;
+                bool sel = (idx == g_stats_selection);
+                if (sel && g_theme.option_sel_loaded) {
+                    float off = align_offset_from_center(g_theme.option_sel_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.option_sel_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
+                } else if (!sel && g_theme.option_item_loaded) {
+                    float off = align_offset_from_center(g_theme.option_item_center_y, row_h);
+                    draw_theme_image_scaled_alpha(&g_theme.option_item_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
+                } else {
+                    u32 color = overlay_color(sel ? g_theme.option_sel : g_theme.option_bg, bottom_has_bg, false);
+                    float r_opt = theme_radius(g_theme.radius_options);
+                    draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_opt);
+                }
+                stats_menu_label(idx, line, sizeof(line));
+                float opt_bias = -2.0f;
+                if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, row_h);
+                else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, row_h);
+                draw_text_scroll_box(12, row_y + g_theme.option_text_offset_y - 2.0f, 0.6f, g_theme.option_text, (float)(BOTTOM_W - 24), row_h, line, opt_bias, sel);
+            }
+        } else if (options_open) {
             OptionItem* list = g_options;
             int count = g_option_count;
             const char* header = "Options";
@@ -6695,8 +7161,12 @@ int main(int argc, char** argv) {
 
         if (cfg->help_bar) {
             char help_buf[128];
-            build_help_label_for_target(target, help_buf, sizeof(help_buf));
-            if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
+            if (g_stats_open) {
+                copy_str(help_buf, sizeof(help_buf), "A Launch/Close   B Back   X Remove");
+            } else {
+                build_help_label_for_target(target, help_buf, sizeof(help_buf));
+            }
+            if (!g_stats_open && (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target))) {
                 bool is_rom = !strcmp(target->type, "rom_browser");
                 bool is_emu = is_emulator_target(target);
                 bool root_ok = !is_emu || emu_root_exists;

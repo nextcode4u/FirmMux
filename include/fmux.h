@@ -15,6 +15,11 @@
 #define STATE_TMP_PATH "sdmc:/3ds/FirmMux/state.json.tmp"
 #define STATE_PATH_OLD "sdmc:/3ds/FirmMux/state->json"
 #define STATE_BAK_PATH_OLD "sdmc:/3ds/FirmMux/state->json.bak"
+
+#define STATS_PATH "sdmc:/3ds/FirmMux/stats.json"
+#define STATS_BAK_PATH "sdmc:/3ds/FirmMux/stats.json.bak"
+#define STATS_TMP_PATH "sdmc:/3ds/FirmMux/stats.json.tmp"
+
 #define CACHE_DIR "sdmc:/3ds/FirmMux/cache"
 #define CACHE_NDS_DIR "sdmc:/3ds/FirmMux/cache/nds"
 #define CACHE_3DS_DIR "sdmc:/3ds/FirmMux/cache/3ds"
@@ -169,6 +174,30 @@ typedef struct {
     int card_read_dma;
     int dsi_mode;
 } NdsRomOptions;
+
+typedef enum {
+    STATS_KIND_NONE = 0,
+    STATS_KIND_ROM = 1,
+    STATS_KIND_TITLE = 2,
+    STATS_KIND_HOMEBREW = 3
+} StatsKind;
+
+#define STATS_KEY_SIZE 512
+#define STATS_LABEL_SIZE 128
+#define STATS_MAX_FAVORITES 128
+
+typedef struct {
+    int kind;
+    char key[STATS_KEY_SIZE];
+    char label[STATS_LABEL_SIZE];
+} StatsEntry;
+
+typedef struct {
+    StatsEntry favorites[STATS_MAX_FAVORITES];
+    int favorite_count;
+    StatsEntry last_played;
+    bool has_last_played;
+} StatsData;
 
 typedef struct {
     char path[256];
@@ -553,6 +582,20 @@ bool load_theme(Theme* t, const char* name);
 bool load_state(State* state);
 bool save_state(const State* state);
 TargetState* get_target_state(State* state, const char* id);
+
+bool load_stats_data(StatsData* stats);
+bool save_stats_data(const StatsData* stats);
+int stats_favorite_count(const StatsData* stats);
+const StatsEntry* stats_get_favorite(const StatsData* stats, int idx);
+const StatsEntry* stats_get_last_played(const StatsData* stats);
+int stats_find_favorite(const StatsData* stats, int kind, const char* key);
+bool stats_is_favorite(const StatsData* stats, int kind, const char* key);
+bool stats_add_favorite(StatsData* stats, int kind, const char* key, const char* label);
+bool stats_remove_favorite(StatsData* stats, int idx);
+void stats_set_last_played(StatsData* stats, int kind, const char* key, const char* label);
+int stats_entry_kind(const StatsEntry* entry);
+const char* stats_entry_key(const StatsEntry* entry);
+const char* stats_entry_label(const StatsEntry* entry);
 
 NdsCacheEntry* nds_cache_entry(const char* path);
 bool load_nds_icon_direct(const char* full_path, NdsCacheEntry* e);

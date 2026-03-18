@@ -109,6 +109,7 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 - `docs/NDS Options.md`
 - `docs/PC Setup.md`
 - `docs/Themes.md`
+- `docs/Usage.md`
 - `docs/ROM Organizer (PowerShell).md`
 - `docs/Cover Art Sync.md`
 
