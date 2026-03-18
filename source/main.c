@@ -5607,14 +5607,14 @@ int main(int argc, char** argv) {
                     } else {
                         int idx = options_selection - 1;
                         switch (idx) {
-                            case 2: g_theme_debug_show_bounds = !g_theme_debug_show_bounds; break;
-                            case 3: g_theme_debug_show_panels = !g_theme_debug_show_panels; break;
-                            case 4: g_theme_debug_show_tabs = !g_theme_debug_show_tabs; break;
-                            case 5: g_theme_debug_show_lists = !g_theme_debug_show_lists; break;
-                            case 6: g_theme_debug_show_options = !g_theme_debug_show_options; break;
-                            case 7: g_theme_debug_show_preview = !g_theme_debug_show_preview; break;
-                            case 8: g_theme_debug_show_help = !g_theme_debug_show_help; break;
-                            case 9: g_theme_debug_show_status = !g_theme_debug_show_status; break;
+                            case 0: g_theme_debug_show_bounds = !g_theme_debug_show_bounds; break;
+                            case 1: g_theme_debug_show_panels = !g_theme_debug_show_panels; break;
+                            case 2: g_theme_debug_show_tabs = !g_theme_debug_show_tabs; break;
+                            case 3: g_theme_debug_show_lists = !g_theme_debug_show_lists; break;
+                            case 4: g_theme_debug_show_options = !g_theme_debug_show_options; break;
+                            case 5: g_theme_debug_show_preview = !g_theme_debug_show_preview; break;
+                            case 6: g_theme_debug_show_help = !g_theme_debug_show_help; break;
+                            case 7: g_theme_debug_show_status = !g_theme_debug_show_status; break;
                             default: break;
                         }
                         build_theme_debug_menu();
