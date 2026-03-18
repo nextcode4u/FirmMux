@@ -3095,9 +3095,15 @@ static void draw_system_info(float x, float y) {
 
 static void draw_status_bar(void) {
     float y = TOP_H - g_status_h;
-    u32 status_bg = overlay_color(g_theme.status_bg, g_top_bg_tex.loaded, true);
-    float r_status = theme_radius(g_theme.radius_status);
-    draw_round_rect(0, y, TOP_W, g_status_h, status_bg, r_status);
+    u8 status_alpha = overlay_alpha(g_top_bg_tex.loaded, true);
+    if (g_theme.status_loaded) {
+        float off = align_offset_from_center(g_theme.status_strip_center_y, g_status_h);
+        draw_theme_image_scaled_alpha(&g_theme.status_tex, 0.0f, y + off, TOP_W, g_status_h, status_alpha);
+    } else {
+        u32 status_bg = overlay_color(g_theme.status_bg, g_top_bg_tex.loaded, true);
+        float r_status = theme_radius(g_theme.radius_status);
+        draw_round_rect(0, y, TOP_W, g_status_h, status_bg, r_status);
+    }
 
     static const char* k_weekdays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     char timebuf[16];
@@ -3173,13 +3179,20 @@ static void draw_status_bar(void) {
 }
 
 static void draw_help_bar(const char* label) {
-    u32 help_line = overlay_color(g_theme.help_line, g_bottom_bg_tex.loaded, false);
-    u32 help_bg = overlay_color(g_theme.help_bg, g_bottom_bg_tex.loaded, false);
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, help_line);
-    draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, help_line);
-    float r_status2 = theme_radius(g_theme.radius_status);
-    draw_round_rect(0, BOTTOM_H - HELP_BAR_H, BOTTOM_W, HELP_BAR_H, help_bg, r_status2);
-    draw_text(6, BOTTOM_H - HELP_BAR_H + 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
+    float y = BOTTOM_H - HELP_BAR_H;
+    u8 help_alpha = overlay_alpha(g_bottom_bg_tex.loaded, false);
+    if (g_theme.help_loaded) {
+        float off = align_offset_from_center(g_theme.help_strip_center_y, HELP_BAR_H);
+        draw_theme_image_scaled_alpha(&g_theme.help_tex, 0.0f, y + off, BOTTOM_W, HELP_BAR_H, help_alpha);
+    } else {
+        u32 help_line = overlay_color(g_theme.help_line, g_bottom_bg_tex.loaded, false);
+        u32 help_bg = overlay_color(g_theme.help_bg, g_bottom_bg_tex.loaded, false);
+        draw_rect(0, BOTTOM_H - HELP_BAR_H - 2, BOTTOM_W, 1, help_line);
+        draw_rect(0, BOTTOM_H - HELP_BAR_H - 1, BOTTOM_W, 1, help_line);
+        float r_status2 = theme_radius(g_theme.radius_status);
+        draw_round_rect(0, y, BOTTOM_W, HELP_BAR_H, help_bg, r_status2);
+    }
+    draw_text(6, y + 2 + g_theme.help_text_offset_y, 0.6f, g_theme.help_text, label);
 }
 
 static void build_help_label_for_target(const Target* target, char* out, size_t out_size) {

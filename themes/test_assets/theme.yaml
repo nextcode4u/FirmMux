@@ -1,0 +1,59 @@
+name: Test Assets
+
+panel_alpha: 100
+row_padding: 1
+tab_padding: 1
+
+radius_global: 8.0
+radius_tabs: 8.0
+radius_list: 8.0
+radius_options: 8.0
+radius_panels: 8.0
+radius_preview: 8.0
+radius_status: 6.0
+radius_picker: 8.0
+
+accent: 0xFFFFC857
+top_bg: 0xFF16202A
+bottom_bg: 0xFF241818
+panel_left: 0xCC1D2833
+panel_right: 0xCC2A1D1D
+preview_bg: 0xCC26323E
+text_primary: 0xFFFFFFFF
+text_secondary: 0xFFD9E5F2
+text_muted: 0xFFB0BEC9
+tab_bg: 0xCC4A261C
+tab_sel: 0xFFF0B84C
+tab_text: 0xFFFFFFFF
+list_bg: 0xCC184050
+list_sel: 0xFF4EBAD8
+list_text: 0xFFFFFFFF
+option_bg: 0xCC4C2050
+option_sel: 0xFFB060D0
+option_text: 0xFFFFFFFF
+option_header: 0xFFFFDFAF
+overlay_bg: 0xCC102030
+help_bg: 0xCC1A1A30
+help_line: 0xFF7FB8DD
+help_text: 0xFFFFFFFF
+status_bg: 0xCC202020
+status_text: 0xFFFFFFFF
+status_icon: 0xFFFFFFFF
+status_dim: 0xFFB0B0B0
+status_bolt: 0xFFFFD34D
+toast_bg: 0xE0202020
+toast_text: 0xFFFFFFFF
+
+top_image: topbg.png
+bottom_image: botbg.png
+tab_item_image: tab_item.png
+tab_sel_image: tab_sel.png
+list_item_image: list_item.png
+list_sel_image: list_sel.png
+option_item_image: option_item.png
+option_sel_image: option_sel.png
+preview_frame: preview_frame.png
+status_strip: status_strip.png
+help_strip: help_strip.png
+sprite_icon: sprite.png
+image_channel_order: rgba

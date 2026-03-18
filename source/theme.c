@@ -143,9 +143,10 @@ static bool load_theme_image(const char* folder, const char* rel, IconTexture* i
     if (swap_rb && (!order || !order[0])) use_order = "bgra";
     if (use_order) reorder_channels(data, w * h, use_order);
     if (out_center_y) *out_center_y = compute_alpha_center_norm(data, w, h);
-    bool ok = icon_from_rgba(icon, data, w, h);
+    bool ok = icon_from_rgba_tiled(icon, data, w, h);
     stbi_image_free(data);
     if (ok) {
+        C3D_TexSetFilter(&icon->tex, GPU_LINEAR, GPU_LINEAR);
         if (debug_log_enabled()) debug_log("theme: loaded %s (%dx%d)", path, w, h);
         if (out_w) *out_w = w;
         if (out_h) *out_h = h;
@@ -438,6 +439,36 @@ bool load_theme(Theme* t, const char* name) {
     }
     if (t->bottom_image[0]) {
         load_theme_image(t->folder[0] ? t->folder : name, t->bottom_image, &t->bottom_tex, &t->bottom_w, &t->bottom_h, &t->bottom_loaded, t->image_channel_order, t->image_swap_rb, NULL);
+    }
+    if (t->status_strip[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->status_strip, &t->status_tex, &t->status_w, &t->status_h_img, &t->status_loaded, t->image_channel_order, t->image_swap_rb, &t->status_strip_center_y);
+    }
+    if (t->sprite_icon[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->sprite_icon, &t->sprite_tex, &t->sprite_w, &t->sprite_h, &t->sprite_loaded, t->image_channel_order, t->image_swap_rb, NULL);
+    }
+    if (t->list_item_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->list_item_image, &t->list_item_tex, NULL, NULL, &t->list_item_loaded, t->image_channel_order, t->image_swap_rb, &t->list_item_center_y);
+    }
+    if (t->list_sel_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->list_sel_image, &t->list_sel_tex, NULL, NULL, &t->list_sel_loaded, t->image_channel_order, t->image_swap_rb, &t->list_sel_center_y);
+    }
+    if (t->tab_item_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->tab_item_image, &t->tab_item_tex, NULL, NULL, &t->tab_item_loaded, t->image_channel_order, t->image_swap_rb, &t->tab_item_center_y);
+    }
+    if (t->tab_sel_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->tab_sel_image, &t->tab_sel_tex, NULL, NULL, &t->tab_sel_loaded, t->image_channel_order, t->image_swap_rb, &t->tab_sel_center_y);
+    }
+    if (t->option_item_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->option_item_image, &t->option_item_tex, NULL, NULL, &t->option_item_loaded, t->image_channel_order, t->image_swap_rb, &t->option_item_center_y);
+    }
+    if (t->option_sel_image[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->option_sel_image, &t->option_sel_tex, NULL, NULL, &t->option_sel_loaded, t->image_channel_order, t->image_swap_rb, &t->option_sel_center_y);
+    }
+    if (t->preview_frame[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->preview_frame, &t->preview_frame_tex, NULL, NULL, &t->preview_frame_loaded, t->image_channel_order, t->image_swap_rb, &t->preview_frame_center_y);
+    }
+    if (t->help_strip[0]) {
+        load_theme_image(t->folder[0] ? t->folder : name, t->help_strip, &t->help_tex, &t->help_w, &t->help_h, &t->help_loaded, t->image_channel_order, t->image_swap_rb, &t->help_strip_center_y);
     }
     free(text);
     return true;
