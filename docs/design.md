@@ -121,7 +121,6 @@ Invalid or missing JSON is regenerated automatically.
 - Options includes:
   - Top background picker
   - Bottom background picker
-  - Theme debug menu includes top/bottom background visibility (controls panel opacity when a background is present)
 
 ## Caching
 

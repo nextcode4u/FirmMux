@@ -107,6 +107,8 @@ static void sd_path_to_internal_root(const char* sd_path, char* out, size_t out_
 static TargetState* ensure_target_state(State* state, const Config* cfg, const Target* target);
 static bool retro_launch_selected(const Target* target, TargetState* ts, const FileEntry* fe, const char* joined, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty);
 
+static const int g_system_applet_count = 1;
+
 static Config g_cfg;
 static State g_state;
 static Theme g_theme;
@@ -246,7 +248,7 @@ static bool stats_menu_target_supported(const Target* target) {
 
 static bool stats_menu_allowed_now(const Target* target, const TargetState* ts) {
     if (!stats_menu_target_supported(target) || !ts) return false;
-    if (!strcmp(target->type, "system_menu") && ts->selection <= 1) return false;
+    if (!strcmp(target->type, "system_menu") && ts->selection <= (1 + g_system_applet_count)) return false;
     return true;
 }
 
@@ -274,9 +276,9 @@ static bool stats_get_current_launchable(const Target* target, const TargetState
     if (!target || !ts) return false;
 
     if (!strcmp(target->type, "system_menu")) {
-        if (ts->selection <= 1) return false;
+        if (ts->selection <= (1 + g_system_applet_count)) return false;
         ensure_titles_loaded(&g_cfg);
-        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
+        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2 - g_system_applet_count, ts->sort_mode);
         if (!tinfo) return false;
         if (out_kind) *out_kind = STATS_KIND_TITLE;
         if (out_key) stats_make_title_key(tinfo->titleId, tinfo->media, out_key, out_key_size);
@@ -2163,6 +2165,15 @@ static bool ensure_home_menu_ready(char* status_message, size_t status_size) {
 static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
     if (!ensure_home_menu_ready(status_message, status_size)) return false;
     return launch_installed_title_fallback_media(title_id, media, status_message, status_size);
+}
+
+static bool launch_system_applet(int applet_index, char* status_message, size_t status_size) {
+    if (applet_index != 0) return false;
+    if (!ensure_home_menu_ready(status_message, status_size)) return false;
+    u32 aptbuf[0x400 / 4];
+    memset(aptbuf, 0, sizeof(aptbuf));
+    aptLaunchSystemApplet(APPID_MIIVERSE, aptbuf, sizeof(aptbuf), 0);
+    return true;
 }
 
 static int find_target_index(const Config* cfg, const char* id) {
@@ -6142,7 +6153,7 @@ int main(int argc, char** argv) {
         } else {
             if (!strcmp(target->type, "system_menu")) {
                 ensure_titles_loaded(cfg);
-                int total = title_count_system() + 2;
+                int total = title_count_system() + 2 + g_system_applet_count;
                 int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
                 int prev = ts->selection;
                 if (rep_up) ts->selection--;
@@ -6176,8 +6187,14 @@ int main(int argc, char** argv) {
                         } else {
                             snprintf(status_message, sizeof(status_message), "Power off failed %08lX", (unsigned long)rc);
                         }
+                    } else if (ts->selection >= 2 && ts->selection < 2 + g_system_applet_count) {
+                        if (launch_system_applet(ts->selection - 2, status_message, sizeof(status_message))) {
+                            snprintf(status_message, sizeof(status_message), "Launching...");
+                        } else if (status_message[0] == 0) {
+                            snprintf(status_message, sizeof(status_message), "Launch failed");
+                        }
                     } else {
-                        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
+                        TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2 - g_system_applet_count, ts->sort_mode);
                         if (tinfo) {
                             if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
                                 char stats_key[STATS_KEY_SIZE];
@@ -6460,8 +6477,11 @@ int main(int argc, char** argv) {
             } else if (ts->selection == 1) {
                 preview_title = "Turn Off Console";
                 show_system_info = true;
+            } else if (ts->selection >= 2 && ts->selection < 2 + g_system_applet_count) {
+                preview_title = "Miiverse";
+                show_system_info = true;
             } else {
-                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
+                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2 - g_system_applet_count, ts->sort_mode);
                 if (tinfo) {
                     preview_title = tinfo->name;
                     preview_tinfo = tinfo;
@@ -6703,8 +6723,8 @@ int main(int argc, char** argv) {
                 drew_icon = true;
             }
         } else if (!show_system_info && !strcmp(target->type, "system_menu")) {
-            if (ts->selection > 1) {
-                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2, ts->sort_mode);
+            if (ts->selection >= 2 + g_system_applet_count) {
+                TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2 - g_system_applet_count, ts->sort_mode);
                 if (update_title_preview_rgba(tinfo)) {
                     float scale = 1.0f;
                     float px = 8.0f;
@@ -7039,7 +7059,7 @@ int main(int argc, char** argv) {
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
-            int total = title_count_system() + 2;
+            int total = title_count_system() + 2 + g_system_applet_count;
             int visible = (BOTTOM_H - HELP_BAR_H - 8) / g_list_item_h;
             for (int i = 0; i < visible; i++) {
                 int idx = ts->scroll + i;
@@ -7073,8 +7093,14 @@ int main(int argc, char** argv) {
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
                     float text_w = (float)(BOTTOM_W - 24);
                     draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, "Turn Off Console", list_bias, sel);
+                } else if (idx == 2) {
+                    float list_bias = -2.0f;
+                    if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
+                    else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
+                    float text_w = (float)(BOTTOM_W - 24);
+                    draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, "Miiverse", list_bias, sel);
                 } else {
-                    TitleInfo3ds* t = title_system_at_sorted(idx - 2, ts->sort_mode);
+                    TitleInfo3ds* t = title_system_at_sorted(idx - 2 - g_system_applet_count, ts->sort_mode);
                     if (!t) continue;
                     char shortname[56];
                     copy_str(shortname, sizeof(shortname), t->name);

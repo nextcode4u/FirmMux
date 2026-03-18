@@ -110,6 +110,7 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 - `docs/PC Setup.md`
 - `docs/Themes.md`
 - `docs/Usage.md`
+- `docs/Known Issues.md`
 - `docs/ROM Organizer (PowerShell).md`
 - `docs/Cover Art Sync.md`
 
@@ -137,10 +138,6 @@ Per‑ROM RetroArch options (press **Y** on a ROM in emulator tabs) are stored i
 
 Default enabled emulator tabs are: NES, SNES, GB/GBC, GBA, Genesis, Master System, Game Gear, TG16/PCE, CPS1, CPS2, Neo Geo, Lynx, Virtual Boy, Neo Geo Pocket, WonderSwan.  
 Other supported systems can be enabled from Settings -> Emulators.
-
-## Known Issue
-
-- NDS cheats are currently work in progress. Cheat selection UI and usrcheat flag writes are implemented, but in-game cheat activation is not yet reliable across all titles.
 
 ## Background Music (Optional)
 

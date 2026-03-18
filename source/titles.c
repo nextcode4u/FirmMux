@@ -14,6 +14,20 @@ static char g_sys_alias_name[256][96];
 static int g_sys_alias_count = 0;
 static bool g_titles_dirty = false;
 
+typedef struct {
+    const char* key;
+    const char* name;
+} BuiltinSysAlias;
+
+static const BuiltinSysAlias g_builtin_sys_aliases[] = {
+    { "CTR-N-HAE?", "Miiverse" },
+    { "CTR-N-HCR?", "Notifications" },
+    { "CTR-N-HFR?", "Friend List" },
+    { "CTR-N-HGM?", "Game Notes" },
+};
+
+static const int g_builtin_sys_alias_count = (int)(sizeof(g_builtin_sys_aliases) / sizeof(g_builtin_sys_aliases[0]));
+
 static void clear_catalog(void) {
     for (int i = 0; i < g_title_catalog.count; i++) {
         // nothing to free for software RGBA icons
@@ -96,6 +110,14 @@ static const char* find_sys_alias(const char* key) {
             if (alias_match(pat, key)) return g_sys_alias_name[i];
         } else if (!strcasecmp(pat, key)) {
             return g_sys_alias_name[i];
+        }
+    }
+    for (int i = 0; i < g_builtin_sys_alias_count; i++) {
+        const char* pat = g_builtin_sys_aliases[i].key;
+        if (strchr(pat, '?')) {
+            if (alias_match(pat, key)) return g_builtin_sys_aliases[i].name;
+        } else if (!strcasecmp(pat, key)) {
+            return g_builtin_sys_aliases[i].name;
         }
     }
     return NULL;
