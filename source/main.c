@@ -3123,7 +3123,9 @@ static void draw_status_bar(void) {
     float r_status = theme_radius(g_theme.radius_status);
     draw_round_rect(0, y, TOP_W, g_status_h, status_bg, r_status);
 
+    static const char* k_weekdays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     char timebuf[16];
+    char status_timebuf[32];
     time_t now = time(NULL);
     struct tm* tmv = localtime(&now);
     if (tmv) {
@@ -3134,10 +3136,14 @@ static void draw_status_bar(void) {
             if (hour == 0) hour = 12;
             snprintf(timebuf, sizeof(timebuf), "%d:%02d %s", hour, tmv->tm_min, (tmv->tm_hour >= 12) ? "PM" : "AM");
         }
+        int wday = (tmv->tm_wday >= 0 && tmv->tm_wday < 7) ? tmv->tm_wday : 0;
+        snprintf(status_timebuf, sizeof(status_timebuf), "%s %d/%d(%s)",
+            timebuf, tmv->tm_mon + 1, tmv->tm_mday, k_weekdays[wday]);
     } else {
         copy_str(timebuf, sizeof(timebuf), "--:--");
+        copy_str(status_timebuf, sizeof(status_timebuf), "--:-- --/--(---)");
     }
-    draw_text_centered(8, y + g_theme.status_text_offset_y, 0.55f, g_theme.status_text, g_status_h, timebuf);
+    draw_text_centered(8, y + g_theme.status_text_offset_y, 0.55f, g_theme.status_text, g_status_h, status_timebuf);
 
     u8 batt = 0;
     u8 charging = 0;
