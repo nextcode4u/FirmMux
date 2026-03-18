@@ -1,11 +1,7 @@
 name: Midnight Ramen
 list_item_h: 18
-line_spacing: 27
 status_bar_h: 12
 
-font_scale_top: 0.75
-font_scale_bottom: 0.75
-font_path: fonts/theme.bcfnt
 panel_alpha: 85
 row_padding: 2
 tab_padding: 2

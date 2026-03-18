@@ -114,6 +114,13 @@ https://github.com/nextcode4u/FirmMux/tree/main/docs
 
 State persistence uses atomic writes with deferred idle saves to avoid launch-time stalls.
 
+Theme note:
+
+- FirmMux now uses one fixed UI font for stability.
+- FirmMux now uses one fixed line spacing (`26`) for stability.
+- Older `theme.yaml` files with `font_scale_top`, `font_scale_bottom`, or `font_path` remain safe; those keys are ignored.
+- Older `theme.yaml` files with `line_spacing` also remain safe; that key is ignored.
+
 Widescreen notes and options:
 https://wiki.ds-homebrew.com/ds-index/rtcom?tab=forwarders
 

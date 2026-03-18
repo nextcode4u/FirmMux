@@ -223,9 +223,6 @@ void theme_default(Theme* t) {
     t->toast_text = C2D_Color32(240, 240, 240, 255);
     t->accent = 0;
     t->accent_set = false;
-    t->font_scale_top = 1.0f;
-    t->font_scale_bottom = 1.0f;
-    t->font_path[0] = 0;
     t->panel_alpha = 100;
     t->row_padding = 1;
     t->tab_padding = 1;
@@ -315,18 +312,8 @@ bool load_theme(Theme* t, const char* name) {
                     copy_str(t->name, sizeof(t->name), val);
                 } else if (!strncmp(p, "list_item_h:", 12)) {
                     t->list_item_h = clamp_int(atoi(val), 16, 30);
-                } else if (!strncmp(p, "line_spacing:", 13)) {
-                    t->line_spacing = clamp_int(atoi(val), 18, 34);
                 } else if (!strncmp(p, "status_bar_h:", 13)) {
                     t->status_h = clamp_int(atoi(val), 10, 24);
-                } else if (!strncmp(p, "font_scale_top:", 15)) {
-                    float f = 1.0f;
-                    if (parse_float_value(val, &f)) t->font_scale_top = f;
-                } else if (!strncmp(p, "font_scale_bottom:", 18)) {
-                    float f = 1.0f;
-                    if (parse_float_value(val, &f)) t->font_scale_bottom = f;
-                } else if (!strncmp(p, "font_path:", 10)) {
-                    copy_str(t->font_path, sizeof(t->font_path), val);
                 } else if (!strncmp(p, "panel_alpha:", 12)) {
                     t->panel_alpha = clamp_int(atoi(val), 0, 100);
                 } else if (!strncmp(p, "row_padding:", 12)) {

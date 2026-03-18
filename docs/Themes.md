@@ -1,6 +1,6 @@
 # Themes
 
-Themes control colors, spacing, roundness, font scale, and optional per-theme audio.
+Themes control colors, roundness, and optional per-theme audio.
 
 Theme file:
 
@@ -10,14 +10,17 @@ Theme file:
 
 - `name`
 - `list_item_h`
-- `line_spacing`
 - `status_bar_h`
-- `font_scale_top`
-- `font_scale_bottom`
-- `font_path`
 - `panel_alpha` (0–100; opacity of UI panels)
 - `row_padding`
 - `tab_padding`
+
+Notes:
+
+- FirmMux uses a fixed UI font for stability.
+- FirmMux uses a fixed line spacing of `26` for stability.
+- Older `theme.yaml` files that still contain `font_scale_top`, `font_scale_bottom`, or `font_path` are safe; those keys are ignored.
+- Older `theme.yaml` files that still contain `line_spacing` are also safe; that key is ignored.
 
 ## Accent
 
@@ -64,8 +67,8 @@ If a background is selected in Options, it overrides the theme wallpaper for tha
 
 Options → Theme options…
 
-- Adjusts panel alpha, font scales, and corner radii live.
-- Also adjusts list item height, line spacing, status bar height, row padding, and tab padding.
+- Adjusts panel alpha and corner radii live.
+- Also adjusts list item height, status bar height, row padding, and tab padding.
 - Debug menu overlays show bounds for panels/tabs/lists/preview/help/status.
 - Theme debug menu also includes:
   - Top background visibility (10–90%)

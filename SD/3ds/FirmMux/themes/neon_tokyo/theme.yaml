@@ -1,11 +1,7 @@
 name: Neon Tokyo
 list_item_h: 24
-line_spacing: 28
 status_bar_h: 21
 
-font_scale_top: 1.05
-font_scale_bottom: 0.90
-font_path: fonts/theme.bcfnt
 panel_alpha: 100
 row_padding: 2
 tab_padding: 2

@@ -1,11 +1,7 @@
 name: Crystal Harbor
 list_item_h: 28
-line_spacing: 26
 status_bar_h: 12
 
-font_scale_top: 0.80
-font_scale_bottom: 0.85
-font_path: fonts/theme.bcfnt
 panel_alpha: 100
 row_padding: 2
 tab_padding: 2

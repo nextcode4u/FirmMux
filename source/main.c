@@ -352,27 +352,6 @@ static const char* media_to_string(FS_MediaType m) {
 }
 
 static void apply_theme_font(const Theme* t) {
-    char font_path[256] = {0};
-    if (t && t->font_path[0]) {
-        if (!strncmp(t->font_path, "sdmc:/", 6) || !strncmp(t->font_path, "sd:/", 4) || t->font_path[0] == '/') {
-            copy_str(font_path, sizeof(font_path), t->font_path);
-        } else {
-            const char* folder = (t->folder[0] ? t->folder : t->name);
-            snprintf(font_path, sizeof(font_path), "sdmc:/3ds/FirmMux/themes/%s/%s", folder, t->font_path);
-        }
-    }
-
-    if (font_path[0]) {
-        C2D_Font new_font = C2D_FontLoad(font_path);
-        if (new_font) {
-            if (!g_font_is_default && g_font) C2D_FontFree(g_font);
-            g_font = new_font;
-            g_font_is_default = false;
-            C2D_FontSetFilter(g_font, GPU_LINEAR, GPU_LINEAR);
-            return;
-        }
-    }
-
     if (!g_font_default) {
         g_font_default = C2D_FontLoadFromMem(comfortaa_bold_bcfnt, comfortaa_bold_bcfnt_size);
         if (g_font_default) C2D_FontSetFilter(g_font_default, GPU_LINEAR, GPU_LINEAR);
@@ -413,10 +392,10 @@ static void apply_theme_from_state_or_config(const Config* cfg, const State* sta
     }
     apply_theme_font(&g_theme);
     g_list_item_h = g_theme.list_item_h > 0 ? g_theme.list_item_h : 20;
-    g_line_spacing = g_theme.line_spacing > 0 ? g_theme.line_spacing : 26;
+    g_line_spacing = 26;
     g_status_h = g_theme.status_h > 0 ? g_theme.status_h : 16;
-    g_text_scale_top = (g_theme.font_scale_top > 0.1f) ? g_theme.font_scale_top : 1.0f;
-    g_text_scale_bottom = (g_theme.font_scale_bottom > 0.1f) ? g_theme.font_scale_bottom : 1.0f;
+    g_text_scale_top = 1.0f;
+    g_text_scale_bottom = 1.0f;
     g_row_padding = (g_theme.row_padding >= 0) ? g_theme.row_padding : 1;
     g_tab_padding = (g_theme.tab_padding >= 0) ? g_theme.tab_padding : 1;
     g_panel_alpha = (g_theme.panel_alpha >= 0 && g_theme.panel_alpha <= 100) ? g_theme.panel_alpha : 100;
@@ -732,19 +711,7 @@ static void build_theme_options_menu(void) {
     o->action = OPTION_ACTION_NONE;
 
     o = &g_theme_opt_options[g_theme_opt_count++];
-    snprintf(o->label, sizeof(o->label), "Line spacing: %d", g_line_spacing);
-    o->action = OPTION_ACTION_NONE;
-
-    o = &g_theme_opt_options[g_theme_opt_count++];
     snprintf(o->label, sizeof(o->label), "Status bar height: %d", g_status_h);
-    o->action = OPTION_ACTION_NONE;
-
-    o = &g_theme_opt_options[g_theme_opt_count++];
-    snprintf(o->label, sizeof(o->label), "Font scale top: %.2f", g_text_scale_top);
-    o->action = OPTION_ACTION_NONE;
-
-    o = &g_theme_opt_options[g_theme_opt_count++];
-    snprintf(o->label, sizeof(o->label), "Font scale bottom: %.2f", g_text_scale_bottom);
     o->action = OPTION_ACTION_NONE;
 
     o = &g_theme_opt_options[g_theme_opt_count++];
@@ -867,12 +834,8 @@ static bool save_theme_yaml(bool backup, char* status_message, size_t status_siz
     }
     fprintf(f, "name: %s\n", g_theme.name[0] ? g_theme.name : folder);
     fprintf(f, "list_item_h: %d\n", g_list_item_h);
-    fprintf(f, "line_spacing: %d\n", g_line_spacing);
     fprintf(f, "status_bar_h: %d\n\n", g_status_h);
 
-    fprintf(f, "font_scale_top: %.2f\n", g_text_scale_top);
-    fprintf(f, "font_scale_bottom: %.2f\n", g_text_scale_bottom);
-    if (g_theme.font_path[0]) fprintf(f, "font_path: %s\n", g_theme.font_path);
     fprintf(f, "panel_alpha: %d\n", g_panel_alpha);
     fprintf(f, "row_padding: %d\n", g_theme.row_padding);
     fprintf(f, "tab_padding: %d\n\n", g_theme.tab_padding);
@@ -950,51 +913,37 @@ static void apply_theme_option_adjust(int idx, int dir) {
             g_theme.list_item_h = g_list_item_h;
             break;
         case 3:
-            g_line_spacing = clamp_int_local(g_line_spacing + dir, 16, 40);
-            g_theme.line_spacing = g_line_spacing;
-            break;
-        case 4:
             g_status_h = clamp_int_local(g_status_h + dir, 12, 24);
             g_theme.status_h = g_status_h;
             break;
-        case 5:
-            g_text_scale_top += (dir * 0.05f);
-            if (g_text_scale_top < 0.6f) g_text_scale_top = 0.6f;
-            if (g_text_scale_top > 1.4f) g_text_scale_top = 1.4f;
-            break;
-        case 6:
-            g_text_scale_bottom += (dir * 0.05f);
-            if (g_text_scale_bottom < 0.6f) g_text_scale_bottom = 0.6f;
-            if (g_text_scale_bottom > 1.4f) g_text_scale_bottom = 1.4f;
-            break;
-        case 7:
+        case 4:
             g_theme.row_padding = clamp_int_local(g_theme.row_padding + dir, 0, 8);
             break;
-        case 8:
+        case 5:
             g_theme.tab_padding = clamp_int_local(g_theme.tab_padding + dir, 0, 8);
             break;
-        case 9:
+        case 6:
             g_theme.radius_global = clamp_float_local(g_theme.radius_global + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 10:
+        case 7:
             g_theme.radius_tabs = clamp_float_local(g_theme.radius_tabs + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 11:
+        case 8:
             g_theme.radius_list = clamp_float_local(g_theme.radius_list + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 12:
+        case 9:
             g_theme.radius_options = clamp_float_local(g_theme.radius_options + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 13:
+        case 10:
             g_theme.radius_panels = clamp_float_local(g_theme.radius_panels + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 14:
+        case 11:
             g_theme.radius_preview = clamp_float_local(g_theme.radius_preview + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 15:
+        case 12:
             g_theme.radius_status = clamp_float_local(g_theme.radius_status + dir * 0.5f, 0.0f, 16.0f);
             break;
-        case 16:
+        case 13:
             g_theme.radius_picker = clamp_float_local(g_theme.radius_picker + dir * 0.5f, 0.0f, 16.0f);
             break;
         default:
@@ -2768,6 +2717,11 @@ static void draw_wrap_text(float x, float y, float scale, u32 color, float max_w
     char* token = buf;
     float line_y = y;
     while (*token) {
+        if (*token == '\n') {
+            token++;
+            line_y += 14 * scale;
+            continue;
+        }
         char line[128];
         int line_len = 0;
         float width = 0;
@@ -2775,6 +2729,7 @@ static void draw_wrap_text(float x, float y, float scale, u32 color, float max_w
         char* last_space = NULL;
         int last_space_len = 0;
         while (*p) {
+            if (*p == '\n') break;
             if (*p == ' ') { last_space = p; last_space_len = line_len; }
             line[line_len++] = *p++;
             line[line_len] = 0;
@@ -2784,7 +2739,9 @@ static void draw_wrap_text(float x, float y, float scale, u32 color, float max_w
             C2D_TextGetDimensions(&text, scale, scale, &width, NULL);
             if (width > max_w) break;
         }
-        if (width > max_w && last_space) {
+        if (*p == '\n') {
+            token = p + 1;
+        } else if (width > max_w && last_space) {
             line_len = last_space_len;
             token = last_space + 1;
         } else {
@@ -2804,6 +2761,12 @@ static void draw_wrap_text_limited(float x, float y, float scale, u32 color, flo
     float line_y = y;
     int lines = 0;
     while (*token && lines < max_lines) {
+        if (*token == '\n') {
+            token++;
+            line_y += g_line_spacing * scale;
+            lines++;
+            continue;
+        }
         char line[128];
         int line_len = 0;
         float width = 0;
@@ -2811,6 +2774,7 @@ static void draw_wrap_text_limited(float x, float y, float scale, u32 color, flo
         char* last_space = NULL;
         int last_space_len = 0;
         while (*p) {
+            if (*p == '\n') break;
             if (*p == ' ') { last_space = p; last_space_len = line_len; }
             line[line_len++] = *p++;
             line[line_len] = 0;
@@ -2820,7 +2784,9 @@ static void draw_wrap_text_limited(float x, float y, float scale, u32 color, flo
             C2D_TextGetDimensions(&text, scale, scale, &width, NULL);
             if (width > max_w) break;
         }
-        if (width > max_w && last_space) {
+        if (*p == '\n') {
+            token = p + 1;
+        } else if (width > max_w && last_space) {
             line_len = last_space_len;
             token = last_space + 1;
         } else {

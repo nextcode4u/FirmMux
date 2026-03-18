@@ -1,11 +1,7 @@
 name: Golden Drizzle
 list_item_h: 25
-line_spacing: 18
 status_bar_h: 12
 
-font_scale_top: 0.80
-font_scale_bottom: 0.85
-font_path: fonts/theme.bcfnt
 panel_alpha: 80
 row_padding: 2
 tab_padding: 2

@@ -1,11 +1,7 @@
 name: Cyber Sunset
 list_item_h: 17
-line_spacing: 26
 status_bar_h: 12
 
-font_scale_top: 0.86
-font_scale_bottom: 0.83
-font_path: fonts/theme.bcfnt
 panel_alpha: 100
 row_padding: 2
 tab_padding: 2
