@@ -9,8 +9,6 @@ Theme file:
 ## Common keys
 
 - `name`
-- `list_item_h`
-- `status_bar_h`
 - `panel_alpha` (0–100; opacity of UI panels)
 - `row_padding`
 - `tab_padding`
@@ -19,8 +17,11 @@ Notes:
 
 - FirmMux uses a fixed UI font for stability.
 - FirmMux uses a fixed line spacing of `26` for stability.
+- FirmMux uses a fixed list item height of `20` and a fixed status bar height of `16` for stability.
+- FirmMux backgrounds now render at full opacity for stability.
 - Older `theme.yaml` files that still contain `font_scale_top`, `font_scale_bottom`, or `font_path` are safe; those keys are ignored.
 - Older `theme.yaml` files that still contain `line_spacing` are also safe; that key is ignored.
+- Older `theme.yaml` files that still contain `list_item_h` or `status_bar_h` are also safe; those keys are ignored.
 
 ## Accent
 
@@ -62,17 +63,15 @@ Per-element values override `radius_global`.
 - `bottom_image`: `botbg.png` (drawn full-screen on bottom)
 
 If a background is selected in Options, it overrides the theme wallpaper for that screen.
+Older saved background visibility values are safe and ignored.
 
 ## Theme options debug menu
 
 Options → Theme options…
 
 - Adjusts panel alpha and corner radii live.
-- Also adjusts list item height, status bar height, row padding, and tab padding.
+- Also adjusts row padding and tab padding.
 - Debug menu overlays show bounds for panels/tabs/lists/preview/help/status.
-- Theme debug menu also includes:
-  - Top background visibility (10–90%)
-  - Bottom background visibility (10–90%)
 
 ## Colors
 

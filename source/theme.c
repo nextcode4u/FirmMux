@@ -310,10 +310,6 @@ bool load_theme(Theme* t, const char* name) {
             if (parse_value(p, val, sizeof(val))) {
                 if (!strncmp(p, "name:", 5)) {
                     copy_str(t->name, sizeof(t->name), val);
-                } else if (!strncmp(p, "list_item_h:", 12)) {
-                    t->list_item_h = clamp_int(atoi(val), 16, 30);
-                } else if (!strncmp(p, "status_bar_h:", 13)) {
-                    t->status_h = clamp_int(atoi(val), 10, 24);
                 } else if (!strncmp(p, "panel_alpha:", 12)) {
                     t->panel_alpha = clamp_int(atoi(val), 0, 100);
                 } else if (!strncmp(p, "row_padding:", 12)) {

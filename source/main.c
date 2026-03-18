@@ -90,6 +90,8 @@ static bool g_font_is_default = true;
 static bool g_time_24 = true;
 
 static void draw_rect(float x, float y, float w, float h, u32 color);
+static int color_alpha_pct(u32 c);
+static u32 color_with_alpha_pct(u32 c, int pct);
 
 static Config g_cfg;
 static State g_state;
@@ -391,9 +393,9 @@ static void apply_theme_from_state_or_config(const Config* cfg, const State* sta
         g_theme.folder[0] = 0;
     }
     apply_theme_font(&g_theme);
-    g_list_item_h = g_theme.list_item_h > 0 ? g_theme.list_item_h : 20;
+    g_list_item_h = 20;
     g_line_spacing = 26;
-    g_status_h = g_theme.status_h > 0 ? g_theme.status_h : 16;
+    g_status_h = 16;
     g_text_scale_top = 1.0f;
     g_text_scale_bottom = 1.0f;
     g_row_padding = (g_theme.row_padding >= 0) ? g_theme.row_padding : 1;
@@ -707,11 +709,23 @@ static void build_theme_options_menu(void) {
     o->action = OPTION_ACTION_NONE;
 
     o = &g_theme_opt_options[g_theme_opt_count++];
-    snprintf(o->label, sizeof(o->label), "List item height: %d", g_list_item_h);
+    snprintf(o->label, sizeof(o->label), "Preview alpha: %d%%", color_alpha_pct(g_theme.preview_bg));
     o->action = OPTION_ACTION_NONE;
 
     o = &g_theme_opt_options[g_theme_opt_count++];
-    snprintf(o->label, sizeof(o->label), "Status bar height: %d", g_status_h);
+    snprintf(o->label, sizeof(o->label), "Tab alpha: %d%%", color_alpha_pct(g_theme.tab_bg));
+    o->action = OPTION_ACTION_NONE;
+
+    o = &g_theme_opt_options[g_theme_opt_count++];
+    snprintf(o->label, sizeof(o->label), "List alpha: %d%%", color_alpha_pct(g_theme.list_bg));
+    o->action = OPTION_ACTION_NONE;
+
+    o = &g_theme_opt_options[g_theme_opt_count++];
+    snprintf(o->label, sizeof(o->label), "Overlay alpha: %d%%", color_alpha_pct(g_theme.overlay_bg));
+    o->action = OPTION_ACTION_NONE;
+
+    o = &g_theme_opt_options[g_theme_opt_count++];
+    snprintf(o->label, sizeof(o->label), "Toast alpha: %d%%", color_alpha_pct(g_theme.toast_bg));
     o->action = OPTION_ACTION_NONE;
 
     o = &g_theme_opt_options[g_theme_opt_count++];
@@ -767,13 +781,6 @@ static void build_theme_debug_menu(void) {
     g_theme_dbg_count = 0;
     OptionItem* o = &g_theme_dbg_options[g_theme_dbg_count++];
     snprintf(o->label, sizeof(o->label), "Back");
-    o->action = OPTION_ACTION_NONE;
-
-    o = &g_theme_dbg_options[g_theme_dbg_count++];
-    snprintf(o->label, sizeof(o->label), "Top bg visibility: %d%%", clamp_pct(g_state.background_visibility_top));
-    o->action = OPTION_ACTION_NONE;
-    o = &g_theme_dbg_options[g_theme_dbg_count++];
-    snprintf(o->label, sizeof(o->label), "Bottom bg visibility: %d%%", clamp_pct(g_state.background_visibility_bottom));
     o->action = OPTION_ACTION_NONE;
     o = &g_theme_dbg_options[g_theme_dbg_count++];
     snprintf(o->label, sizeof(o->label), "Show bounds: %s", g_theme_debug_show_bounds ? "On" : "Off");
@@ -833,8 +840,7 @@ static bool save_theme_yaml(bool backup, char* status_message, size_t status_siz
         return false;
     }
     fprintf(f, "name: %s\n", g_theme.name[0] ? g_theme.name : folder);
-    fprintf(f, "list_item_h: %d\n", g_list_item_h);
-    fprintf(f, "status_bar_h: %d\n\n", g_status_h);
+    fprintf(f, "\n");
 
     fprintf(f, "panel_alpha: %d\n", g_panel_alpha);
     fprintf(f, "row_padding: %d\n", g_theme.row_padding);
@@ -909,41 +915,50 @@ static void apply_theme_option_adjust(int idx, int dir) {
             g_panel_alpha = clamp_int_local(g_panel_alpha + dir * 5, 0, 100);
             break;
         case 2:
-            g_list_item_h = clamp_int_local(g_list_item_h + dir, 16, 32);
-            g_theme.list_item_h = g_list_item_h;
+            g_theme.preview_bg = color_with_alpha_pct(g_theme.preview_bg, color_alpha_pct(g_theme.preview_bg) + dir * 5);
             break;
         case 3:
-            g_status_h = clamp_int_local(g_status_h + dir, 12, 24);
-            g_theme.status_h = g_status_h;
+            g_theme.tab_bg = color_with_alpha_pct(g_theme.tab_bg, color_alpha_pct(g_theme.tab_bg) + dir * 5);
+            g_theme.tab_sel = color_with_alpha_pct(g_theme.tab_sel, color_alpha_pct(g_theme.tab_sel) + dir * 5);
             break;
         case 4:
-            g_theme.row_padding = clamp_int_local(g_theme.row_padding + dir, 0, 8);
+            g_theme.list_bg = color_with_alpha_pct(g_theme.list_bg, color_alpha_pct(g_theme.list_bg) + dir * 5);
+            g_theme.list_sel = color_with_alpha_pct(g_theme.list_sel, color_alpha_pct(g_theme.list_sel) + dir * 5);
             break;
         case 5:
-            g_theme.tab_padding = clamp_int_local(g_theme.tab_padding + dir, 0, 8);
+            g_theme.overlay_bg = color_with_alpha_pct(g_theme.overlay_bg, color_alpha_pct(g_theme.overlay_bg) + dir * 5);
             break;
         case 6:
-            g_theme.radius_global = clamp_float_local(g_theme.radius_global + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.toast_bg = color_with_alpha_pct(g_theme.toast_bg, color_alpha_pct(g_theme.toast_bg) + dir * 5);
             break;
         case 7:
-            g_theme.radius_tabs = clamp_float_local(g_theme.radius_tabs + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.row_padding = clamp_int_local(g_theme.row_padding + dir, 0, 8);
             break;
         case 8:
-            g_theme.radius_list = clamp_float_local(g_theme.radius_list + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.tab_padding = clamp_int_local(g_theme.tab_padding + dir, 0, 8);
             break;
         case 9:
-            g_theme.radius_options = clamp_float_local(g_theme.radius_options + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.radius_global = clamp_float_local(g_theme.radius_global + dir * 0.5f, 0.0f, 16.0f);
             break;
         case 10:
-            g_theme.radius_panels = clamp_float_local(g_theme.radius_panels + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.radius_tabs = clamp_float_local(g_theme.radius_tabs + dir * 0.5f, 0.0f, 16.0f);
             break;
         case 11:
-            g_theme.radius_preview = clamp_float_local(g_theme.radius_preview + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.radius_list = clamp_float_local(g_theme.radius_list + dir * 0.5f, 0.0f, 16.0f);
             break;
         case 12:
-            g_theme.radius_status = clamp_float_local(g_theme.radius_status + dir * 0.5f, 0.0f, 16.0f);
+            g_theme.radius_options = clamp_float_local(g_theme.radius_options + dir * 0.5f, 0.0f, 16.0f);
             break;
         case 13:
+            g_theme.radius_panels = clamp_float_local(g_theme.radius_panels + dir * 0.5f, 0.0f, 16.0f);
+            break;
+        case 14:
+            g_theme.radius_preview = clamp_float_local(g_theme.radius_preview + dir * 0.5f, 0.0f, 16.0f);
+            break;
+        case 15:
+            g_theme.radius_status = clamp_float_local(g_theme.radius_status + dir * 0.5f, 0.0f, 16.0f);
+            break;
+        case 16:
             g_theme.radius_picker = clamp_float_local(g_theme.radius_picker + dir * 0.5f, 0.0f, 16.0f);
             break;
         default:
@@ -953,20 +968,8 @@ static void apply_theme_option_adjust(int idx, int dir) {
 }
 
 static void apply_theme_debug_adjust(int idx, int dir) {
-    if (idx <= 0) return;
-    if (idx == 1) {
-        int v = g_state.background_visibility_top;
-        v += dir * 10;
-        if (v < 10) v = 10;
-        if (v > 90) v = 90;
-        g_state.background_visibility_top = v;
-    } else if (idx == 2) {
-        int v = g_state.background_visibility_bottom;
-        v += dir * 10;
-        if (v < 10) v = 10;
-        if (v > 90) v = 90;
-        g_state.background_visibility_bottom = v;
-    }
+    (void)idx;
+    (void)dir;
     build_theme_debug_menu();
 }
 
@@ -1561,32 +1564,39 @@ static int clamp_pct(int v) {
     return v;
 }
 
-static int overlay_pct_top(void) {
-    int vis = clamp_pct(g_state.background_visibility_top);
-    int pct = 100 - vis;
-    int pa = g_panel_alpha;
-    if (pa < 0) pa = 0;
-    if (pa > 100) pa = 100;
-    return (pct * pa) / 100;
+static int color_alpha_pct(u32 c) {
+    return (int)((((c >> 24) & 0xFF) * 100U) / 255U);
 }
 
-static int overlay_pct_bottom(void) {
-    int vis = clamp_pct(g_state.background_visibility_bottom);
-    int pct = 100 - vis;
+static u32 color_with_alpha_pct(u32 c, int pct) {
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    u32 a = (u32)((pct * 255 + 50) / 100);
+    return (c & 0x00FFFFFF) | (a << 24);
+}
+
+static int panel_alpha_pct(void) {
     int pa = g_panel_alpha;
     if (pa < 0) pa = 0;
     if (pa > 100) pa = 100;
-    return (pct * pa) / 100;
+    return pa;
+}
+
+static int background_alpha_pct(bool top) {
+    (void)top;
+    return 100;
 }
 
 static u32 overlay_color(u32 c, bool has_bg, bool top) {
-    if (!has_bg) return c;
-    return scale_alpha(c, top ? overlay_pct_top() : overlay_pct_bottom(), 100);
+    (void)has_bg;
+    (void)top;
+    return scale_alpha(c, panel_alpha_pct(), 100);
 }
 
 static u8 overlay_alpha(bool has_bg, bool top) {
-    if (!has_bg) return 255;
-    int pct = top ? overlay_pct_top() : overlay_pct_bottom();
+    (void)has_bg;
+    (void)top;
+    int pct = panel_alpha_pct();
     return (u8)((pct * 255) / 100);
 }
 
@@ -4886,12 +4896,8 @@ int main(int argc, char** argv) {
         state->retro_chainload_enabled = saved_chainload;
     }
 
-    if (state->background_visibility_top < 10 || state->background_visibility_top > 90) {
-        state->background_visibility_top = 50;
-    }
-    if (state->background_visibility_bottom < 10 || state->background_visibility_bottom > 90) {
-        state->background_visibility_bottom = 50;
-    }
+    state->background_visibility_top = 100;
+    state->background_visibility_bottom = 100;
     if (state->bgm_enabled != 0 && state->bgm_enabled != 1) state->bgm_enabled = 1;
 
     retro_log_set_enabled(state->retro_log_enabled);
@@ -5991,10 +5997,11 @@ int main(int argc, char** argv) {
         g_text_scale = g_text_scale_top;
         C2D_TextBufClear(g_textbuf);
         bool theme_top_allowed = !is_none_bg_selected(g_state.top_background);
+        u8 top_bg_alpha = (u8)((background_alpha_pct(true) * 255) / 100);
         if (g_top_bg_tex.loaded) {
-            draw_theme_image_scaled(&g_top_bg_tex, 0.0f, 0.0f, TOP_W, TOP_H);
+            draw_theme_image_scaled_alpha(&g_top_bg_tex, 0.0f, 0.0f, TOP_W, TOP_H, top_bg_alpha);
         } else if (theme_top_allowed && g_theme.top_loaded) {
-            draw_theme_image_scaled(&g_theme.top_tex, 0.0f, 0.0f, TOP_W, TOP_H);
+            draw_theme_image_scaled_alpha(&g_theme.top_tex, 0.0f, 0.0f, TOP_W, TOP_H, top_bg_alpha);
         }
 
         bool top_has_bg = g_top_bg_tex.loaded || (theme_top_allowed && g_theme.top_loaded);
@@ -6353,10 +6360,11 @@ int main(int argc, char** argv) {
         g_text_scale = g_text_scale_bottom;
         C2D_TextBufClear(g_textbuf);
         bool theme_bottom_allowed = !is_none_bg_selected(g_state.bottom_background);
+        u8 bottom_bg_alpha = (u8)((background_alpha_pct(false) * 255) / 100);
         if (g_bottom_bg_tex.loaded) {
-            draw_theme_image_scaled(&g_bottom_bg_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H);
+            draw_theme_image_scaled_alpha(&g_bottom_bg_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H, bottom_bg_alpha);
         } else if (theme_bottom_allowed && g_theme.bottom_loaded) {
-            draw_theme_image_scaled(&g_theme.bottom_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H);
+            draw_theme_image_scaled_alpha(&g_theme.bottom_tex, 0.0f, 0.0f, BOTTOM_W, BOTTOM_H, bottom_bg_alpha);
         }
         bool bottom_has_bg = g_bottom_bg_tex.loaded || (theme_bottom_allowed && g_theme.bottom_loaded);
         u8 bottom_alpha = overlay_alpha(bottom_has_bg, false);
