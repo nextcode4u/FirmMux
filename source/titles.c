@@ -387,9 +387,31 @@ static int title_name_cmp(const void* a, const void* b) {
     return strcasecmp(an, bn);
 }
 
+static bool title_is_favorite(const TitleInfo3ds* t) {
+    const StatsData* stats = stats_sort_data();
+    if (!stats || !t) return false;
+    char key[STATS_KEY_SIZE];
+    stats_make_title_key_buf(t->titleId, t->media, key, sizeof(key));
+    return stats_is_favorite(stats, STATS_KIND_TITLE, key);
+}
+
 static void sort_titles(TitleInfo3ds** arr, int count, int sort_mode) {
     if (!arr || count <= 1) return;
     qsort(arr, count, sizeof(TitleInfo3ds*), title_name_cmp);
+    if (sort_mode == 2) {
+        for (int i = 0; i < count; i++) {
+            for (int j = i + 1; j < count; j++) {
+                bool ai = title_is_favorite(arr[i]);
+                bool aj = title_is_favorite(arr[j]);
+                if (!ai && aj) {
+                    TitleInfo3ds* tmp = arr[i];
+                    arr[i] = arr[j];
+                    arr[j] = tmp;
+                }
+            }
+        }
+        return;
+    }
     if (sort_mode == 1) {
         int i = 0;
         int j = count - 1;

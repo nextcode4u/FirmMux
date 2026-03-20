@@ -192,11 +192,22 @@ typedef struct {
     char label[STATS_LABEL_SIZE];
 } StatsEntry;
 
+#define STATS_MAX_USAGE 256
+
+typedef struct {
+    StatsEntry entry;
+    int play_count;
+    long long last_played_unix;
+} StatsUsageEntry;
+
 typedef struct {
     StatsEntry favorites[STATS_MAX_FAVORITES];
     int favorite_count;
     StatsEntry last_played;
     bool has_last_played;
+    long long last_played_unix;
+    StatsUsageEntry usage[STATS_MAX_USAGE];
+    int usage_count;
 } StatsData;
 
 typedef struct {
@@ -588,14 +599,20 @@ bool save_stats_data(const StatsData* stats);
 int stats_favorite_count(const StatsData* stats);
 const StatsEntry* stats_get_favorite(const StatsData* stats, int idx);
 const StatsEntry* stats_get_last_played(const StatsData* stats);
+long long stats_get_last_played_unix(const StatsData* stats);
 int stats_find_favorite(const StatsData* stats, int kind, const char* key);
 bool stats_is_favorite(const StatsData* stats, int kind, const char* key);
 bool stats_add_favorite(StatsData* stats, int kind, const char* key, const char* label);
 bool stats_remove_favorite(StatsData* stats, int idx);
 void stats_set_last_played(StatsData* stats, int kind, const char* key, const char* label);
+void stats_note_launch(StatsData* stats, int kind, const char* key, const char* label, long long played_unix);
+const StatsUsageEntry* stats_get_usage(const StatsData* stats, int kind, const char* key);
 int stats_entry_kind(const StatsEntry* entry);
 const char* stats_entry_key(const StatsEntry* entry);
 const char* stats_entry_label(const StatsEntry* entry);
+void stats_make_title_key_buf(u64 title_id, FS_MediaType media, char* out, size_t out_size);
+void stats_bind_sort_data(const StatsData* stats);
+const StatsData* stats_sort_data(void);
 
 NdsCacheEntry* nds_cache_entry(const char* path);
 bool load_nds_icon_direct(const char* full_path, NdsCacheEntry* e);

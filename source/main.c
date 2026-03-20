@@ -60,6 +60,7 @@ static StatsData g_stats;
 static bool g_stats_open = false;
 static int g_stats_selection = 0;
 static int g_stats_scroll = 0;
+static bool g_stats_show_details = false;
 static int g_select_hold_frames = 0;
 static bool g_select_hold_armed = false;
 static bool g_select_hold_consumed = false;
@@ -88,6 +89,7 @@ static char g_cover_preview_last_cover_path[640];
 static IconTexture g_cover_preview_icon;
 static u32 g_cover_preview_icon_generation = 0;
 static char g_cover_preview_icon_path[640];
+static int g_cover_preview_settle_frames = 0;
 static bool g_is_new_3ds = false;
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
@@ -101,6 +103,11 @@ static int color_alpha_pct(u32 c);
 static u32 color_with_alpha_pct(u32 c, int pct);
 static bool parse_title_id(const char* s, u64* out);
 static FS_MediaType media_from_string(const char* s);
+static bool update_title_preview_rgba(const TitleInfo3ds* tinfo);
+static bool update_homebrew_preview(const char* sd_path);
+static bool resolve_cover_preview_path(const Target* target, const FileEntry* fe, const char* rom_sd_path, char* out_path, size_t out_size);
+static void clear_hb_preview(void);
+static void cover_preview_reset_state(bool clear_selection_cache);
 static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
 static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size);
 static void sd_path_to_internal_root(const char* sd_path, char* out, size_t out_size);
@@ -259,8 +266,7 @@ static void stats_reset_select_hold(void) {
 }
 
 static void stats_make_title_key(u64 title_id, FS_MediaType media, char* out, size_t out_size) {
-    if (!out || out_size == 0) return;
-    snprintf(out, out_size, "%016llX:%s", (unsigned long long)title_id, media_to_string(media));
+    stats_make_title_key_buf(title_id, media, out, out_size);
 }
 
 static void stats_make_rom_label(const char* name, char* out, size_t out_size) {
@@ -337,7 +343,7 @@ static bool stats_get_current_launchable(const Target* target, const TargetState
 
 static void stats_record_last_played(int kind, const char* key, const char* label, char* status_message, size_t status_size, int* status_timer) {
     if (kind == STATS_KIND_NONE || !key || !key[0] || !label || !label[0]) return;
-    stats_set_last_played(&g_stats, kind, key, label);
+    stats_note_launch(&g_stats, kind, key, label, (long long)time(NULL));
     if (!save_stats_data(&g_stats)) {
         if (status_message && status_size > 0 && status_message[0] == 0) snprintf(status_message, status_size, "Stats save failed");
         if (status_timer && *status_timer < 120) *status_timer = 120;
@@ -349,13 +355,75 @@ static int stats_menu_count(void) {
 }
 
 static int stats_menu_list_start_y(void) {
-    return 58;
+    return 42;
 }
 
 static int stats_menu_visible_rows(void) {
     int visible = (BOTTOM_H - HELP_BAR_H - stats_menu_list_start_y() - 4) / g_list_item_h;
     if (visible < 1) visible = 1;
     return visible;
+}
+
+static const char* browser_sort_label(int sort_mode) {
+    if (sort_mode == 1) return "Z-#";
+    if (sort_mode == 2) return "Favorites";
+    return "#-Z";
+}
+
+static bool stats_get_browser_launchable_at(const Target* target, const TargetState* ts, const TargetRuntime* runtime, bool emu_root_exists, int selection, int* out_kind, char* out_key, size_t out_key_size) {
+    if (out_kind) *out_kind = STATS_KIND_NONE;
+    if (out_key && out_key_size > 0) out_key[0] = 0;
+    if (!target || !ts) return false;
+    if (!strcmp(target->type, "installed_titles")) {
+        ensure_titles_loaded(&g_cfg);
+        TitleInfo3ds* tinfo = title_user_at_sorted(selection, ts->sort_mode);
+        if (!tinfo) return false;
+        if (out_kind) *out_kind = STATS_KIND_TITLE;
+        if (out_key) stats_make_title_key(tinfo->titleId, tinfo->media, out_key, out_key_size);
+        return true;
+    }
+    if (!strcmp(target->type, "system_menu")) {
+        if (selection <= (1 + g_system_applet_count)) return false;
+        ensure_titles_loaded(&g_cfg);
+        TitleInfo3ds* tinfo = title_system_at_sorted(selection - 2 - g_system_applet_count, ts->sort_mode);
+        if (!tinfo) return false;
+        if (out_kind) *out_kind = STATS_KIND_TITLE;
+        if (out_key) stats_make_title_key(tinfo->titleId, tinfo->media, out_key, out_key_size);
+        return true;
+    }
+    if (!runtime) return false;
+    if (!strcmp(target->type, "homebrew_browser")) {
+        if (selection < 0 || selection >= runtime->cache.count) return false;
+        FileEntry* fe = &runtime->cache.entries[selection];
+        if (fe->is_dir || !is_3dsx_name(fe->name)) return false;
+        char joined[512];
+        path_join(ts->path, fe->name, joined, sizeof(joined));
+        if (out_kind) *out_kind = STATS_KIND_HOMEBREW;
+        if (out_key) {
+            make_sd_path(joined, out_key, out_key_size);
+            normalize_path_sd(out_key, out_key_size);
+        }
+        return true;
+    }
+    if (!strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
+        if (is_emulator_target(target) && !emu_root_exists) return false;
+        bool show_card = !strcmp(target->type, "rom_browser") ? show_nds_card(target, ts) : false;
+        int card_offset = show_card ? 1 : 0;
+        if (show_card && selection == 0) return false;
+        int entry_idx = selection - card_offset;
+        if (entry_idx < 0 || entry_idx >= runtime->cache.count) return false;
+        FileEntry* fe = &runtime->cache.entries[entry_idx];
+        if (fe->is_dir) return false;
+        char joined[512];
+        path_join(ts->path, fe->name, joined, sizeof(joined));
+        if (out_kind) *out_kind = STATS_KIND_ROM;
+        if (out_key) {
+            make_sd_path(joined, out_key, out_key_size);
+            normalize_path_sd(out_key, out_key_size);
+        }
+        return true;
+    }
+    return false;
 }
 
 static const Target* stats_find_rom_target_for_key(const Config* cfg, const char* key) {
@@ -458,12 +526,14 @@ static void stats_menu_open(void) {
     g_stats_open = true;
     g_stats_selection = 0;
     g_stats_scroll = 0;
+    g_stats_show_details = false;
 }
 
 static void stats_menu_close(void) {
     g_stats_open = false;
     g_stats_selection = 0;
     g_stats_scroll = 0;
+    g_stats_show_details = false;
 }
 
 static const char* stats_system_short_label(const StatsEntry* entry) {
@@ -504,6 +574,122 @@ static const char* stats_system_short_label(const StatsEntry* entry) {
     if (len == 7 && !strncmp(roms, "neogeo", 7)) return "NG";
     if (len == 2 && !strncmp(roms, "sg", 2)) return "SG";
     return "ROM";
+}
+
+static const StatsEntry* stats_menu_entry_at(int idx) {
+    if (idx == 1) return stats_get_last_played(&g_stats);
+    if (idx > 1) return stats_get_favorite(&g_stats, idx - 2);
+    return NULL;
+}
+
+static const StatsEntry* stats_selected_entry(void) {
+    return g_stats_open ? stats_menu_entry_at(g_stats_selection) : NULL;
+}
+
+static void stats_format_timestamp(long long when_unix, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    if (when_unix <= 0) {
+        copy_str(out, out_size, "Never");
+        return;
+    }
+    time_t raw = (time_t)when_unix;
+    struct tm* tmv = localtime(&raw);
+    if (!tmv) {
+        copy_str(out, out_size, "Unknown");
+        return;
+    }
+    strftime(out, out_size, "%Y-%m-%d %I:%M %p", tmv);
+}
+
+static void stats_key_to_sdmc(const char* key, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = 0;
+    if (!key || !key[0]) return;
+    copy_str(out, out_size, key);
+    normalize_path_sd(out, out_size);
+    if (!strncmp(out, "sd:/", 4)) {
+        char tmp[STATS_KEY_SIZE];
+        if (format_to_buf(tmp, sizeof(tmp), "sdmc:/%s", out + 4)) copy_str(out, out_size, tmp);
+    }
+}
+
+static TitleInfo3ds* stats_title_from_entry(const StatsEntry* entry) {
+    if (!entry || stats_entry_kind(entry) != STATS_KIND_TITLE) return NULL;
+    char keybuf[STATS_KEY_SIZE];
+    copy_str(keybuf, sizeof(keybuf), stats_entry_key(entry));
+    char* colon = strchr(keybuf, ':');
+    if (!colon) return NULL;
+    *colon = 0;
+    u64 tid = 0;
+    if (!parse_title_id(keybuf, &tid)) return NULL;
+    FS_MediaType media = media_from_string(colon + 1);
+    ensure_titles_loaded(&g_cfg);
+    for (int i = 0; i < g_title_catalog.count; i++) {
+        TitleInfo3ds* t = &g_title_catalog.entries[i];
+        if (t->titleId == tid && t->media == media) return t;
+    }
+    return NULL;
+}
+
+static bool stats_prepare_preview_for_entry(const StatsEntry* entry, const Config* cfg) {
+    if (!entry) {
+        clear_hb_preview();
+        cover_preview_reset_state(false);
+        return false;
+    }
+    if (stats_entry_kind(entry) == STATS_KIND_TITLE) {
+        clear_hb_preview();
+        cover_preview_reset_state(false);
+        return update_title_preview_rgba(stats_title_from_entry(entry));
+    }
+    if (stats_entry_kind(entry) == STATS_KIND_HOMEBREW) {
+        cover_preview_reset_state(false);
+        char sdmc_key[STATS_KEY_SIZE];
+        stats_key_to_sdmc(stats_entry_key(entry), sdmc_key, sizeof(sdmc_key));
+        return update_homebrew_preview(sdmc_key);
+    }
+    if (stats_entry_kind(entry) == STATS_KIND_ROM) {
+        clear_hb_preview();
+        const char* key = stats_entry_key(entry);
+        if (!key || !key[0]) {
+            cover_preview_reset_state(false);
+            return false;
+        }
+        char sdmc_key[STATS_KEY_SIZE];
+        stats_key_to_sdmc(key, sdmc_key, sizeof(sdmc_key));
+        const char* slash = strrchr(sdmc_key, '/');
+        const char* base = slash ? slash + 1 : sdmc_key;
+        if (is_nds_name(base)) {
+            cover_preview_reset_state(false);
+            build_nds_entry(sdmc_key);
+            return true;
+        }
+        const Target* rom_target = stats_find_rom_target_for_key(cfg, key);
+        if (!rom_target) {
+            cover_preview_reset_state(false);
+            return false;
+        }
+        FileEntry fe;
+        memset(&fe, 0, sizeof(fe));
+        fe.is_dir = false;
+        copy_str(fe.name, sizeof(fe.name), base);
+        char cover_path[640];
+        if (!resolve_cover_preview_path(rom_target, &fe, sdmc_key, cover_path, sizeof(cover_path))) {
+            cover_preview_reset_state(false);
+            return false;
+        }
+        if (!g_cover_preview_request_active || strcmp(g_cover_preview_last_cover_path, cover_path) != 0) {
+            g_cover_preview_generation++;
+            preview_cancel(g_cover_preview_generation);
+            copy_str(g_cover_preview_last_cover_path, sizeof(g_cover_preview_last_cover_path), cover_path);
+            g_cover_preview_request_active = true;
+            preview_request(cover_path, g_cover_preview_generation);
+        }
+        return true;
+    }
+    clear_hb_preview();
+    cover_preview_reset_state(false);
+    return false;
 }
 
 static void stats_menu_label(int idx, char* out, size_t out_size) {
@@ -2976,6 +3162,7 @@ static void cover_preview_reset_state(bool clear_selection_cache) {
     icon_free(&g_cover_preview_icon);
     g_cover_preview_icon_generation = 0;
     g_cover_preview_icon_path[0] = 0;
+    g_cover_preview_settle_frames = 0;
     if (clear_selection_cache) {
         g_cover_preview_last_target_id[0] = 0;
         g_cover_preview_last_path[0] = 0;
@@ -3004,18 +3191,29 @@ static void request_cover_preview_for_selection(const Target* target, const Targ
         return;
     }
 
-    if (!strcmp(g_cover_preview_last_target_id, target->id)
-        && !strcmp(g_cover_preview_last_path, ts->path)
-        && !strcmp(g_cover_preview_last_name, fe->name)) {
-        if (g_cover_preview_last_has_cover && g_cover_preview_last_cover_path[0]) {
-            g_cover_preview_request_active = true;
-            preview_request(g_cover_preview_last_cover_path, g_cover_preview_generation);
-        }
+    if (strcmp(g_cover_preview_last_target_id, target->id)
+        || strcmp(g_cover_preview_last_path, ts->path)
+        || strcmp(g_cover_preview_last_name, fe->name)) {
+        copy_str(g_cover_preview_last_target_id, sizeof(g_cover_preview_last_target_id), target->id);
+        copy_str(g_cover_preview_last_path, sizeof(g_cover_preview_last_path), ts->path);
+        copy_str(g_cover_preview_last_name, sizeof(g_cover_preview_last_name), fe->name);
+        g_cover_preview_settle_frames = 8;
+        g_cover_preview_last_has_cover = false;
+        g_cover_preview_last_cover_path[0] = 0;
+        cover_preview_reset_state(false);
         return;
     }
-    copy_str(g_cover_preview_last_target_id, sizeof(g_cover_preview_last_target_id), target->id);
-    copy_str(g_cover_preview_last_path, sizeof(g_cover_preview_last_path), ts->path);
-    copy_str(g_cover_preview_last_name, sizeof(g_cover_preview_last_name), fe->name);
+
+    if (g_cover_preview_settle_frames > 0) {
+        g_cover_preview_settle_frames--;
+        return;
+    }
+
+    if (g_cover_preview_last_has_cover && g_cover_preview_last_cover_path[0]) {
+        g_cover_preview_request_active = true;
+        preview_request(g_cover_preview_last_cover_path, g_cover_preview_generation);
+        return;
+    }
 
     char joined[512];
     path_join(ts->path, fe->name, joined, sizeof(joined));
@@ -5210,6 +5408,7 @@ int main(int argc, char** argv) {
         goto cleanup;
     }
     load_stats_data(&g_stats);
+    stats_bind_sort_data(&g_stats);
 
     if (!cfg->remember_last_position) {
         char saved_theme[32];
@@ -5412,7 +5611,7 @@ int main(int argc, char** argv) {
         }
         bool emu_root_exists = !is_emulator_target(target) || target_root_exists(target);
 
-        if (!options_open) {
+        if (!options_open && !g_stats_open) {
             if (kDown & KEY_L) {
                 current_target = (current_target - 1 + cfg->target_count) % cfg->target_count;
                 target = &cfg->targets[current_target];
@@ -5478,7 +5677,12 @@ int main(int argc, char** argv) {
         if (!strcmp(target->type, "rom_browser")) {
             update_card_status();
         }
-        request_cover_preview_for_selection(target, ts, runtime, emu_root_exists);
+        if (g_stats_open) {
+            const StatsEntry* stats_entry = stats_selected_entry();
+            if (stats_entry) stats_prepare_preview_for_entry(stats_entry, cfg);
+        } else {
+            request_cover_preview_for_selection(target, ts, runtime, emu_root_exists);
+        }
         preview_update(1);
 
         bool stats_browser_active = stats_menu_allowed_now(target, ts);
@@ -5502,14 +5706,19 @@ int main(int argc, char** argv) {
                                 snprintf(status_message, sizeof(status_message), "Already in favorites");
                             } else if (stats_add_favorite(&g_stats, kind, key, label)) {
                                 if (!save_stats_data(&g_stats)) snprintf(status_message, sizeof(status_message), "Favorites save failed");
-                                else snprintf(status_message, sizeof(status_message), "Added to favorites");
+                                else {
+                                    if (ts->sort_mode == 2 && (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target))) {
+                                        build_dir_cache(target, ts, &runtime->cache);
+                                    }
+                                    snprintf(status_message, sizeof(status_message), "Added to favorites");
+                                }
                             } else {
                                 snprintf(status_message, sizeof(status_message), "Favorites full");
                             }
                         } else {
                             snprintf(status_message, sizeof(status_message), "Only launchable items can be favorited");
                         }
-                        status_timer = 120;
+                        status_timer = 45;
                         audio_play(SOUND_SELECT);
                         g_select_hold_consumed = true;
                     }
@@ -5534,8 +5743,16 @@ int main(int argc, char** argv) {
             clamp_scroll_list(&g_stats_scroll, g_stats_selection, visible, count);
             if (g_stats_selection != prev) audio_play(SOUND_MOVE);
             if ((kDown & KEY_B) || (kDown & KEY_SELECT)) {
-                stats_menu_close();
-                audio_play(SOUND_BACK);
+                if (g_stats_show_details && (kDown & KEY_B)) {
+                    g_stats_show_details = false;
+                    audio_play(SOUND_BACK);
+                } else {
+                    stats_menu_close();
+                    audio_play(SOUND_BACK);
+                }
+            } else if (kDown & KEY_Y) {
+                g_stats_show_details = !g_stats_show_details;
+                audio_play(SOUND_TOGGLE);
             } else if (kDown & KEY_A) {
                 if (g_stats_selection == 0) {
                     stats_menu_close();
@@ -5559,7 +5776,12 @@ int main(int argc, char** argv) {
                 copy_str(removed, sizeof(removed), entry ? stats_entry_label(entry) : "Favorite");
                 if (stats_remove_favorite(&g_stats, g_stats_selection - 2)) {
                     if (!save_stats_data(&g_stats)) snprintf(status_message, sizeof(status_message), "Favorites save failed");
-                    else snprintf(status_message, sizeof(status_message), "Removed: %s", removed);
+                    else {
+                        if (ts->sort_mode == 2 && (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target))) {
+                            build_dir_cache(target, ts, &runtime->cache);
+                        }
+                        snprintf(status_message, sizeof(status_message), "Removed: %s", removed);
+                    }
                     if (g_stats_selection >= stats_menu_count()) g_stats_selection = stats_menu_count() - 1;
                     if (g_stats_selection < 0) g_stats_selection = 0;
                     clamp_scroll_list(&g_stats_scroll, g_stats_selection, visible, stats_menu_count());
@@ -5646,7 +5868,7 @@ int main(int argc, char** argv) {
                                 build_theme_options("default");
                                 snprintf(status_message, sizeof(status_message), "Theme load failed");
                             }
-                            status_timer = 90;
+                            status_timer = 60;
                         }
                         audio_play(SOUND_SELECT);
                     }
@@ -5738,7 +5960,7 @@ int main(int argc, char** argv) {
                             options_selection = pathfile_row;
                             options_scroll = 0;
                             snprintf(status_message, sizeof(status_message), "Pathfile: %s", sys->pathfile_enabled ? "On" : "Off");
-                            status_timer = 90;
+                            status_timer = 30;
                             audio_play(SOUND_TOGGLE);
                         } else if (options_selection == rom_folder_row) {
                             emu_cycle_rom_folder(sys);
@@ -5754,7 +5976,7 @@ int main(int argc, char** argv) {
                             options_selection = rom_folder_row;
                             options_scroll = 0;
                             snprintf(status_message, sizeof(status_message), "ROM folder: %s", sys->rom_folder);
-                            status_timer = 90;
+                            status_timer = 30;
                             audio_play(SOUND_SELECT);
                         }
                     }
@@ -5790,12 +6012,12 @@ int main(int argc, char** argv) {
                                 g_options_mode = OPT_MODE_NDS_ROM;
                                 options_open = true;
                                 snprintf(status_message, sizeof(status_message), "No cheats found");
-                                status_timer = 90;
+                                status_timer = 30;
                                 audio_play(SOUND_BACK);
                             }
                         } else {
                             snprintf(status_message, sizeof(status_message), "No cheats found");
-                            status_timer = 90;
+                            status_timer = 30;
                             audio_play(SOUND_BACK);
                         }
                     } else {
@@ -6046,14 +6268,14 @@ int main(int argc, char** argv) {
                     } else if (options_selection == 1) {
                         if (save_theme_yaml(true, status_message, sizeof(status_message))) {
                             state_dirty = true;
-                            status_timer = 90;
+                            status_timer = 30;
                         }
                         build_theme_save_menu();
                         audio_play(SOUND_SELECT);
                     } else if (options_selection == 2) {
                         if (save_theme_yaml(false, status_message, sizeof(status_message))) {
                             state_dirty = true;
-                            status_timer = 90;
+                            status_timer = 30;
                         }
                         build_theme_save_menu();
                         audio_play(SOUND_SELECT);
@@ -6164,12 +6386,11 @@ int main(int argc, char** argv) {
                 if (rep_up || rep_down) state_dirty = true;
                 if (ts->selection != prev) audio_play(SOUND_MOVE);
                 if (kDown & KEY_X) {
-                    ts->sort_mode = (ts->sort_mode + 1) % 2;
+                    ts->sort_mode = (ts->sort_mode + 1) % 3;
                     ts->selection = 0;
                     ts->scroll = 0;
                     state_dirty = true;
-                    if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
-                    else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
+                    snprintf(status_message, sizeof(status_message), "Sort: %s", browser_sort_label(ts->sort_mode));
                     status_timer = 120;
                     audio_play(SOUND_SELECT);
                 }
@@ -6222,12 +6443,11 @@ int main(int argc, char** argv) {
                 if (rep_up || rep_down) state_dirty = true;
                 if (ts->selection != prev) audio_play(SOUND_MOVE);
                 if (kDown & KEY_X) {
-                    ts->sort_mode = (ts->sort_mode + 1) % 2;
+                    ts->sort_mode = (ts->sort_mode + 1) % 3;
                     ts->selection = 0;
                     ts->scroll = 0;
                     state_dirty = true;
-                    if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
-                    else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
+                    snprintf(status_message, sizeof(status_message), "Sort: %s", browser_sort_label(ts->sort_mode));
                     status_timer = 120;
                     audio_play(SOUND_SELECT);
                 }
@@ -6280,13 +6500,12 @@ int main(int argc, char** argv) {
                     }
                 }
                 if (kDown & KEY_X) {
-                    ts->sort_mode = (ts->sort_mode + 1) % 2;
-                    sort_dir_cache(cache, ts->sort_mode);
+                    ts->sort_mode = (ts->sort_mode + 1) % 3;
+                    build_dir_cache(target, ts, cache);
                     ts->selection = 0;
                     ts->scroll = 0;
                     state_dirty = true;
-                    if (ts->sort_mode == 0) snprintf(status_message, sizeof(status_message), "Sort: #-Z");
-                    else snprintf(status_message, sizeof(status_message), "Sort: Z-#");
+                    snprintf(status_message, sizeof(status_message), "Sort: %s", browser_sort_label(ts->sort_mode));
                     status_timer = 60;
                     audio_play(SOUND_SELECT);
                 }
@@ -6360,6 +6579,7 @@ int main(int argc, char** argv) {
                         if (entry_idx < 0) entry_idx = 0;
                         if (entry_idx >= cache->count) entry_idx = cache->count - 1;
                         FileEntry* fe = &cache->entries[entry_idx];
+                        bool opened_dir = false;
                         char joined[512];
                         path_join(ts->path, fe->name, joined, sizeof(joined));
                         if (fe->is_dir) {
@@ -6369,6 +6589,8 @@ int main(int argc, char** argv) {
                             build_dir_cache(target, ts, cache);
                             state_dirty = true;
                             snprintf(status_message, sizeof(status_message), "Opening...");
+                            status_timer = 30;
+                            opened_dir = true;
                             audio_play(SOUND_OPEN);
                         } else {
                             if (is_rom && is_nds_name(fe->name)) {
@@ -6405,7 +6627,11 @@ int main(int argc, char** argv) {
                             }
                             audio_play(SOUND_SELECT);
                         }
-                        if (status_timer < 150) status_timer = 150;
+                        if (opened_dir) {
+                            if (status_timer < 60) status_timer = 60;
+                        } else if (status_timer < 150) {
+                            status_timer = 150;
+                        }
                     }
                 }
             }
@@ -6468,9 +6694,15 @@ int main(int argc, char** argv) {
 
         const char* preview_title = "";
         const TitleInfo3ds* preview_tinfo = NULL;
+        const StatsEntry* preview_stats_entry = g_stats_open ? stats_selected_entry() : NULL;
         bool show_system_info = false;
         char preview_buf[64];
-        if (!strcmp(target->type, "system_menu")) {
+        if (preview_stats_entry) {
+            preview_title = stats_entry_label(preview_stats_entry);
+            if (stats_entry_kind(preview_stats_entry) == STATS_KIND_TITLE) {
+                preview_tinfo = stats_title_from_entry(preview_stats_entry);
+            }
+        } else if (!strcmp(target->type, "system_menu")) {
             if (ts->selection == 0) {
                 preview_title = "Return to HOME";
                 show_system_info = true;
@@ -6584,7 +6816,112 @@ int main(int argc, char** argv) {
                 draw_text(8, banner_y - 14, 0.45f, g_theme.text_secondary, tidbuf);
             }
         }
-        if (!show_system_info && !strcmp(target->type, "homebrew_browser")) {
+        if (!show_system_info && preview_stats_entry && stats_entry_kind(preview_stats_entry) == STATS_KIND_TITLE) {
+            if (preview_tinfo && update_title_preview_rgba((TitleInfo3ds*)preview_tinfo)) {
+                float scale = 1.0f;
+                float px = 8.0f;
+                float py = banner_y;
+                preview_icon_layout(48, 48, banner_y, &px, &py, &scale);
+                if (g_title_preview_icon.loaded) {
+                    C2D_DrawImageAt(g_title_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
+                } else {
+                    draw_rgba_icon(px, py, scale, g_title_preview_rgba, 48, 48);
+                }
+                drew_icon = true;
+            }
+        } else if (!show_system_info && preview_stats_entry && stats_entry_kind(preview_stats_entry) == STATS_KIND_HOMEBREW) {
+            if (g_hb_preview_valid) {
+                float scale = 1.0f;
+                float px = 8.0f;
+                float py = banner_y;
+                preview_icon_layout(48, 48, banner_y, &px, &py, &scale);
+                if (g_hb_preview_icon.loaded) {
+                    C2D_DrawImageAt(g_hb_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
+                } else {
+                    draw_rgba_icon(px, py, scale, g_hb_preview_rgba, 48, 48);
+                }
+                drew_icon = true;
+            }
+        } else if (!show_system_info && preview_stats_entry && stats_entry_kind(preview_stats_entry) == STATS_KIND_ROM) {
+            const char* key = stats_entry_key(preview_stats_entry);
+            char stats_sdmc_key[STATS_KEY_SIZE];
+            stats_key_to_sdmc(key, stats_sdmc_key, sizeof(stats_sdmc_key));
+            const char* base = strrchr(stats_sdmc_key, '/');
+            base = base ? base + 1 : stats_sdmc_key;
+            if (is_nds_name(base)) {
+                NdsCacheEntry* nds = nds_cache_entry(stats_sdmc_key);
+                if (g_nds_banners) {
+                    if (!nds || !nds->has_rgba) {
+                        build_nds_entry(stats_sdmc_key);
+                        nds = nds_cache_entry(stats_sdmc_key);
+                    }
+                    if (nds && nds->has_rgba) {
+                        float scale = 1.0f;
+                        float px = 8.0f;
+                        float py = banner_y;
+                        preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                        draw_rgba_icon(px, py, scale, nds->rgba, 32, 32);
+                        drew_icon = true;
+                    }
+                } else {
+                    if (nds && nds->has_rgba) {
+                        float scale = 1.0f;
+                        float px = 8.0f;
+                        float py = banner_y;
+                        preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                        draw_rgba_icon(px, py, scale, nds->rgba, 32, 32);
+                        drew_icon = true;
+                    } else {
+                        build_nds_entry(stats_sdmc_key);
+                        nds = nds_cache_entry(stats_sdmc_key);
+                    }
+                    if (!drew_icon) {
+                        if (g_theme.sprite_loaded && g_theme.sprite_w > 0 && g_theme.sprite_h > 0) {
+                            float scale = 1.0f;
+                            float px = 8.0f;
+                            float py = banner_y;
+                            preview_icon_layout(g_theme.sprite_w, g_theme.sprite_h, banner_y, &px, &py, &scale);
+                            draw_theme_image(&g_theme.sprite_tex, px, py, scale);
+                        } else {
+                            u32 col1 = hash_color(base);
+                            u32 col2 = hash_color(base + 1);
+                            u8 tmp[32 * 32 * 4];
+                            make_sprite(tmp, col1, col2);
+                            float scale = 1.0f;
+                            float px = 8.0f;
+                            float py = banner_y;
+                            preview_icon_layout(32, 32, banner_y, &px, &py, &scale);
+                            draw_rgba_icon(px, py, scale, tmp, 32, 32);
+                        }
+                        drew_icon = true;
+                    }
+                }
+            } else {
+                const u8* rgba = NULL;
+                int pw = 0;
+                int ph = 0;
+                if (preview_get_ready_texture(g_cover_preview_generation, &rgba, &pw, &ph) && rgba && pw > 0 && ph > 0) {
+                    float scale = 1.0f;
+                    float px = 8.0f;
+                    float py = banner_y;
+                    preview_cover_layout(pw, ph, banner_y, &px, &py, &scale);
+                    if (g_cover_preview_icon_generation != g_cover_preview_generation) {
+                        icon_free(&g_cover_preview_icon);
+                        g_cover_preview_icon_generation = 0;
+                        if (icon_from_rgba_tiled(&g_cover_preview_icon, rgba, pw, ph)) {
+                            g_cover_preview_icon_generation = g_cover_preview_generation;
+                        }
+                    }
+                    if (g_cover_preview_icon.loaded) {
+                        C2D_DrawImageAt(g_cover_preview_icon.image, px + g_preview_offset_x, py + g_preview_offset_y, 0.0f, NULL, scale, scale);
+                        drew_icon = true;
+                    } else {
+                        draw_rgba_icon(px + g_preview_offset_x, py + g_preview_offset_y, scale, rgba, pw, ph);
+                        drew_icon = true;
+                    }
+                }
+            }
+        } else if (!show_system_info && !strcmp(target->type, "homebrew_browser")) {
             DirCache* cache = &runtime->cache;
             if (cache->count > 0) {
                 int hb_idx = clamp_entry_index(cache, ts->selection);
@@ -6857,41 +7194,69 @@ int main(int argc, char** argv) {
             draw_text(8, 6, 0.7f, g_theme.option_header, "Stats / Favorites");
 
             char line[192];
-            draw_text(10, 24, 0.6f, g_theme.text_secondary, "Favorites");
-            snprintf(line, sizeof(line), "Count: %d", stats_favorite_count(&g_stats));
-            draw_text(10, 40, 0.55f, g_theme.text_primary, line);
+            if (!g_stats_show_details) {
+                snprintf(line, sizeof(line), "Count: %d", stats_favorite_count(&g_stats));
+                draw_text(10, 24, 0.55f, g_theme.text_primary, line);
 
-            int count = stats_menu_count();
-            int visible = stats_menu_visible_rows();
-            int list_start_y = stats_menu_list_start_y();
-            if (count <= 2) {
-                draw_text(12, list_start_y + 6, 0.6f, g_theme.text_muted, "No favorites yet");
-            }
-            for (int i = 0; i < visible; i++) {
-                int idx = g_stats_scroll + i;
-                if (idx >= count) break;
-                int y = list_start_y + i * g_list_item_h;
-                int pad = g_row_padding;
-                int row_y = y + pad;
-                int row_h = g_list_item_h - pad * 2;
-                if (row_h < 1) row_h = 1;
-                bool sel = (idx == g_stats_selection);
-                if (sel && g_theme.option_sel_loaded) {
-                    float off = align_offset_from_center(g_theme.option_sel_center_y, row_h);
-                    draw_theme_image_scaled_alpha(&g_theme.option_sel_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
-                } else if (!sel && g_theme.option_item_loaded) {
-                    float off = align_offset_from_center(g_theme.option_item_center_y, row_h);
-                    draw_theme_image_scaled_alpha(&g_theme.option_item_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
-                } else {
-                    u32 color = overlay_color(sel ? g_theme.option_sel : g_theme.option_bg, bottom_has_bg, false);
-                    float r_opt = theme_radius(g_theme.radius_options);
-                    draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_opt);
+                int count = stats_menu_count();
+                int visible = stats_menu_visible_rows();
+                int list_start_y = stats_menu_list_start_y();
+                if (count <= 2) {
+                    draw_text(10, 24 + 16, 0.6f, g_theme.text_muted, "No favorites yet");
                 }
-                stats_menu_label(idx, line, sizeof(line));
-                float opt_bias = -2.0f;
-                if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, row_h);
-                else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, row_h);
-                draw_text_scroll_box(12, row_y + g_theme.option_text_offset_y - 2.0f, 0.6f, g_theme.option_text, (float)(BOTTOM_W - 24), row_h, line, opt_bias, sel);
+                for (int i = 0; i < visible; i++) {
+                    int idx = g_stats_scroll + i;
+                    if (idx >= count) break;
+                    int y = list_start_y + i * g_list_item_h;
+                    int pad = g_row_padding;
+                    int row_y = y + pad;
+                    int row_h = g_list_item_h - pad * 2;
+                    if (row_h < 1) row_h = 1;
+                    bool sel = (idx == g_stats_selection);
+                    if (sel && g_theme.option_sel_loaded) {
+                        float off = align_offset_from_center(g_theme.option_sel_center_y, row_h);
+                        draw_theme_image_scaled_alpha(&g_theme.option_sel_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
+                    } else if (!sel && g_theme.option_item_loaded) {
+                        float off = align_offset_from_center(g_theme.option_item_center_y, row_h);
+                        draw_theme_image_scaled_alpha(&g_theme.option_item_tex, 6, row_y + g_theme.option_item_offset_y + off, BOTTOM_W - 12, row_h, bottom_alpha);
+                    } else {
+                        u32 color = overlay_color(sel ? g_theme.option_sel : g_theme.option_bg, bottom_has_bg, false);
+                        float r_opt = theme_radius(g_theme.radius_options);
+                        draw_round_rect(6, row_y, BOTTOM_W - 12, row_h, color, r_opt);
+                    }
+                    stats_menu_label(idx, line, sizeof(line));
+                    float opt_bias = -2.0f;
+                    if (sel && g_theme.option_sel_loaded) opt_bias = align_offset_from_center(g_theme.option_sel_center_y, row_h);
+                    else if (!sel && g_theme.option_item_loaded) opt_bias = align_offset_from_center(g_theme.option_item_center_y, row_h);
+                    draw_text_scroll_box(12, row_y + g_theme.option_text_offset_y - 2.0f, 0.6f, g_theme.option_text, (float)(BOTTOM_W - 24), row_h, line, opt_bias, sel);
+                }
+            } else {
+                const StatsEntry* entry = stats_menu_entry_at(g_stats_selection);
+                const StatsUsageEntry* usage = entry ? stats_get_usage(&g_stats, stats_entry_kind(entry), stats_entry_key(entry)) : NULL;
+                long long played_unix = usage ? usage->last_played_unix : 0;
+                if (g_stats_selection == 1) {
+                    long long last_unix = stats_get_last_played_unix(&g_stats);
+                    if (last_unix > 0) played_unix = last_unix;
+                }
+                draw_text(10, 24, 0.6f, g_theme.text_secondary, "Stats");
+                snprintf(line, sizeof(line), "Favorites: %d", stats_favorite_count(&g_stats));
+                draw_text(10, 40, 0.55f, g_theme.text_primary, line);
+                snprintf(line, sizeof(line), "Selected: %s", (g_stats_selection == 0) ? "Close" : (g_stats_selection == 1) ? "Last played" : "Favorite");
+                draw_text(10, 58, 0.55f, g_theme.text_secondary, line);
+                if (entry) {
+                    draw_text_scroll_box(10, 76, 0.6f, g_theme.text_primary, (float)(BOTTOM_W - 20), 22.0f, stats_entry_label(entry), -2.0f, true);
+                    snprintf(line, sizeof(line), "System: %s", stats_system_short_label(entry));
+                    draw_text(10, 102, 0.55f, g_theme.text_secondary, line);
+                    snprintf(line, sizeof(line), "Favorite: %s", stats_is_favorite(&g_stats, stats_entry_kind(entry), stats_entry_key(entry)) ? "Yes" : "No");
+                    draw_text(10, 120, 0.55f, g_theme.text_secondary, line);
+                    snprintf(line, sizeof(line), "Play count: %d", usage ? usage->play_count : 0);
+                    draw_text(10, 138, 0.55f, g_theme.text_secondary, line);
+                    stats_format_timestamp(played_unix, line, sizeof(line));
+                    draw_text(10, 156, 0.55f, g_theme.text_secondary, "Last played:");
+                    draw_text_scroll_box(10, 172, 0.55f, g_theme.text_primary, (float)(BOTTOM_W - 20), 18.0f, line, -2.0f, false);
+                } else {
+                    draw_text(10, 86, 0.6f, g_theme.text_muted, "Select Last played or a favorite");
+                }
             }
         } else if (options_open) {
             OptionItem* list = g_options;
@@ -7051,11 +7416,15 @@ int main(int argc, char** argv) {
                     shortname[29] = '.';
                     shortname[30] = 0;
                 }
+                char fav_key[STATS_KEY_SIZE];
+                stats_make_title_key(t->titleId, t->media, fav_key, sizeof(fav_key));
+                bool favorite = stats_is_favorite(&g_stats, STATS_KIND_TITLE, fav_key);
                 float list_bias = -2.0f;
                 if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                 else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
-                float text_w = (float)(BOTTOM_W - 24);
+                float text_w = (float)(BOTTOM_W - 24 - (favorite ? 10 : 0));
                 draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, shortname, list_bias, sel);
+                if (favorite) draw_text(BOTTOM_W - 18, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.accent, "*");
             }
         } else if (!strcmp(target->type, "system_menu")) {
             ensure_titles_loaded(cfg);
@@ -7110,11 +7479,15 @@ int main(int argc, char** argv) {
                         shortname[29] = '.';
                         shortname[30] = 0;
                     }
+                    char fav_key[STATS_KEY_SIZE];
+                    stats_make_title_key(t->titleId, t->media, fav_key, sizeof(fav_key));
+                    bool favorite = stats_is_favorite(&g_stats, STATS_KIND_TITLE, fav_key);
                     float list_bias = -2.0f;
                     if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                     else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
-                    float text_w = (float)(BOTTOM_W - 24);
+                    float text_w = (float)(BOTTOM_W - 24 - (favorite ? 10 : 0));
                     draw_text_scroll_box(12, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, shortname, list_bias, sel);
+                    if (favorite) draw_text(BOTTOM_W - 18, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.accent, "*");
                 }
             }
         } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
@@ -7172,12 +7545,17 @@ int main(int argc, char** argv) {
                         if (label_buf[0] == 0) copy_str(label_buf, sizeof(label_buf), cache->entries[entry_idx].name);
                     }
                 }
+                int fav_kind = STATS_KIND_NONE;
+                char fav_key[STATS_KEY_SIZE];
+                bool favorite = stats_get_browser_launchable_at(target, ts, runtime, emu_root_exists, idx, &fav_kind, fav_key, sizeof(fav_key))
+                    && stats_is_favorite(&g_stats, fav_kind, fav_key);
                 float text_x = 10.0f;
                 float list_bias = -2.0f;
                 if (sel && g_theme.list_sel_loaded) list_bias = align_offset_from_center(g_theme.list_sel_center_y, row_h);
                 else if (!sel && g_theme.list_item_loaded) list_bias = align_offset_from_center(g_theme.list_item_center_y, row_h);
-                float text_w = (float)(BOTTOM_W - 24);
+                float text_w = (float)(BOTTOM_W - 24 - (favorite ? 10 : 0));
                 draw_text_scroll_box(text_x, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.list_text, text_w, row_h, label_buf, list_bias, sel);
+                if (favorite) draw_text(BOTTOM_W - 18, row_y + g_theme.list_text_offset_y - 3.0f, 0.6f, g_theme.accent, "*");
             }
             }
         } else {
@@ -7188,7 +7566,8 @@ int main(int argc, char** argv) {
         if (cfg->help_bar) {
             char help_buf[128];
             if (g_stats_open) {
-                copy_str(help_buf, sizeof(help_buf), "A Launch/Close   B Back   X Remove");
+                if (g_stats_show_details) copy_str(help_buf, sizeof(help_buf), "A Launch/Close   B Back   X Remove   Y List");
+                else copy_str(help_buf, sizeof(help_buf), "A Launch/Close   B Back   X Remove   Y Stats");
             } else {
                 build_help_label_for_target(target, help_buf, sizeof(help_buf));
             }

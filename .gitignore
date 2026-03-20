@@ -22,3 +22,5 @@ SD/3ds/FirmMux/bgm/credit.txt
 # Source drop folders (keep parent dirs)
 ndsbs_src/nds-bootstrap-master/
 log.txt
+
+tmp/

@@ -5,19 +5,39 @@
 #include <strings.h>
 
 static int g_sort_mode = 0;
+static const StatsData* g_sort_stats = NULL;
+static int g_sort_kind = STATS_KIND_NONE;
+static char g_sort_path[512];
+static bool is_emulator_target(const Target* target);
 
 static int is_letter_char(unsigned char c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+static bool is_emulator_target(const Target* target) {
+    return target && !strcmp(target->type, "retroarch_system");
 }
 
 static int entry_cmp(const void* a, const void* b) {
     const FileEntry* ea = (const FileEntry*)a;
     const FileEntry* eb = (const FileEntry*)b;
     if (ea->is_dir != eb->is_dir) return ea->is_dir ? -1 : 1;
+    if (g_sort_mode == 2 && !ea->is_dir && !eb->is_dir && g_sort_stats && g_sort_kind != STATS_KIND_NONE) {
+        char base_sd[STATS_KEY_SIZE];
+        char akey[STATS_KEY_SIZE];
+        char bkey[STATS_KEY_SIZE];
+        make_sd_path(g_sort_path, base_sd, sizeof(base_sd));
+        normalize_path_sd(base_sd, sizeof(base_sd));
+        path_join(base_sd, ea->name, akey, sizeof(akey));
+        path_join(base_sd, eb->name, bkey, sizeof(bkey));
+        bool af = stats_is_favorite(g_sort_stats, g_sort_kind, akey);
+        bool bf = stats_is_favorite(g_sort_stats, g_sort_kind, bkey);
+        if (af != bf) return af ? -1 : 1;
+    }
     int a_letter = is_letter_char((unsigned char)ea->name[0]) ? 1 : 0;
     int b_letter = is_letter_char((unsigned char)eb->name[0]) ? 1 : 0;
     if (a_letter != b_letter) {
-        if (g_sort_mode == 0) return a_letter - b_letter;
+        if (g_sort_mode == 0 || g_sort_mode == 2) return a_letter - b_letter;
         return b_letter - a_letter;
     }
     int cmp = strcasecmp(ea->name, eb->name);
@@ -29,6 +49,23 @@ static int entry_cmp(const void* a, const void* b) {
 void sort_dir_cache(DirCache* cache, int sort_mode) {
     if (!cache || !cache->entries || cache->count <= 1) return;
     g_sort_mode = sort_mode;
+    g_sort_stats = NULL;
+    g_sort_kind = STATS_KIND_NONE;
+    g_sort_path[0] = 0;
+    qsort(cache->entries, cache->count, sizeof(FileEntry), entry_cmp);
+}
+
+static void sort_dir_cache_for_target(DirCache* cache, int sort_mode, const Target* target, const TargetState* ts, const StatsData* stats) {
+    if (!cache || !cache->entries || cache->count <= 1) return;
+    g_sort_mode = sort_mode;
+    g_sort_stats = stats;
+    g_sort_kind = STATS_KIND_NONE;
+    g_sort_path[0] = 0;
+    if (target && ts && ts->path[0]) {
+        if (!strcmp(target->type, "homebrew_browser")) g_sort_kind = STATS_KIND_HOMEBREW;
+        else if (!strcmp(target->type, "rom_browser") || is_emulator_target(target)) g_sort_kind = STATS_KIND_ROM;
+        copy_str(g_sort_path, sizeof(g_sort_path), ts->path);
+    }
     qsort(cache->entries, cache->count, sizeof(FileEntry), entry_cmp);
 }
 
@@ -112,7 +149,7 @@ bool build_dir_cache(const Target* target, TargetState* ts, DirCache* cache) {
         fe->is_dir = is_dir;
     }
     closedir(dir);
-    sort_dir_cache(cache, ts ? ts->sort_mode : 0);
+    sort_dir_cache_for_target(cache, ts ? ts->sort_mode : 0, target, ts, stats_sort_data());
     snprintf(cache->path, sizeof(cache->path), "%s", ts->path);
     cache->valid = true;
     return true;
