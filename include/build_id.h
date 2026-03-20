@@ -1,3 +1,3 @@
 #ifndef FIRMUX_BUILD_ID
-#define FIRMUX_BUILD_ID "Build:375"
+#define FIRMUX_BUILD_ID "Build:378"
 #endif

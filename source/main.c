@@ -90,6 +90,19 @@ static IconTexture g_cover_preview_icon;
 static u32 g_cover_preview_icon_generation = 0;
 static char g_cover_preview_icon_path[640];
 static int g_cover_preview_settle_frames = 0;
+#define COVER_LOOKUP_CACHE_SIZE 64
+
+typedef struct {
+    bool valid;
+    bool has_cover;
+    u32 stamp;
+    char target_id[32];
+    char rom_sd_path[512];
+    char cover_path[640];
+} CoverLookupCacheEntry;
+
+static CoverLookupCacheEntry g_cover_lookup_cache[COVER_LOOKUP_CACHE_SIZE];
+static u32 g_cover_lookup_cache_stamp = 1;
 static bool g_is_new_3ds = false;
 static const float g_preview_offset_x = 0.0f;
 static const float g_preview_offset_y = 0.0f;
@@ -108,6 +121,8 @@ static bool update_homebrew_preview(const char* sd_path);
 static bool resolve_cover_preview_path(const Target* target, const FileEntry* fe, const char* rom_sd_path, char* out_path, size_t out_size);
 static void clear_hb_preview(void);
 static void cover_preview_reset_state(bool clear_selection_cache);
+static bool cover_lookup_cache_get(const char* target_id, const char* rom_sd_path, char* out_path, size_t out_size, bool* out_has_cover);
+static void cover_lookup_cache_put(const char* target_id, const char* rom_sd_path, const char* cover_path, bool has_cover);
 static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size);
 static bool launch_nds_loader(const Target* target, const char* sd_path, char* status_message, size_t status_size);
 static void sd_path_to_internal_root(const char* sd_path, char* out, size_t out_size);
@@ -3065,12 +3080,66 @@ static void sanitize_cover_cache_name(const char* in, char* out, size_t out_size
     out[j] = 0;
 }
 
+static bool cover_lookup_cache_get(const char* target_id, const char* rom_sd_path, char* out_path, size_t out_size, bool* out_has_cover) {
+    if (!target_id || !target_id[0] || !rom_sd_path || !rom_sd_path[0]) return false;
+    for (int i = 0; i < COVER_LOOKUP_CACHE_SIZE; i++) {
+        CoverLookupCacheEntry* e = &g_cover_lookup_cache[i];
+        if (!e->valid) continue;
+        if (strcmp(e->target_id, target_id) != 0) continue;
+        if (strcmp(e->rom_sd_path, rom_sd_path) != 0) continue;
+        e->stamp = ++g_cover_lookup_cache_stamp;
+        if (out_has_cover) *out_has_cover = e->has_cover;
+        if (out_path && out_size > 0) {
+            if (e->has_cover) copy_str(out_path, out_size, e->cover_path);
+            else out_path[0] = 0;
+        }
+        return true;
+    }
+    return false;
+}
+
+static void cover_lookup_cache_put(const char* target_id, const char* rom_sd_path, const char* cover_path, bool has_cover) {
+    if (!target_id || !target_id[0] || !rom_sd_path || !rom_sd_path[0]) return;
+    CoverLookupCacheEntry* slot = NULL;
+    for (int i = 0; i < COVER_LOOKUP_CACHE_SIZE; i++) {
+        CoverLookupCacheEntry* e = &g_cover_lookup_cache[i];
+        if (e->valid && strcmp(e->target_id, target_id) == 0 && strcmp(e->rom_sd_path, rom_sd_path) == 0) {
+            slot = e;
+            break;
+        }
+        if (!slot || !slot->valid) {
+            if (!e->valid) {
+                slot = e;
+                continue;
+            }
+            if (!slot) {
+                slot = e;
+                continue;
+            }
+        }
+        if (slot && slot->valid && e->valid && e->stamp < slot->stamp) slot = e;
+    }
+    if (!slot) slot = &g_cover_lookup_cache[0];
+    memset(slot, 0, sizeof(*slot));
+    slot->valid = true;
+    slot->has_cover = has_cover;
+    slot->stamp = ++g_cover_lookup_cache_stamp;
+    copy_str(slot->target_id, sizeof(slot->target_id), target_id);
+    copy_str(slot->rom_sd_path, sizeof(slot->rom_sd_path), rom_sd_path);
+    if (has_cover && cover_path && cover_path[0]) copy_str(slot->cover_path, sizeof(slot->cover_path), cover_path);
+}
+
 static bool resolve_cover_preview_path(const Target* target, const FileEntry* fe, const char* rom_sd_path, char* out_path, size_t out_size) {
     if (!out_path || out_size == 0) return false;
     out_path[0] = 0;
     if (!target || !fe || fe->is_dir || !rom_sd_path || !rom_sd_path[0]) {
         if (debug_log_enabled()) debug_log("cover: resolve invalid args");
         return false;
+    }
+    bool cached_has_cover = false;
+    if (cover_lookup_cache_get(target->id, rom_sd_path, out_path, out_size, &cached_has_cover)) {
+        if (!cached_has_cover) return false;
+        return out_path[0] != 0;
     }
     char system_key[16];
     if (!emu_resolve_system(&g_emu, rom_sd_path, target->id, system_key, sizeof(system_key))) {
@@ -3146,10 +3215,12 @@ static bool resolve_cover_preview_path(const Target* target, const FileEntry* fe
     }
     if (!found_path) {
         if (debug_log_enabled()) debug_log("cover: resolve miss key=%s base=%s", system_key, base);
+        cover_lookup_cache_put(target->id, rom_sd_path, NULL, false);
         return false;
     }
     if (debug_log_enabled()) debug_log("cover: resolve hit %s", found_path);
     copy_str(out_path, out_size, found_path);
+    cover_lookup_cache_put(target->id, rom_sd_path, out_path, true);
     return out_path[0] != 0;
 }
 
@@ -3172,7 +3243,7 @@ static void cover_preview_reset_state(bool clear_selection_cache) {
     }
 }
 
-static void request_cover_preview_for_selection(const Target* target, const TargetState* ts, const TargetRuntime* runtime, bool emu_root_exists) {
+static void request_cover_preview_for_selection(const Target* target, const TargetState* ts, const TargetRuntime* runtime, bool emu_root_exists, bool selection_scrolling) {
     if (!target || !ts || !runtime || !is_emulator_target(target)) {
         cover_preview_reset_state(true);
         return;
@@ -3197,9 +3268,15 @@ static void request_cover_preview_for_selection(const Target* target, const Targ
         copy_str(g_cover_preview_last_target_id, sizeof(g_cover_preview_last_target_id), target->id);
         copy_str(g_cover_preview_last_path, sizeof(g_cover_preview_last_path), ts->path);
         copy_str(g_cover_preview_last_name, sizeof(g_cover_preview_last_name), fe->name);
-        g_cover_preview_settle_frames = 8;
+        g_cover_preview_settle_frames = 12;
         g_cover_preview_last_has_cover = false;
         g_cover_preview_last_cover_path[0] = 0;
+        cover_preview_reset_state(false);
+        return;
+    }
+
+    if (selection_scrolling) {
+        g_cover_preview_settle_frames = 12;
         cover_preview_reset_state(false);
         return;
     }
@@ -5681,7 +5758,8 @@ int main(int argc, char** argv) {
             const StatsEntry* stats_entry = stats_selected_entry();
             if (stats_entry) stats_prepare_preview_for_entry(stats_entry, cfg);
         } else {
-            request_cover_preview_for_selection(target, ts, runtime, emu_root_exists);
+            bool cover_scroll_active = rep_up || rep_down || (kHeld & (KEY_UP | KEY_DOWN));
+            request_cover_preview_for_selection(target, ts, runtime, emu_root_exists, cover_scroll_active);
         }
         preview_update(1);
 
