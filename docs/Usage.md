@@ -32,6 +32,8 @@ Notes:
 ### 3DS Titles
 
 - `A`: launch selected installed title
+- Includes installed CTR titles and DSiWare
+- When firmware readiness support is present, FirmMux launches these directly without requiring a HOME round-trip
 - `X`: change sort order
 
 ### System Menu

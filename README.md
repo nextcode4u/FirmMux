@@ -74,6 +74,16 @@ RetroArch source maintenance:
 
 Copy `FirmMux.3dsx` to `sd:/3ds/` and launch via hbmenu.
 
+FirmMux can also be used as an autoboot shell through `sd:/boot.3dsx`.
+
+Current long-term launch model:
+
+- FirmMux consumes the Nexus3DS firmware readiness contract when it is present.
+- Installed CTR titles and DSiWare launch directly from FirmMux through the direct-chainload path.
+- Direct installed-title launch sets the target latch, then the intent latch, then calls `aptSetChainloader(...)`.
+- FirmMux exits that direct-chainload path with a dedicated `svcExitProcess()` path after minimal cleanup so the handoff is not lost to the normal homebrew return callback.
+- The older HOME-init path remains fallback-only for systems where the firmware readiness contract is absent or unknown.
+
 CIA behavior (official):
 
 - `FirmMux.cia` is a setup helper placeholder.
@@ -104,6 +114,7 @@ Health check also verifies:
 See the `docs/` folder for setup and backend details:
 https://github.com/nextcode4u/FirmMux/tree/main/docs
 
+- `docs/Firmware Readiness Contract.md`
 - `docs/SD Layout.md`
 - `docs/RetroArch Emulators.md`
 - `docs/NDS Options.md`
