@@ -1,6 +1,9 @@
 #include "fmux.h"
 #include "preview_manager.h"
 #include "runtime_cache.h"
+#include "shell_state.h"
+#include "launch_policy.h"
+#include "apt_bridge.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +31,13 @@
 
 #include "build_id.h"
 
+typedef enum {
+    FIRMUX_LAUNCH_UNKNOWN = 0,
+    FIRMUX_LAUNCH_BOOT_3DSX,
+    FIRMUX_LAUNCH_HBLIKE_3DSX,
+    FIRMUX_LAUNCH_POST_HOME_3DSX,
+} FirmmuxLaunchContext;
+
 #ifndef FIRMUX_BUILD_ID
 #define FIRMUX_BUILD_ID "unknown"
 #endif
@@ -53,9 +63,8 @@ static bool g_easter_loaded = false;
 static bool g_select_last = false;
 static bool g_exit_requested = false;
 static bool g_exit_after_status = false;
-static bool g_title_launch_home_init_done = false;
-static bool g_title_launch_home_init_pending = false;
-static int g_title_launch_home_init_delay = 0;
+static ShellState g_shell_state;
+static AptBridgeState g_apt_bridge;
 static StatsData g_stats;
 static bool g_stats_open = false;
 static int g_stats_selection = 0;
@@ -64,10 +73,110 @@ static bool g_stats_show_details = false;
 static int g_select_hold_frames = 0;
 static bool g_select_hold_armed = false;
 static bool g_select_hold_consumed = false;
+static FirmmuxLaunchContext g_launch_context = FIRMUX_LAUNCH_UNKNOWN;
+static char g_launch_path[512];
+static bool g_boot_input_armed = true;
+static int g_boot_input_settle_frames = 0;
+static bool g_boot_startup_complete = false;
+static bool g_boot_first_frame_rendered = false;
+static bool g_boot_input_cleared = false;
+static bool g_boot_ready = true;
+static bool g_resume_input_armed = true;
+static int g_resume_input_settle_frames = 0;
+static bool g_home_fallback_jump_requested = false;
+static bool g_chainload_exit_requested = false;
+
+static bool path_ends_with_ci(const char* path, const char* suffix) {
+    if (!path || !suffix) return false;
+    size_t path_len = strlen(path);
+    size_t suffix_len = strlen(suffix);
+    if (suffix_len == 0 || path_len < suffix_len) return false;
+    return strcasecmp(path + path_len - suffix_len, suffix) == 0;
+}
+
+static FirmmuxLaunchContext detect_launch_context(const char* path, const FirmwareShellState* fw) {
+    if (path && path_ends_with_ci(path, "/boot.3dsx")) return FIRMUX_LAUNCH_BOOT_3DSX;
+    if (fw && (fw->shell_ready == FW_SHELL_READY || (fw->flags & (1u << 5)) != 0)) return FIRMUX_LAUNCH_POST_HOME_3DSX;
+    if (path && path_ends_with_ci(path, ".3dsx")) return FIRMUX_LAUNCH_HBLIKE_3DSX;
+    return FIRMUX_LAUNCH_UNKNOWN;
+}
+
+static void begin_boot_input_guard(void) {
+    if (g_launch_context == FIRMUX_LAUNCH_BOOT_3DSX) {
+        g_boot_input_armed = false;
+        g_boot_input_settle_frames = 12;
+        g_boot_startup_complete = false;
+        g_boot_first_frame_rendered = false;
+        g_boot_input_cleared = false;
+        g_boot_ready = false;
+        return;
+    }
+    g_boot_input_armed = true;
+    g_boot_input_settle_frames = 0;
+    g_boot_startup_complete = true;
+    g_boot_first_frame_rendered = true;
+    g_boot_input_cleared = true;
+    g_boot_ready = true;
+}
+
+static void apply_boot_input_guard(u32* kDown, u32* kHeld) {
+    if (!kDown || !kHeld || g_boot_input_armed) return;
+    if (g_boot_input_settle_frames > 0) g_boot_input_settle_frames--;
+    if (*kHeld == 0 && g_boot_input_settle_frames <= 0) {
+        g_boot_input_armed = true;
+        return;
+    }
+    *kDown = 0;
+    *kHeld = 0;
+}
+
+static void begin_resume_input_guard(void) {
+    g_resume_input_armed = false;
+    g_resume_input_settle_frames = 8;
+}
+
+static void apply_resume_input_guard(u32* kDown, u32* kHeld) {
+    if (!kDown || !kHeld || g_resume_input_armed) return;
+    if (g_resume_input_settle_frames > 0) g_resume_input_settle_frames--;
+    if (*kHeld == 0 && g_resume_input_settle_frames <= 0) {
+        g_resume_input_armed = true;
+        return;
+    }
+    *kDown = 0;
+    *kHeld = 0;
+}
+
+static void mark_boot_startup_complete(void) {
+    if (g_launch_context != FIRMUX_LAUNCH_BOOT_3DSX) return;
+    g_boot_startup_complete = true;
+}
+
+static void update_boot_ready_from_input(u32 kHeld) {
+    if (g_launch_context != FIRMUX_LAUNCH_BOOT_3DSX || g_boot_ready) return;
+    if (g_boot_startup_complete && g_boot_first_frame_rendered && kHeld == 0) {
+        g_boot_input_cleared = true;
+        g_boot_ready = true;
+    }
+}
+
+static void note_boot_frame_rendered(void) {
+    if (g_launch_context != FIRMUX_LAUNCH_BOOT_3DSX || g_boot_first_frame_rendered) return;
+    g_boot_first_frame_rendered = true;
+}
+
+static bool boot_ready_for_emulator_launch(void) {
+    return g_launch_context != FIRMUX_LAUNCH_BOOT_3DSX || g_boot_ready;
+}
+
+static bool queue_chainload_exit_now(void) {
+    if (!g_apt_bridge.chainload_pending) return false;
+    g_exit_requested = true;
+    return true;
+}
+
 
 static void cancel_title_home_init_pending(void) {
-    g_title_launch_home_init_pending = false;
-    g_title_launch_home_init_delay = 0;
+    shell_state_cancel_home_init(&g_shell_state);
 }
 static u64 g_title_preview_tid = 0;
 static bool g_title_preview_valid = false;
@@ -483,6 +592,7 @@ static bool stats_launch_entry(const StatsEntry* entry, Config* cfg, State* stat
         }
         FS_MediaType media = media_from_string(colon + 1);
         if (launch_3ds_title_with_home_init(tid, media, status_message, status_size)) {
+            if (queue_chainload_exit_now()) return true;
             stats_record_last_played(STATS_KIND_TITLE, stats_entry_key(entry), stats_entry_label(entry), status_message, status_size, status_timer);
             snprintf(status_message, status_size, "Launching...");
             if (status_timer) *status_timer = 120;
@@ -2303,78 +2413,28 @@ static void auto_set_card_launcher(Config* cfg, State* state, bool* state_dirty,
 }
 
 bool launch_title_id(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
-    if (status_message && status_size > 0) status_message[0] = 0;
-    aptSetHomeAllowed(false);
-    Result rc = APT_PrepareToDoApplicationJump(0, title_id, media);
-    if (R_FAILED(rc)) {
-        svcSleepThread(50ULL * 1000ULL * 1000ULL);
-        rc = APT_PrepareToDoApplicationJump(0, title_id, media);
-    }
-    if (R_FAILED(rc)) {
-        // On direct autoboot flows, HOME Menu process may not be initialized yet.
-        // Don't force-jump here; user can press HOME and return, then retry launch.
-        aptClearChainloader();
-        if (status_message && status_size > 0) {
-            snprintf(status_message, status_size, "HOME init needed (%08lX). Press HOME, return, retry.", (unsigned long)rc);
-        }
-        return false;
-    }
-    u8 param[0x300];
-    u8 hmac[0x20];
-    memset(param, 0, sizeof(param));
-    memset(hmac, 0, sizeof(hmac));
-    rc = APT_DoApplicationJump(param, sizeof(param), hmac);
-    if (R_FAILED(rc)) {
-        svcSleepThread(50ULL * 1000ULL * 1000ULL);
-        rc = APT_DoApplicationJump(param, sizeof(param), hmac);
-    }
-    if (R_FAILED(rc)) {
-        if (status_message && status_size > 0) snprintf(status_message, status_size, "Launch failed %08lX", (unsigned long)rc);
-        return false;
-    }
-    return true;
-}
-
-static bool launch_installed_title_fallback_media(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
-    if (launch_title_id(title_id, media, status_message, status_size)) return true;
-    if (media == MEDIATYPE_SD || media == MEDIATYPE_NAND) {
-        FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
-        if (launch_title_id(title_id, alt, status_message, status_size)) return true;
-    }
-    return false;
+    LaunchContext ctx;
+    launch_policy_make_title_context(&ctx, "", "", title_id, media);
+    return launch_policy_launch_ctr_title_with_fallback_media(&g_shell_state, &g_apt_bridge, &ctx, status_message, status_size);
 }
 
 static bool ensure_home_menu_ready(char* status_message, size_t status_size) {
-    if (!g_title_launch_home_init_done) {
-        g_title_launch_home_init_done = true;
-        g_title_launch_home_init_pending = true;
-        g_title_launch_home_init_delay = 45;
-        if (status_message && status_size > 0) {
-            snprintf(status_message, status_size, "Launching HOME Menu, please return to FirmMux...");
-        }
-        return false;
-    }
-    if (g_title_launch_home_init_pending) {
-        if (status_message && status_size > 0) {
-            snprintf(status_message, status_size, "Launching HOME Menu, please wait...");
-        }
-        return false;
-    }
-    return true;
+    LaunchContext ctx;
+    launch_policy_make_path_context(&ctx, LAUNCH_KIND_HOME_MENU, "system", "HOME init", "");
+    return launch_policy_can_launch_now(&g_shell_state, &ctx, status_message, status_size) == LAUNCH_GATE_ALLOW;
 }
 
 static bool launch_3ds_title_with_home_init(u64 title_id, FS_MediaType media, char* status_message, size_t status_size) {
-    if (!ensure_home_menu_ready(status_message, status_size)) return false;
-    return launch_installed_title_fallback_media(title_id, media, status_message, status_size);
+    LaunchContext ctx;
+    launch_policy_make_title_context(&ctx, "3ds", "", title_id, media);
+    return launch_policy_launch_ctr_title_with_fallback_media(&g_shell_state, &g_apt_bridge, &ctx, status_message, status_size);
 }
 
 static bool launch_system_applet(int applet_index, char* status_message, size_t status_size) {
     if (applet_index != 0) return false;
-    if (!ensure_home_menu_ready(status_message, status_size)) return false;
-    u32 aptbuf[0x400 / 4];
-    memset(aptbuf, 0, sizeof(aptbuf));
-    aptLaunchSystemApplet(APPID_MIIVERSE, aptbuf, sizeof(aptbuf), 0);
-    return true;
+    LaunchContext ctx;
+    launch_policy_make_applet_context(&ctx, "system", "Miiverse", APPID_MIIVERSE);
+    return launch_policy_launch_system_applet(&g_shell_state, &g_apt_bridge, &ctx, status_message, status_size);
 }
 
 static int find_target_index(const Config* cfg, const char* id) {
@@ -2458,9 +2518,11 @@ static bool launch_nds_loader(const Target* target, const char* sd_path, char* s
                 return false;
             }
         } else {
-            if (launch_title_id(tid, media, status_message, status_size)) return true;
-            FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
-            if (launch_title_id(tid, alt, status_message, status_size)) return true;
+            LaunchContext ctx;
+            launch_policy_make_title_context(&ctx, target ? target->id : "nds", "NDS launcher", tid, media);
+            ctx.kind = LAUNCH_KIND_NDS_LOADER;
+            copy_str(ctx.path, sizeof(ctx.path), norm);
+            if (launch_policy_launch_ctr_title_with_fallback_media(&g_shell_state, &g_apt_bridge, &ctx, status_message, status_size)) return true;
         }
     }
     if (try_3dsx && have_3dsx) {
@@ -2491,9 +2553,10 @@ static bool launch_card_launcher(const Target* target, char* status_message, siz
         if (status_message && status_size > 0) snprintf(status_message, status_size, "Card launcher not set");
         return false;
     }
-    if (launch_title_id(tid, media, status_message, status_size)) return true;
-    FS_MediaType alt = (media == MEDIATYPE_NAND) ? MEDIATYPE_SD : MEDIATYPE_NAND;
-    if (launch_title_id(tid, alt, status_message, status_size)) return true;
+    LaunchContext ctx;
+    launch_policy_make_title_context(&ctx, target ? target->id : "nds", "Card launcher", tid, media);
+    ctx.kind = LAUNCH_KIND_CARD_LAUNCHER;
+    if (launch_policy_launch_ctr_title_with_fallback_media(&g_shell_state, &g_apt_bridge, &ctx, status_message, status_size)) return true;
     if (status_message && status_size > 0) snprintf(status_message, status_size, "Install card launcher (ID %016llX)", (unsigned long long)tid);
     return false;
 }
@@ -4383,6 +4446,11 @@ static void file_ext_lower(const char* name, char* out, size_t out_size) {
 
 static bool retro_launch_selected(const Target* target, TargetState* ts, const FileEntry* fe, const char* joined, State* state, char* status_message, size_t status_size, int* status_timer, bool* state_dirty) {
     if (!target || !ts || !fe || fe->is_dir || !joined) return false;
+    if (!boot_ready_for_emulator_launch()) {
+        if (status_message && status_size > 0) snprintf(status_message, status_size, "Startup settling...");
+        if (status_timer) *status_timer = 90;
+        return false;
+    }
     char sdmc_path[512];
     make_sd_path(joined, sdmc_path, sizeof(sdmc_path));
     char rom_sd[512];
@@ -5430,7 +5498,11 @@ int main(int argc, char** argv) {
     if (R_SUCCEEDED(cfguInit())) cfgu_inited = true;
     load_time_format();
     if (R_SUCCEEDED(mcuHwcInit())) mcu_inited = true;
-    aptSetHomeAllowed(true);
+    shell_state_init(&g_shell_state);
+    firmware_shell_refresh(&g_shell_state.firmware);
+    if (argc > 0 && argv && argv[0]) copy_str(g_launch_path, sizeof(g_launch_path), argv[0]);
+    g_launch_context = detect_launch_context(g_launch_path, &g_shell_state.firmware);
+    apt_bridge_init(&g_apt_bridge, true);
     {
         bool is_new = false;
         if (R_SUCCEEDED(APT_CheckNew3DS(&is_new)) && is_new) g_is_new_3ds = true;
@@ -5619,11 +5691,42 @@ int main(int argc, char** argv) {
     if (cur_ts) g_nds_banners = cur_ts->nds_banner_mode != 0;
     auto_set_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
     auto_set_card_launcher(cfg, state, &state_dirty, status_message, sizeof(status_message), &status_timer);
+    begin_boot_input_guard();
+    g_resume_input_armed = true;
+    g_resume_input_settle_frames = 0;
+    g_home_fallback_jump_requested = false;
+    g_chainload_exit_requested = false;
+    mark_boot_startup_complete();
     while (aptMainLoop()) {
-        aptSetHomeAllowed(false);
+        apt_bridge_set_home_allowed(&g_apt_bridge, !g_exit_requested);
         hidScanInput();
         u32 kDown = hidKeysDown();
         u32 kHeld = hidKeysHeld();
+        apply_boot_input_guard(&kDown, &kHeld);
+        apply_resume_input_guard(&kDown, &kHeld);
+        update_boot_ready_from_input(kHeld);
+        if (shell_state_consume_resume_notice(&g_shell_state)) {
+            shell_state_complete_home_init_return(&g_shell_state);
+            apt_bridge_set_home_allowed(&g_apt_bridge, true);
+            begin_resume_input_guard();
+            kDown = 0;
+            kHeld = 0;
+            snprintf(status_message, sizeof(status_message), "HOME init ready. Retry launch.");
+            if (status_timer < 120) status_timer = 120;
+        }
+        if (apt_bridge_consume_chainload_pending(&g_apt_bridge)) {
+            g_exit_requested = true;
+            g_chainload_exit_requested = true;
+            kDown = 0;
+            kHeld = 0;
+        }
+        if (g_home_fallback_jump_requested) {
+            g_home_fallback_jump_requested = false;
+            session_restore_note_home_return(&g_shell_state.session);
+            apt_bridge_jump_home_menu();
+            kDown = 0;
+            kHeld = 0;
+        }
         if (kDown || kHeld) last_input_ms = osGetTime();
         if (kHeld & KEY_UP) hold_up++; else hold_up = 0;
         if (kHeld & KEY_DOWN) hold_down++; else hold_down = 0;
@@ -6475,7 +6578,8 @@ int main(int argc, char** argv) {
                 if (kDown & KEY_A) {
                     if (ts->selection == 0) {
                         cancel_title_home_init_pending();
-                        aptJumpToHomeMenu();
+                        session_restore_note_home_return(&g_shell_state.session);
+                        apt_bridge_jump_home_menu();
                         snprintf(status_message, sizeof(status_message), "Returning to HOME Menu...");
                     } else if (ts->selection == 1) {
                         cancel_title_home_init_pending();
@@ -6496,17 +6600,21 @@ int main(int argc, char** argv) {
                         TitleInfo3ds* tinfo = title_system_at_sorted(ts->selection - 2 - g_system_applet_count, ts->sort_mode);
                         if (tinfo) {
                             if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
-                                char stats_key[STATS_KEY_SIZE];
-                                stats_make_title_key(tinfo->titleId, tinfo->media, stats_key, sizeof(stats_key));
-                                stats_record_last_played(STATS_KIND_TITLE, stats_key, tinfo->name, status_message, sizeof(status_message), &status_timer);
-                                snprintf(status_message, sizeof(status_message), "Launching...");
+                                if (!queue_chainload_exit_now()) {
+                                    char stats_key[STATS_KEY_SIZE];
+                                    stats_make_title_key(tinfo->titleId, tinfo->media, stats_key, sizeof(stats_key));
+                                    stats_record_last_played(STATS_KIND_TITLE, stats_key, tinfo->name, status_message, sizeof(status_message), &status_timer);
+                                    snprintf(status_message, sizeof(status_message), "Launching...");
+                                }
                             } else if (status_message[0] == 0) {
                                 snprintf(status_message, sizeof(status_message), "Launch failed");
                             }
                         }
                     }
-                    status_timer = 120;
-                    audio_play(SOUND_SELECT);
+                    if (!g_exit_requested) {
+                        status_timer = 120;
+                        audio_play(SOUND_SELECT);
+                    }
                 }
             } else if (!strcmp(target->type, "installed_titles")) {
                 ensure_titles_loaded(cfg);
@@ -6533,15 +6641,19 @@ int main(int argc, char** argv) {
                     TitleInfo3ds* tinfo = title_user_at_sorted(ts->selection, ts->sort_mode);
                     if (tinfo) {
                         if (launch_3ds_title_with_home_init(tinfo->titleId, tinfo->media, status_message, sizeof(status_message))) {
-                            char stats_key[STATS_KEY_SIZE];
-                            stats_make_title_key(tinfo->titleId, tinfo->media, stats_key, sizeof(stats_key));
-                            stats_record_last_played(STATS_KIND_TITLE, stats_key, tinfo->name, status_message, sizeof(status_message), &status_timer);
-                            snprintf(status_message, sizeof(status_message), "Launching...");
+                            if (!queue_chainload_exit_now()) {
+                                char stats_key[STATS_KEY_SIZE];
+                                stats_make_title_key(tinfo->titleId, tinfo->media, stats_key, sizeof(stats_key));
+                                stats_record_last_played(STATS_KIND_TITLE, stats_key, tinfo->name, status_message, sizeof(status_message), &status_timer);
+                                snprintf(status_message, sizeof(status_message), "Launching...");
+                            }
                         } else {
                             if (status_message[0] == 0) snprintf(status_message, sizeof(status_message), "Launch failed");
                         }
-                        status_timer = 120;
-                        audio_play(SOUND_SELECT);
+                        if (!g_exit_requested) {
+                            status_timer = 120;
+                            audio_play(SOUND_SELECT);
+                        }
                     }
                 }
             } else if (!strcmp(target->type, "homebrew_browser") || !strcmp(target->type, "rom_browser") || is_emulator_target(target)) {
@@ -7720,12 +7832,11 @@ int main(int argc, char** argv) {
         }
 
         C3D_FrameEnd(0);
+        note_boot_frame_rendered();
 
-        if (g_title_launch_home_init_pending) {
-            if (g_title_launch_home_init_delay > 0) g_title_launch_home_init_delay--;
-            if (g_title_launch_home_init_delay <= 0) {
-                g_title_launch_home_init_pending = false;
-                aptJumpToHomeMenu();
+        if (g_shell_state.home_init_pending) {
+            if (shell_state_tick_home_init(&g_shell_state)) {
+                g_home_fallback_jump_requested = true;
             }
         }
     }
@@ -7745,6 +7856,14 @@ cleanup:
     icon_free(&g_title_preview_icon);
     icon_free(&g_hb_preview_icon);
     free_fonts();
+    if (g_chainload_exit_requested) {
+        if (audio_inited) {
+            audio_shutdown();
+            ndspExit();
+        }
+        if (gfx_inited) gfxExit();
+        svcExitProcess();
+    }
     if (g_textbuf) C2D_TextBufDelete(g_textbuf);
     if (c2d_inited) C2D_Fini();
     if (c3d_inited) C3D_Fini();

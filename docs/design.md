@@ -39,6 +39,7 @@ installed_titles
 - Enumerated from SD/NAND (user titles only)
 - List layout on the bottom screen (text only)
 - Preview shows title icon and TitleID
+- Installed CTR titles and DSiWare use the direct chainload path when launch is allowed
 
 homebrew_browser
 - File browser rooted at configured path
@@ -133,7 +134,7 @@ Invalid or missing JSON is regenerated automatically.
 ## Launch flow
 
 - system_menu: exit to HOME
-- installed_titles: launch selected title by TitleID (AM/NS path)
+- installed_titles: set the direct target/intent latches, call `aptSetChainloader(titleId, media)`, then exit through the dedicated chainload path
 - homebrew_browser: chainload selected .3dsx via hbloader
 - rom_browser: write handoff to `sd:/_nds/firmux/launch.txt` then launch FirmMuxBootstrapLauncher (CIA or 3DSX prep)
   - Handoff format (text):
@@ -157,6 +158,16 @@ Invalid or missing JSON is regenerated automatically.
 - if RetroArch exists and chainload is available, chainload `sd:/3ds/FirmMux/emulators/retroarch.3dsx`
   - otherwise exit to hbmenu with instructions to launch RetroArch
 
+### Firmware readiness
+
+- When a firmware readiness contract is present, FirmMux consumes it through `source/firmware_shell.c`
+- Launch gating remains centralized in `source/launch_policy.c`
+- Firmware readiness is preferred only when the contract is supported and trustworthy
+- Otherwise FirmMux falls back to the HOME-init heuristic
+- `route_kind` and `flags` are informational only
+- Direct installed CTR title and DSiWare launch sets `0x10083`, then `0x10082`, then calls `aptSetChainloader(...)`
+- The direct chainload exit path terminates with `svcExitProcess()` after minimal cleanup so the queued handoff is not lost to the normal homebrew return callback
+
 ## Custom RetroArch Build
 
 - Custom RetroArch 3DSX is built from source in `retroarch_src/RetroArch-master/`
@@ -168,6 +179,7 @@ Invalid or missing JSON is regenerated automatically.
 ## Autoboot
 
 - Intended for Luma Hbmenu autoboot
+- `boot.3dsx` startup keeps a small input-settle / boot-ready guard so direct launch paths do not fire before the shell UI is stable
 
 ## FirmMux CIA
 

@@ -11,8 +11,8 @@
 ## HOME Menu init for 3DS title launching
 
 - On direct autoboot flows, HOME Menu may not be initialized yet when FirmMux starts.
-- In that state, launching installed 3DS titles can fail until HOME Menu has been initialized once.
-- FirmMux already prompts for this and uses a HOME-init flow, but the dependency still exists.
+- FirmMux now prefers the firmware readiness contract when it is present and only falls back to the HOME-init heuristic when firmware support is absent or unknown.
+- On systems without the firmware contract, installed-title launch can still depend on HOME Menu having been initialized once.
 
 ## NDS cheats
 
