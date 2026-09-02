@@ -1,3 +1,11 @@
+# Archived: FirmMux 3DS
+
+This repository is preserved as a historical archive and is no longer maintained.
+
+Active development has moved to [FirmMux-Refresh](https://github.com/nextcode4u/FirmMux-Refresh).
+That repository contains the clean refreshed FirmMux baseline and the reproducible
+dual-build tooling for FirmMux and the separate Nexus3DS fork.
+
 # FirmMux 3DS
 
 FirmMux is a unified front‑end for CTR, TWL, System Menu, Homebrew, and RetroArch‑backed systems including: Atari 2600/5200/7800, ColecoVision, Amstrad CPC, GB/GBC, GBA, Genesis, Game Gear, Intellivision, Sord M5, NES, Neo Geo Pocket, PokeMini, SG‑1000, Master System, SNES, TurboGrafx‑16, WonderSwan, Arcade/CPS1/CPS2/CPS3, Neo Geo/Neo Geo CD, C64/C128/VIC‑20/Plus4/PET, PSX, Virtual Boy, Lynx, Jaguar, DOS, PC‑98, ScummVM, Quake, Uzebox, TIC‑80, WASM‑4, and LowRes NX.
